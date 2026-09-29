@@ -17,7 +17,8 @@ app.disable('x-powered-by')
 if (APP_PASSWORD) {
   app.use((req: Request, res: Response, next: NextFunction) => {
     const [scheme, encoded] = (req.headers.authorization ?? '').split(' ')
-    const [, pass] = scheme === 'Basic' && encoded ? Buffer.from(encoded, 'base64').toString().split(':') : []
+    const creds = scheme === 'Basic' && encoded ? Buffer.from(encoded, 'base64').toString() : ''
+    const pass = creds.includes(':') ? creds.slice(creds.indexOf(':') + 1) : undefined
     if (pass === APP_PASSWORD) return next()
     res.set('WWW-Authenticate', 'Basic realm="Work Prep"').status(401).end()
   })

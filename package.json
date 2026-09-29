@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": ">=22.6.0"
+    "node": ">=22.15.0"
   },
   "scripts": {
     "dev": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/index.ts",
@@ -14,22 +14,22 @@
     "llm:smoke": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/ai/llm.ts"
   },
   "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
     "@monaco-editor/react": "^4.7.0",
-    "express": "^5.2.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "lucide-react": "^1.48.0",
     "monaco-editor": "^0.57.0",
     "motion": "^13.4.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
-  },
-  "devDependencies": {
-    "@types/express": "^5.0.6",
-    "@types/node": "^26.6.3",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.1",
+    "remark-gfm": "^4.0.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.1"
   }
