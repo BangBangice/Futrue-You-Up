@@ -650,12 +650,15 @@ dt { color: var(--sub); }
 :is(.input, .select):focus-visible { box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--sel); }
 .chip { flex: none; height: 26px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border-radius: 999px; background: var(--chip); font-size: 11.5px; font-weight: 600; color: var(--sub); white-space: nowrap; }
 .chip.bad { background: rgba(229, 72, 77, 0.14); color: var(--bad-ink); }
+.simbar .chip.bad { min-width: 0; max-width: 380px; flex-shrink: 1; }
 .cta:disabled { opacity: 0.6; cursor: default; transform: none; box-shadow: none; }
 .cta-note.bad { color: var(--bad-ink); font-weight: 500; }
 .field-label .sub { font-weight: 400; font-size: 12px; }
 
 /* ───────── The mentor's coaching ───────── */
 .bubble p + p { margin-top: 8px; }
+.ai-fallback { display: flex; align-items: flex-start; gap: 6px; max-width: 520px; margin-top: 4px; padding: 7px 10px; border-radius: 8px; background: rgba(229, 72, 77, 0.1); color: var(--bad-ink); font-size: 12px; font-weight: 600; line-height: 1.45; }
+.ai-fallback svg { flex: none; margin-top: 2px; }
 .coach { width: 100%; max-width: 520px; margin-top: 2px; border-radius: 4px 14px 14px 14px; overflow: hidden; background: var(--card); box-shadow: 0 0 0 1px var(--line), 0 6px 20px rgba(0, 0, 0, 0.07); }
 .coach-row { display: flex; gap: 11px; padding: 11px 14px; line-height: 1.5; }
 .coach-row + .coach-row { border-top: 1px solid var(--line); }

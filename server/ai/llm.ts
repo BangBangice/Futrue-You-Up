@@ -14,6 +14,16 @@ const CACHE_FILE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.d
 const MAX_IN_FLIGHT = 6, PER_MINUTE = 30
 
 export const mode = (): 'live' | 'stub' => (process.env.LLM !== 'stub' && KEY ? 'live' : 'stub')
+
+// Why the model is not answering, in words the player can act on. null while calls are getting through.
+let problem: string | null = process.env.LLM !== 'stub' && !KEY ? 'NVIDIA_API_KEY is not set' : null
+const watchers = new Set<(p: string | null) => void>()
+export const aiProblem = () => problem
+export const onAiProblem = (fn: (p: string | null) => void) => watchers.add(fn)
+const report = (p: string | null) => {
+  if (p !== problem) { problem = p; watchers.forEach(fn => fn(p)) }
+  return null
+}
 export interface Tool { name: string; description: string; parameters: { type: 'object'; properties: Record<string, unknown>; required: string[] } }
 export interface Call { name: string; args: Record<string, unknown> }
 export interface Ask {
@@ -60,8 +70,10 @@ async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
       }),
     })
   } catch (e) {
-    console.warn('[llm] no answer:', (e as Error).name)
-    return attempt < 1 && (e as Error).name !== 'TimeoutError' ? request(a, attempt + 1) : null
+    const name = (e as Error).name
+    console.warn('[llm] no answer:', name)
+    if (attempt < 1 && name !== 'TimeoutError') return request(a, attempt + 1)
+    return report(name === 'TimeoutError' ? 'the AI service timed out' : `could not reach the AI service (${name})`)
   }
   if (res.status === 429 && attempt < 2) {
     await new Promise(r => setTimeout(r, (Number(res.headers.get('retry-after')) || 5) * 1000))
@@ -69,8 +81,11 @@ async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
   }
   if (!res.ok) {
     console.warn('[llm] http', res.status)
-    return res.status >= 500 && attempt < 1 ? request(a, attempt + 1) : null
+    if (res.status >= 500 && attempt < 1) return request(a, attempt + 1)
+    return report(res.status === 401 || res.status === 403 ? `the AI service rejected the API key (HTTP ${res.status})`
+      : res.status === 429 ? 'the AI service is rate-limiting requests (HTTP 429)' : `the AI service returned HTTP ${res.status}`)
   }
+  report(null)
   const message = (await res.json().catch(() => null))?.choices?.[0]?.message
   const calls: Call[] = []
   for (const c of message?.tool_calls ?? []) {

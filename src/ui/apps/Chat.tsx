@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Bell, CalendarDays, CircleCheck, CircleHelp, Flame, Footprints, Hash, Lightbulb, MessageSquareText, Radius, Phone, Rocket, Search, SendHorizontal, Users } from 'lucide-react'
+import { Bell, CalendarDays, TriangleAlert, CircleCheck, CircleHelp, Flame, Footprints, Hash, Lightbulb, MessageSquareText, Radius, Phone, Rocket, Search, SendHorizontal, Users } from 'lucide-react'
 import { CHANS, PEOPLE } from '../../../shared/types.ts'
 import type { ChanId, ChatMsg, Coaching } from '../../../shared/types.ts'
 import { sim, useSim } from '../../sim/store.ts'
@@ -25,6 +25,11 @@ function Message({ x }: { x: ChatMsg }) {
         {alert && Icon
           ? <div className={'alert ' + x.alert}><div className="alert-label"><Icon size={11} strokeWidth={2.6} />{alert[0]}</div>{x.text}</div>
           : x.text && <div className="bubble">{x.text.split('\n\n').map((p, i) => <p key={i}><Rich text={p} /></p>)}</div>}
+        {x.fallback && (
+          <div className="ai-fallback" role="status"><TriangleAlert size={13} strokeWidth={2.4} />
+            {x.text ? `AI reply failed: ${x.fallback}. This is a scripted stand-in, not a real answer.` : `AI reply failed: ${x.fallback}. ${PEOPLE[x.who].name.split(' ')[0]} could not answer.`}
+          </div>
+        )}
         {x.coach && (
           <motion.div className="coach" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4, ease: EASE }}>
             {COACH.filter(([k]) => x.coach![k]).map(([k, title, Icon]) => (
@@ -71,7 +76,7 @@ export function Chat() {
         {CHANS[k].dm ? <span className="presence"><Avatar who={k as 'priya'} size={32} /><i className={k === 'daniel' ? 'away' : ''} /></span> : <span className="chan-icon"><Hash size={15} strokeWidth={2.3} /></span>}
         <span className="tm-item-text">
           <span className="tm-item-top"><b className="ellipsis">{label(k)}</b>{latest && <time>{latest.time.replace(/^Mon .*/, 'Mon')}</time>}</span>
-          <span className="tm-preview ellipsis">{latest ? (latest.who === 'maya' ? 'You: ' : '') + (latest.text || 'Sent a file') : CHANS[k].topic}</span>
+          <span className="tm-preview ellipsis">{latest ? (latest.who === 'maya' ? 'You: ' : '') + (latest.text || (latest.fallback ? 'AI reply failed' : 'Sent a file')) : CHANS[k].topic}</span>
         </span>
         <AnimatePresence>{n > 0 && <motion.span className="pip" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ type: 'spring', stiffness: 500, damping: 24 }}>{n}</motion.span>}</AnimatePresence>
       </button>

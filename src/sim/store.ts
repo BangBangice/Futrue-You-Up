@@ -42,7 +42,7 @@ const view = (): View => ({
   seen: [], spot: null, guideOpen: true,
 })
 const nowhere = (): Omit<World, 'stage'> => ({
-  id: '', level: 'bootcamp', background: '', ai: 'live', pace: 4, simMin: START,
+  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: START,
   emails: [], chats: { team: [], incidents: [], priya: [], daniel: [], leo: [] }, unread: { team: 0, incidents: 0, priya: 0, daniel: 0, leo: 0 }, typing: [],
   tickets: [], docs: [], files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
   deploys: [], incident: null, demo: 'pending', timeline: [], recap: null,

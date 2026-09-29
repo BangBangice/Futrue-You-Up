@@ -2,7 +2,7 @@
 import { CHANS, CHECK_LABEL, COLS, DEMO, PEOPLE, PRIORITIES, clock, dur, errAt, failing, isOutage, lockedAt } from '../../shared/types.ts'
 import type { ChanId, Email, TicketStatus } from '../../shared/types.ts'
 import type { Session } from '../world.ts'
-import { ask, oneOf, str } from './llm.ts'
+import { aiProblem, ask, oneOf, str } from './llm.ts'
 import type { Call, Tool } from './llm.ts'
 
 export type Persona = 'priya' | 'daniel' | 'leo' | 'sam' | 'hana' | 'marta'
@@ -146,7 +146,8 @@ export async function reply(s: Session, who: Persona, via: { room: ChanId | null
     ? [`[${mail.time}] ${PEOPLE[mail.who].name}: ${mail.subject}\n${mail.body.join('\n')}`, ...mail.thread.map(r => `[${r.time}] Maya: ${r.text}`)].join('\n')
     : s.world.chats[room!].slice(-12).map(m => `[${m.time}] ${m.who === 'maya' ? 'Maya' : PEOPLE[m.who].name}: ${m.text}`).join('\n')
   const where = mail ? 'email' : CHANS[room!].dm ? 'a direct message with Maya in Teams' : `${CHANS[room!].label} in Teams`
-  const calls = s.priv.aiCalls++ < 80 ? await ask({
+  const budget = s.priv.aiCalls++ < 80
+  const calls = budget ? await ask({
     priority: 1, timeoutMs: 75_000, system: system(who),
     tools: CARDS[who].can.map(n => TOOLS[n](who, s)),
     user: `FACTS\n${facts(s, who)}\n\nCONVERSATION (${where})\n${thread}\n\nMAYA WROTE\n"""${said.slice(0, 2000)}"""\n\nReply as ${PEOPLE[who].name}${room ? `. To answer in Teams use the channel "${room}"` : ', by email'}.`,
@@ -154,7 +155,10 @@ export async function reply(s: Session, who: Persona, via: { room: ChanId | null
   if (s.world.stage !== 'sim') return
   if (calls && apply(s, who, calls, room)) return
   if (calls?.some(c => c.name === 'do_nothing')) return
-  if (!scripted) return
-  if (room) s.say(room, who, scripted)
+  // Say so whenever the AI did not write this reply, so a scripted line or a silence is never mistaken for one.
+  const why = !budget ? 'the AI reply limit for this shift has been reached'
+    : aiProblem() ?? (s.world.ai === 'stub' ? null : calls ? 'the AI answer could not be used' : 'the AI service gave no usable answer')
+  if (!scripted) { if (room && why) s.post(room, who, '', { fallback: why }); return }
+  if (room) s.say(room, who, scripted, why ? { fallback: why } : {})
   else s.mail({ who, subject: 'Re: ' + (mail?.subject ?? 'your message').replace(/^Re: /, ''), body: scripted.split('\n').filter(Boolean) })
 }

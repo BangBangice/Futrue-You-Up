@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { LogOut, Sparkles, WifiOff } from 'lucide-react'
+import { LogOut, Sparkles, TriangleAlert, WifiOff } from 'lucide-react'
 import { DEMO, PACES, RATE, clock, dur, lockedAt, money } from '../../shared/types.ts'
 import { live, sim, useSim } from '../sim/store.ts'
 import { Brand, SPRING, Segmented, ThemeToggle } from './bits.tsx'
@@ -10,6 +10,7 @@ export function SimBar() {
   const deploys = useSim(s => s.deploys)
   const pace = useSim(s => s.pace)
   const ai = useSim(s => s.ai)
+  const aiProblem = useSim(s => s.aiProblem)
   const online = useSim(s => s.online)
   const on = live({ incident }), toDemo = DEMO - m
   return (
@@ -21,7 +22,9 @@ export function SimBar() {
       </div>
       <div className="stack simclock"><b>{clock(m)}</b><span>SIM TIME</span></div>
       <Segmented id="pace" value={String(pace)} options={PACES.map(([n, label]) => [String(n), label])} onChange={v => sim.setPace(Number(v))} />
-      <span className="chip" title={ai === 'live' ? 'Colleagues are played by an AI model' : 'Colleagues use scripted lines. No network needed.'}><Sparkles size={12} strokeWidth={2.2} />{ai === 'live' ? 'AI colleagues' : 'Scripted colleagues'}</span>
+      {aiProblem
+        ? <span className="chip bad" role="alert" title={`AI calls are failing: ${aiProblem}. Colleagues fall back to scripted lines until it recovers.`}><TriangleAlert size={12} strokeWidth={2.4} /><span className="ellipsis">AI unavailable: {aiProblem}</span></span>
+        : <span className="chip" title={ai === 'live' ? 'Colleagues are played by an AI model' : 'Colleagues use scripted lines. No network needed.'}><Sparkles size={12} strokeWidth={2.2} />{ai === 'live' ? 'AI colleagues' : 'Scripted colleagues'}</span>}
       <div className="grow" />
       <AnimatePresence>
         {!online && <motion.span key="off" className="chip bad" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}><WifiOff size={12} strokeWidth={2.4} />Reconnecting</motion.span>}

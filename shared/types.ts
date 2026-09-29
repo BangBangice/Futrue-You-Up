@@ -30,6 +30,8 @@ export interface Coaching { blast: string; why: string; question: string; next: 
 export interface ChatMsg {
   id: number; who: PersonId; time: string; text: string
   alert?: 'fire' | 'ok' | 'info'; files?: Attachment[]; coach?: Coaching
+  /** Set when the AI could not answer: why, so the player knows this line is scripted or that a reply is missing. */
+  fallback?: string
 }
 export interface Comment { who: PersonId; time: string; text: string }
 export interface Ticket {
@@ -56,6 +58,8 @@ export interface Recap { ready: boolean; happened: string[]; corrected: string[]
 /** Everything the server owns. The browser holds a read-only copy kept current by patches. */
 export interface World {
   id: string; stage: 'sim' | 'recap'; level: Level; background: string; ai: 'live' | 'stub'
+  /** Why AI calls are failing right now, or null while they work. */
+  aiProblem: string | null
   /** Simulated minutes per real minute. */
   pace: number; simMin: number
   emails: Email[]; chats: Record<ChanId, ChatMsg[]>; unread: Record<ChanId, number>; typing: { chan: ChanId; who: PersonId }[]

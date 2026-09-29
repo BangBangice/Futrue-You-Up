@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import type { Response } from 'express'
 import { CHANS, PEOPLE, START, clock } from '../shared/types.ts'
 import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, PersonId, TermLine, Ticket, Tone, World } from '../shared/types.ts'
+import { aiProblem, onAiProblem } from './ai/llm.ts'
 import { Workspace } from './sandbox.ts'
 import type { Verdict } from './sandbox.ts'
 import { initialChats, initialDocs, initialEmails, initialTickets } from './seed.ts'
@@ -86,14 +87,14 @@ export class Session {
     this.world.term = [...this.world.term, line].slice(-MAX_TERM)
     this.send('term', { lines: [line] })
   }
-  post(chan: ChanId, who: PersonId, text: string, extra: { alert?: ChatMsg['alert']; files?: Attachment[]; coach?: Coaching } = {}) {
+  post(chan: ChanId, who: PersonId, text: string, extra: { alert?: ChatMsg['alert']; files?: Attachment[]; coach?: Coaching; fallback?: string } = {}) {
     const msg: ChatMsg = { id: this.id(), who, text, time: this.now, ...extra }
     this.set(w => ({
       chats: { ...w.chats, [chan]: [...w.chats[chan], msg] },
       unread: who === 'maya' ? w.unread : { ...w.unread, [chan]: w.unread[chan] + 1 },
       typing: w.typing.filter(t => !(t.chan === chan && t.who === who)),
     }))
-    this.log('chat', { chan, who, text })
+    if (text || extra.files?.length) this.log('chat', { chan, who, text })
     return msg
   }
   /** Shows "is typing", then posts. Used for scripted lines and for AI replies once they have arrived. */
@@ -126,7 +127,7 @@ export async function create(level: Level, background: string, pace: number, ai:
   if (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value!)
   const id = randomUUID()
   const world: World = {
-    id, stage: 'sim', level, background, ai, pace, simMin: START,
+    id, stage: 'sim', level, background, ai, aiProblem: aiProblem(), pace, simMin: START,
     emails: initialEmails(), chats: initialChats(), unread: { team: 0, incidents: 0, priya: 0, daniel: 0, leo: 1 }, typing: [],
     tickets: initialTickets(), docs: initialDocs(),
     files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
@@ -146,10 +147,11 @@ export async function find(id: string) {
   const file = join(DATA, id, 'session.json')
   if (!existsSync(file)) return null
   const saved = JSON.parse(await readFile(file, 'utf8'))
-  const s = new Session({ ...saved.world, typing: [], code: { ...saved.world.code, busy: null } }, saved.priv)
+  const s = new Session({ ...saved.world, aiProblem: aiProblem(), typing: [], code: { ...saved.world.code, busy: null } }, saved.priv)
   s.ws = await Workspace.open(s.dir)
   sessions.set(id, s)
   return s
 }
 export const all = () => [...sessions.values()]
+onAiProblem(p => all().forEach(s => s.set({ aiProblem: p })))
 export { CHANS }
