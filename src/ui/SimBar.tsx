@@ -35,7 +35,7 @@ export function SimBar() {
         )}
       </AnimatePresence>
       <ThemeToggle />
-      <button className="btn btn-ink" onClick={sim.endShift}><LogOut size={14} strokeWidth={2.4} />End shift</button>
+      <button className="btn btn-ink" data-guide="end-shift" onClick={sim.endShift}><LogOut size={14} strokeWidth={2.4} />End shift</button>
     </header>
   )
 }
