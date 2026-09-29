@@ -4,14 +4,13 @@ import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { LayoutGroup, animate, motion, useMotionValue } from 'motion/react'
 import type { MotionValue } from 'motion/react'
 import { Maximize2, Minus, X } from 'lucide-react'
-import { APP_IDS } from '../sim/data.ts'
-import type { AppId } from '../sim/data.ts'
-import { winRect } from '../sim/engine.ts'
-import { sim, useSim } from '../sim/store.ts'
+import { APP_IDS } from '../../shared/types.ts'
+import type { AppId } from '../../shared/types.ts'
+import { sim, useSim, winRect } from '../sim/store.ts'
 
 type Drag = (e: ReactPointerEvent<HTMLElement>, mode?: 'move' | 'resize') => void
 const Ctx = createContext<{ id: AppId; drag: Drag }>(null!)
-const isControl = (t: EventTarget) => !!(t as HTMLElement).closest('button,input,textarea,label,a')
+const isControl = (t: EventTarget) => !!(t as HTMLElement).closest('button,input,textarea,select,label,a')
 const GEOMETRY = { type: 'spring', stiffness: 360, damping: 36 } as const
 
 export function Window({ id, children }: { id: AppId; children: ReactNode }) {

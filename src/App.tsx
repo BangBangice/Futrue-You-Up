@@ -10,7 +10,7 @@ export default function App() {
   const stage = useSim(s => s.stage)
   const theme = useSim(s => s.theme)
   useLayoutEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
-  const screen = stage === 'debrief' || stage === 'report' ? 'post' : stage
+  const screen = stage === 'recap' ? 'post' : stage
 
   return (
     <MotionConfig reducedMotion="user">

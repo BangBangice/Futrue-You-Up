@@ -1,120 +1,194 @@
-import { useEffect, useRef } from 'react'
-import type { ReactNode } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import type { FormEvent, KeyboardEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Blocks, Bug, ChevronDown, FileCode2, FileJson, Files, FlaskConical, GitBranch, LoaderCircle, Play, Rocket, Search, Undo2, Wrench } from 'lucide-react'
-import { CODE, FILES, clock } from '../../sim/data.ts'
-import type { FileId } from '../../sim/data.ts'
-import { sim, useSim } from '../../sim/store.ts'
+import { Blocks, Bug, ChevronDown, ChevronRight, CircleStop, FileCode2, FileJson, FilePlus2, FileText, Files, FlaskConical, GitBranch, GitCompare, LoaderCircle, Play, Rocket, Search, Undo2, X } from 'lucide-react'
+import { clock } from '../../../shared/types.ts'
+import { live, sim, useSim } from '../../sim/store.ts'
 import { EASE, LOGOS } from '../bits.tsx'
 import { DragBar, Lights } from '../Window.tsx'
 
-type Node = { file?: FileId; label?: string; depth: number; dir?: boolean }
-const TREE: Node[] = [{ label: 'src', depth: 0, dir: true }, { label: 'auth', depth: 1, dir: true }, { file: 'vs', depth: 2 }, { file: 'pw', depth: 2 }, { file: 'key', depth: 2 }, { file: 'test', depth: 2 }, { label: 'sso', depth: 1, dir: true }, { file: 'sso', depth: 2 }, { label: 'package.json', depth: 0 }]
+const Editor = lazy(() => import('./Monaco.tsx').then(m => ({ default: m.Code })))
+const Compare = lazy(() => import('./Monaco.tsx').then(m => ({ default: m.Diff })))
+const PROMPT = 'maya@ws-02 ledgerly-api % '
+const STATUS: Record<string, string> = { M: 'Modified', A: 'Added', D: 'Deleted', '??': 'Untracked', R: 'Renamed' }
 
-// ponytail: regex colouring, good for the sim's fixed snippets only. Swap for Shiki if players ever edit code.
-const TOKENS = /(\/\/.*$)|('(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|\b(import|export|from|type|const|let|async|await|function|return|if|else|describe|it|expect)\b|\b(true|false|null|undefined|\d+)\b|([A-Za-z_]\w*)(?=\()/g
-const KINDS = ['', 'c', 's', 'k', 'n', 'f']
-function highlight(text: string) {
-  const out: ReactNode[] = []
-  let at = 0
-  for (const m of text.matchAll(TOKENS)) {
-    if (m.index > at) out.push(text.slice(at, m.index))
-    out.push(<span key={m.index} className={'t-' + KINDS[m.findIndex((g, i) => i > 0 && g !== undefined)]}>{m[0]}</span>)
-    at = m.index + m[0].length
+const icon = (path: string) => (/\.test\.ts$/.test(path) ? <FlaskConical size={13} className="ic-test" /> : /\.json$/.test(path) ? <FileJson size={13} className="ic-json" /> : /\.md$/.test(path) ? <FileText size={13} className="sub" /> : <FileCode2 size={13} className="ic-ts" />)
+const name = (path: string) => path.split('/').at(-1)!
+
+function Explorer() {
+  const files = useSim(s => s.files)
+  const changes = useSim(s => s.code.changes)
+  const current = useSim(s => s.codeFile)
+  const [closed, setClosed] = useState<string[]>([])
+  const [adding, setAdding] = useState(false)
+
+  // Flatten the paths into rows: every folder once, then what is inside it, unless it is folded.
+  const rows: { path: string; depth: number; dir: boolean }[] = []
+  const seen = new Set<string>()
+  for (const f of [...files].sort((a, b) => Number(!a.includes('/')) - Number(!b.includes('/')) || a.localeCompare(b))) {
+    const parts = f.split('/')
+    parts.slice(0, -1).forEach((_, i) => { const dir = parts.slice(0, i + 1).join('/'); if (!seen.has(dir)) { seen.add(dir); rows.push({ path: dir, depth: i, dir: true }) } })
+    rows.push({ path: f, depth: parts.length - 1, dir: false })
   }
-  out.push(text.slice(at))
-  return out
+  const hidden = (p: string) => closed.some(c => p.startsWith(c + '/'))
+  const add = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const path = new FormData(e.currentTarget).get('path')?.toString().trim()
+    setAdding(false)
+    if (path) void sim.newFile(path).catch(() => {})
+  }
+
+  return (
+    <>
+      <div className="explorer-head">EXPLORER<button title="New file" aria-label="New file" onClick={() => setAdding(true)}><FilePlus2 size={14} strokeWidth={1.9} /></button></div>
+      <div className="explorer-root"><ChevronDown size={13} strokeWidth={2.6} />LEDGERLY-API</div>
+      <div className="explorer-scroll">
+        {adding && <form onSubmit={add} className="tree-new"><input name="path" autoFocus placeholder="src/auth/new-file.ts" aria-label="New file path" onBlur={() => setAdding(false)} /></form>}
+        {rows.filter(r => !hidden(r.path)).map(r => {
+          const pad = { paddingLeft: 12 + r.depth * 13 }
+          if (r.dir) {
+            const folded = closed.includes(r.path)
+            return <button key={r.path} className="tree-row" style={pad} onClick={() => setClosed(c => (folded ? c.filter(x => x !== r.path) : [...c, r.path]))}>{folded ? <ChevronRight size={13} strokeWidth={2.4} /> : <ChevronDown size={13} strokeWidth={2.4} />}{name(r.path)}</button>
+          }
+          const st = changes.find(c => c.path === r.path)?.status
+          return (
+            <button key={r.path} className={'tree-row leaf' + (current === r.path ? ' on' : '') + (st ? ' mod' : '')} style={pad} onClick={() => sim.openFile(r.path)}>
+              {icon(r.path)}<span className="grow ellipsis">{name(r.path)}</span>{st && <b title={STATUS[st]}>{st === '??' ? 'U' : st}</b>}
+            </button>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
+function SourceControl() {
+  const code = useSim(s => s.code)
+  const [message, setMessage] = useState('')
+  const commit = (e: FormEvent) => {
+    e.preventDefault()
+    if (!message.trim() || !code.changes.length) return
+    void sim.commit(message.trim())
+    setMessage('')
+  }
+  return (
+    <>
+      <div className="explorer-head">SOURCE CONTROL</div>
+      <form className="scm" onSubmit={commit}>
+        <textarea rows={2} value={message} onChange={e => setMessage(e.target.value)} placeholder={`Message (commit on ${code.branch})`} aria-label="Commit message" onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) commit(e) }} />
+        <button className="btn btn-vs sm" disabled={!message.trim() || !code.changes.length || !!code.busy}>Commit</button>
+      </form>
+      <div className="explorer-root"><ChevronDown size={13} strokeWidth={2.6} />CHANGES<span className="tally">{code.changes.length}</span></div>
+      <div className="explorer-scroll">
+        {code.changes.map(c => (
+          <button key={c.path} className="tree-row leaf mod" style={{ paddingLeft: 14 }} title="Compare with the last commit" onClick={() => sim.showDiff(c.path)}>
+            {icon(c.path)}<span className="grow ellipsis">{name(c.path)} <span className="dim">{c.path.split('/').slice(0, -1).join('/')}</span></span><b title={STATUS[c.status]}>{c.status === '??' ? 'U' : c.status}</b>
+          </button>
+        ))}
+        {!code.changes.length && <div className="scm-empty">No changes since the last commit.</div>}
+        <div className="scm-head"><GitBranch size={12} strokeWidth={2.2} />{code.head} · {code.subject}</div>
+      </div>
+    </>
+  )
+}
+
+function Terminal() {
+  const term = useSim(s => s.term)
+  const busy = useSim(s => s.code.busy)
+  const shown = useSim(s => s.wins.code.open && !s.wins.code.min)
+  const [line, setLine] = useState('')
+  const history = useRef<string[]>([]), at = useRef(0)
+  const scroller = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null)
+  useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight }) }, [term, shown, busy])
+
+  const run = (e: FormEvent) => {
+    e.preventDefault()
+    if (!line.trim() || busy) return
+    history.current.push(line)
+    at.current = history.current.length
+    void sim.exec(line)
+    setLine('')
+  }
+  const recall = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+    e.preventDefault()
+    at.current = Math.max(0, Math.min(history.current.length, at.current + (e.key === 'ArrowUp' ? -1 : 1)))
+    setLine(history.current[at.current] ?? '')
+  }
+  return (
+    <div className="terminal" onClick={() => { if (!getSelection()?.toString()) input.current?.focus() }}>
+      <div className="term-tabs"><span className="on">TERMINAL</span><span>PROBLEMS</span><span>OUTPUT</span><div className="grow" />{busy && <button className="term-stop" onClick={sim.stop}><CircleStop size={13} strokeWidth={2.2} />Stop</button>}</div>
+      <div className="term-out" ref={scroller}>
+        {term.map((l, i) => <div key={i} className={'tl ' + l.c}>{l.c === 'cmd' && <span className="prompt">{PROMPT}</span>}{l.t || ' '}</div>)}
+        {busy ? <div className="tl dim"><LoaderCircle size={11} className="spin" /> running {busy}…</div> : (
+          <form className="tl cmd term-line" onSubmit={run}>
+            <span className="prompt">{PROMPT}</span>
+            <input ref={input} value={line} onChange={e => setLine(e.target.value)} onKeyDown={recall} spellCheck={false} autoCapitalize="off" autoComplete="off" aria-label="Terminal input" />
+          </form>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function Code() {
+  const tabs = useSim(s => s.tabs)
   const file = useSim(s => s.codeFile)
-  const stage = useSim(s => s.codeStage)
-  const phase = useSim(s => s.phase)
-  const term = useSim(s => s.term)
-  const testsBusy = useSim(s => s.testsBusy)
-  const deployBusy = useSim(s => s.deployBusy)
-  const deployedAt = useSim(s => s.f.deploy)
-  const shown = useSim(s => s.wins.code.open && !s.wins.code.min)
+  const buffer = useSim(s => s.buffers[s.codeFile])
+  const buffers = useSim(s => s.buffers)
+  const diff = useSim(s => s.diff)
+  const side = useSim(s => s.side)
+  const code = useSim(s => s.code)
+  const deploys = useSim(s => s.deploys)
+  const outage = useSim(s => live(s))
+  const prod = deploys.at(-1)
+  const dirty = (p: string) => !!buffers[p] && buffers[p].text !== buffers[p].saved
+  const banner = !prod || prod.by !== 'maya' ? '' : prod.kind === 'rollback' ? `Production was rolled back to ${prod.sha} at ${clock(prod.at)}. Your change is no longer live.` : `auth-api@${prod.sha} has been live in production since ${clock(prod.at)}.`
 
-  const version = stage === 'reverted' || stage === 'patched' ? stage : 'draft'
-  const src = file === 'vs' ? CODE[`vs_${version}`] : CODE[file]
-  const modified = stage === 'draft' || stage === 'patched'
-  const banner = { draft: '', deployed: 'Deployed a41f9c2 to prod at ' + clock(deployedAt ?? 0), reverted: 'Rolled back to 7c19e02. Your LED-214 change is no longer in prod.', patched: phase === 'resolved' ? 'Deployed c83d1b7 (cookie fallback) to prod' : 'Deploying c83d1b7: cookie fallback' }[stage]
-  const status = { draft: '1 file changed', deployed: 'deployed a41f9c2', reverted: 'rolled back · 7c19e02', patched: 'c83d1b7' }[stage]
-
-  const termEl = useRef<HTMLDivElement>(null)
-  useEffect(() => { termEl.current?.scrollTo({ top: termEl.current.scrollHeight, behavior: 'smooth' }) }, [term, shown, testsBusy, deployBusy])
-
-  let n = 0
   return (
     <div className="app code">
       <DragBar className="code-title">
         <Lights />
-        <div className="code-title-text"><img src={LOGOS.code} alt="" />{FILES[file].name} — ledgerly-api</div>
+        <div className="code-title-text"><img src={LOGOS.code} alt="" />{file ? name(file) + ' — ' : ''}ledgerly-api</div>
       </DragBar>
       <div className="app-body">
-        <div className="activity"><Files size={20} className="on" /><Search size={20} /><GitBranch size={20} /><Bug size={20} /><Blocks size={20} /></div>
-        <nav className="explorer">
-          <div className="explorer-head">EXPLORER</div>
-          <div className="explorer-root"><ChevronDown size={13} strokeWidth={2.6} />LEDGERLY-API</div>
-          {TREE.map((node, i) => {
-            const pad = { paddingLeft: 14 + node.depth * 13 }
-            if (!node.file) return <div key={i} className="tree-row" style={pad}>{node.dir ? <ChevronDown size={13} strokeWidth={2.4} /> : <FileJson size={13} className="ic-json" />}{node.label}</div>
-            const f = node.file, mod = f === 'vs' && modified
-            const Icon = f === 'test' ? FlaskConical : FileCode2
-            return (
-              <button key={i} className={'tree-row leaf' + (file === f ? ' on' : '') + (mod ? ' mod' : '')} style={pad} onClick={() => sim.pickFile(f)}>
-                <Icon size={13} className={f === 'test' ? 'ic-test' : 'ic-ts'} /><span className="grow ellipsis">{FILES[f].name}</span>{mod && <b>M</b>}
-              </button>
-            )
-          })}
-        </nav>
+        <div className="activity">
+          <button className={side === 'files' ? 'on' : ''} title="Explorer" aria-label="Explorer" onClick={() => sim.set({ side: 'files' })}><Files size={20} strokeWidth={1.7} /></button>
+          <button className={side === 'git' ? 'on' : ''} title="Source control" aria-label="Source control" onClick={() => sim.set({ side: 'git' })}><GitBranch size={20} strokeWidth={1.7} />{code.changes.length > 0 && <i>{code.changes.length}</i>}</button>
+          <Search size={20} strokeWidth={1.7} /><Bug size={20} strokeWidth={1.7} /><Blocks size={20} strokeWidth={1.7} />
+        </div>
+        <nav className="explorer">{side === 'files' ? <Explorer /> : <SourceControl />}</nav>
         <div className="editor">
           <div className="tabs">
-            <div className="tab"><FileCode2 size={13} className="ic-ts" />{FILES[file].name}{file === 'vs' && stage !== 'reverted' && <span className="tab-diff">diff</span>}</div>
-            <div className="grow" />
-            {stage === 'draft' && (
-              <>
-                <button className="btn btn-ghost sm" disabled={testsBusy || deployBusy} onClick={sim.runTests}>{testsBusy ? <LoaderCircle size={13} className="spin" /> : <Play size={12} strokeWidth={2.6} />}{testsBusy ? 'Running…' : 'Run tests'}</button>
-                <button className="btn btn-go sm" disabled={testsBusy || deployBusy} onClick={sim.deploy}>{deployBusy ? <LoaderCircle size={13} className="spin" /> : <Rocket size={13} strokeWidth={2.2} />}{deployBusy ? 'Deploying…' : 'Commit & deploy'}</button>
-              </>
-            )}
-            {phase === 'incident' && (
-              <>
-                <button className="btn btn-danger sm" onClick={sim.revert}><Undo2 size={13} strokeWidth={2.4} />Revert deploy</button>
-                <button className="btn btn-ghost sm" onClick={sim.patch}><Wrench size={13} strokeWidth={2.2} />Patch forward</button>
-              </>
-            )}
+            <div className="tab-strip">
+              {tabs.map(p => (
+                <div key={p} className={'tab' + (p === file && !diff ? ' on' : '')} onClick={() => sim.openFile(p)}>
+                  {icon(p)}<span>{name(p)}</span>
+                  <button aria-label={'Close ' + name(p)} title={dirty(p) ? 'Unsaved changes' : 'Close'} onClick={e => { e.stopPropagation(); sim.closeFile(p) }}>{dirty(p) ? <i className="unsaved" /> : <X size={12} strokeWidth={2.4} />}</button>
+                </div>
+              ))}
+              {diff && <div className="tab on"><GitCompare size={13} className="ic-json" /><span>{name(diff.path)} (changes)</span><button aria-label="Close comparison" onClick={() => sim.set({ diff: null })}><X size={12} strokeWidth={2.4} /></button></div>}
+            </div>
+            <button className="btn btn-ghost sm" disabled={!!code.busy} onClick={() => sim.exec('npm test')}><Play size={12} strokeWidth={2.6} />Run tests</button>
+            {outage
+              ? <button className="btn btn-danger sm" disabled={!!code.busy} onClick={() => sim.exec('ldg rollback auth-api')}><Undo2 size={13} strokeWidth={2.4} />Roll back</button>
+              : <button className="btn btn-go sm" disabled={!!code.busy} onClick={() => sim.exec('ldg deploy auth-api --env prod')}><Rocket size={13} strokeWidth={2.2} />Deploy</button>}
           </div>
           <AnimatePresence initial={false}>
-            {banner && <motion.div key={banner} className="code-banner" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: EASE }}><div>{banner}</div></motion.div>}
+            {banner && <motion.div key={banner} className={'code-banner' + (prod?.kind === 'rollback' ? ' warn' : '')} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: EASE }}><div>{banner}</div></motion.div>}
           </AnimatePresence>
-          <div className="crumbs">{FILES[file].path.replaceAll('/', '  ›  ')}</div>
-          <motion.div key={file + version} className="source" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.22 }}>
-            {src.map((line, i) => {
-              const sign = line[0]
-              if (sign !== '-') n++
-              return (
-                <div key={i} className={'line' + (sign === '+' ? ' add' : sign === '-' ? ' del' : '')}>
-                  <span className="ln">{sign === '-' ? '' : n}</span><span className="sign">{sign.trim()}</span><span className="src">{highlight(line.slice(1))}</span>
-                </div>
-              )
-            })}
-          </motion.div>
-          <div className="terminal">
-            <div className="term-tabs"><span className="on">TERMINAL</span><span>PROBLEMS</span><span>OUTPUT</span></div>
-            <div className="term-out" ref={termEl}>
-              {term.map((l, i) => (
-                <motion.div key={i} className={'tl ' + l.c} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.18 }}>
-                  {l.c === 'cmd' && <span className="prompt">maya@ws-02 ledgerly-api % </span>}{l.t}
-                </motion.div>
-              ))}
-              {!testsBusy && !deployBusy && <div className="tl cmd"><span className="prompt">maya@ws-02 ledgerly-api % </span><i className="caret" /></div>}
-            </div>
+          {file && <div className="crumbs">{(diff?.path ?? file).replaceAll('/', '  ›  ')}{dirty(file) && !diff && <span> · unsaved, ⌘S to save</span>}</div>}
+          <div className="source">
+            <Suspense fallback={<div className="empty-full"><LoaderCircle size={20} className="spin" />Loading the editor</div>}>
+              {diff ? <Compare path={diff.path} before={diff.head} after={buffers[diff.path]?.text ?? ''} />
+                : file && buffer ? <Editor path={file} value={buffer.text} onChange={t => sim.edit(file, t)} onSave={() => void sim.save(file)} />
+                : <div className="empty-full"><img src={LOGOS.code} alt="" width={56} style={{ opacity: 0.25 }} />Pick a file from the explorer</div>}
+            </Suspense>
           </div>
+          <Terminal />
         </div>
       </div>
-      <div className="statusbar"><span><GitBranch size={12} strokeWidth={2.4} />{stage === 'draft' ? 'maya/led-214-sso-expiry' : 'main'}</span><span>{status}</span><div className="grow" /><span>TypeScript</span><span>UTF-8</span></div>
+      <div className="statusbar"><span><GitBranch size={12} strokeWidth={2.4} />{code.branch}</span><span>{code.head}</span><span>{code.changes.length ? `${code.changes.length} changed` : 'clean'}</span><div className="grow" /><span>prod: {prod?.sha}</span><span>TypeScript</span><span>UTF-8</span></div>
     </div>
   )
 }

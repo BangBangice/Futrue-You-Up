@@ -1,0 +1,12 @@
+{
+  "name": "ledgerly-api",
+  "version": "4.18.2",
+  "private": true,
+  "type": "module",
+  "description": "Ledgerly API: auth, SSO and invoicing",
+  "scripts": {
+    "test": "node --test --experimental-strip-types",
+    "start": "node --experimental-strip-types src/server.ts"
+  },
+  "engines": { "node": ">=22" }
+}

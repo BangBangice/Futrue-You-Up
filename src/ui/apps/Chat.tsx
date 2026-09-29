@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Bell, CalendarDays, CircleCheck, Flame, Hash, MessageSquareText, Phone, Rocket, Search, SendHorizontal, Users } from 'lucide-react'
-import { CHANS, PEOPLE } from '../../sim/data.ts'
-import type { ChanId, ChatMsg } from '../../sim/data.ts'
+import { Bell, CalendarDays, CircleCheck, CircleHelp, Flame, Footprints, Hash, Lightbulb, MessageSquareText, Radius, Phone, Rocket, Search, SendHorizontal, Users } from 'lucide-react'
+import { CHANS, PEOPLE } from '../../../shared/types.ts'
+import type { ChanId, ChatMsg, Coaching } from '../../../shared/types.ts'
 import { sim, useSim } from '../../sim/store.ts'
 import { Avatar, EASE, LOGOS, SPRING } from '../bits.tsx'
 import { AttachButton, FileCard, Rich } from '../files.tsx'
@@ -10,6 +10,7 @@ import { DragBar, Lights } from '../Window.tsx'
 
 const ALERTS = { fire: ['FIRING', Flame], ok: ['RESOLVED', CircleCheck], info: ['DEPLOY', Rocket] } as const
 const RAIL = [['Activity', Bell], ['Chat', MessageSquareText], ['Teams', Users], ['Calendar', CalendarDays], ['Calls', Phone]] as const
+const COACH: [keyof Coaching, string, typeof Flame][] = [['blast', 'Who it affected', Radius], ['why', 'Why it happened', Lightbulb], ['question', 'Ask yourself', CircleHelp], ['next', 'Next step', Footprints]]
 const label = (k: ChanId) => (CHANS[k].dm ? CHANS[k].label : CHANS[k].label.slice(2))
 
 function Message({ x }: { x: ChatMsg }) {
@@ -23,7 +24,14 @@ function Message({ x }: { x: ChatMsg }) {
         <div className="msg-head">{!mine && <b>{PEOPLE[x.who].name}</b>}<time>{x.time}</time></div>
         {alert && Icon
           ? <div className={'alert ' + x.alert}><div className="alert-label"><Icon size={11} strokeWidth={2.6} />{alert[0]}</div>{x.text}</div>
-          : x.text && <div className="bubble"><Rich text={x.text} /></div>}
+          : x.text && <div className="bubble">{x.text.split('\n\n').map((p, i) => <p key={i}><Rich text={p} /></p>)}</div>}
+        {x.coach && (
+          <motion.div className="coach" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4, ease: EASE }}>
+            {COACH.filter(([k]) => x.coach![k]).map(([k, title, Icon]) => (
+              <div key={k} className={'coach-row ' + k}><Icon size={15} strokeWidth={2} /><div><b>{title}</b><p><Rich text={x.coach![k]} /></p></div></div>
+            ))}
+          </motion.div>
+        )}
         {!!x.files?.length && <div className="files">{x.files.map((a, i) => <FileCard key={i} a={a} />)}</div>}
       </div>
     </motion.div>
@@ -33,14 +41,15 @@ function Message({ x }: { x: ChatMsg }) {
 export function Chat() {
   const chan = useSim(s => s.chan)
   const chats = useSim(s => s.chats)
-  const unread = useSim(s => s.unreadChat)
+  const unread = useSim(s => s.unread)
   const typing = useSim(s => s.typing)
   const draft = useSim(s => s.chatDraft)
   const files = useSim(s => s.chatFiles)
   const shown = useSim(s => s.wins.chat.open && !s.wins.chat.min)
   const [query, setQuery] = useState('')
   const meta = CHANS[chan], msgs = chats[chan]
-  const typingHere = typing?.chan === chan
+  const typers = typing.filter(t => t.chan === chan)
+  const typingHere = typers.length > 0
 
   // Keep the newest message in view: glide for new messages, jump when switching chat or reopening.
   const scroller = useRef<HTMLDivElement>(null)
@@ -102,7 +111,7 @@ export function Chat() {
             <AnimatePresence>
               {typingHere && (
                 <motion.div className="typing" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-                  <span className="dots"><i /><i /><i /></span>{PEOPLE[typing.who].name.split(' ')[0]} is typing
+                  <span className="dots"><i /><i /><i /></span>{typers.map(t => PEOPLE[t.who].name.split(' ')[0]).join(' and ')} {typers.length > 1 ? 'are' : 'is'} typing
                 </motion.div>
               )}
             </AnimatePresence>

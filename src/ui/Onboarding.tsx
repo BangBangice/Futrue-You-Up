@@ -1,14 +1,17 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowRight, Bug, ChartColumn, Check, ClipboardList, Cloud, LayoutDashboard, Server } from 'lucide-react'
-import { LEVELS } from '../sim/data.ts'
+import { ArrowRight, Bug, ChartColumn, Check, ClipboardList, Cloud, LayoutDashboard, LoaderCircle, Server } from 'lucide-react'
+import { LEVELS } from '../../shared/types.ts'
 import { sim, useSim } from '../sim/store.ts'
-import { Avatar, Brand, Company, EASE, Segmented, ThemeToggle, rise, stagger } from './bits.tsx'
+import { Avatar, Brand, EASE, Segmented, ThemeToggle, rise, stagger } from './bits.tsx'
 
 const ROLES = [['Backend developer', Server], ['Frontend developer', LayoutDashboard], ['Data analyst', ChartColumn], ['DevOps / SRE', Cloud], ['Product manager', ClipboardList], ['QA engineer', Bug]] as const
 const DAYS = [['Setup · done', 'done'], ['First ticket', 'now'], ['Code review', ''], ['On-call', ''], ['Handoff', '']]
 
 export function Onboarding() {
   const level = useSim(s => s.level)
+  const background = useSim(s => s.background)
+  const starting = useSim(s => s.starting)
+  const error = useSim(s => s.error)
   return (
     <div className="page">
       <header className="topbar">
@@ -18,8 +21,8 @@ export function Onboarding() {
       <motion.main className="onboard" variants={stagger(0.07, 0.05)} initial="hidden" animate="show">
         <section className="hero">
           <motion.div variants={rise} className="eyebrow">WORKPLACE SIMULATOR</motion.div>
-          <motion.h1 variants={rise}>Sit at the desk before anyone hires you.</motion.h1>
-          <motion.p variants={rise} className="lede">You get a work computer at a fictional company. Colleagues message you, clients escalate, and whatever you ship stays shipped. After the shift you get a debrief and a record employers can verify.</motion.p>
+          <motion.h1 variants={rise}>Get it wrong here, with someone to correct you.</motion.h1>
+          <motion.p variants={rise} className="lede">You get a work computer, a real codebase and a real ticket. Colleagues message you, clients escalate, and what you ship decides what happens next. When it goes wrong, a senior engineer steps in, shows you who it affected, and helps you put it right.</motion.p>
           <motion.div variants={rise} className="days">
             <div className="label">Your 5-day placement</div>
             <div className="days-row">
@@ -48,15 +51,7 @@ export function Onboarding() {
             </div>
           </div>
           <div className="field">
-            <div className="field-label">Company</div>
-            <div className="tile row on">
-              <Company size={34} />
-              <div className="grow"><b>Ledgerly</b><span>Invoicing SaaS · 40 people · Series A</span></div>
-              <span className="tick"><Check size={11} strokeWidth={3.2} /></span>
-            </div>
-          </div>
-          <div className="field">
-            <div className="field-label">Starting level</div>
+            <div className="field-label">Where you are starting from</div>
             <Segmented id="level" grow value={level} options={LEVELS.map(([k, label]) => [k, label])} onChange={v => sim.set({ level: v })} />
             <div className="level-note">
               <AnimatePresence mode="wait" initial={false}>
@@ -66,9 +61,15 @@ export function Onboarding() {
               </AnimatePresence>
             </div>
           </div>
-          <p className="adapt">The sim adapts to your skill: hints, pacing and what colleagues expect of you shift with how you actually work.</p>
-          <button className="cta" onClick={sim.start}>Start Day 2 at Ledgerly <ArrowRight size={17} strokeWidth={2.4} /></button>
-          <div className="cta-note">About 10 minutes · 1 real second = 1 sim minute</div>
+          <label className="field">
+            <div className="field-label">What did you do before this? <span className="sub">Optional</span></div>
+            <textarea className="input" rows={2} maxLength={400} value={background} onChange={e => sim.set({ background: e.target.value })} placeholder="For example: six years as a hospital pharmacist, or a computer science degree and one internship" />
+            <div className="level-note">Your mentor uses this to explain things in terms you already know.</div>
+          </label>
+          <button className="cta" disabled={starting} onClick={sim.start}>
+            {starting ? <><LoaderCircle size={17} className="spin" />Setting up your workstation</> : <>Start Day 2 <ArrowRight size={17} strokeWidth={2.4} /></>}
+          </button>
+          {error ? <div className="cta-note bad">{error}</div> : <div className="cta-note">About 25 minutes · No score at the end</div>}
         </motion.section>
       </motion.main>
     </div>

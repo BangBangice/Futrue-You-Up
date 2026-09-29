@@ -2,15 +2,15 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Archive, Bell, Flag, Forward, Inbox, Mail as Envelope, MailOpen, MailPlus, Paperclip, Reply, ReplyAll, Search, Send, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { PEOPLE } from '../../sim/data.ts'
-import type { Email, PersonId } from '../../sim/data.ts'
+import { PEOPLE } from '../../../shared/types.ts'
+import type { Email, PersonId } from '../../../shared/types.ts'
 import { sim, useSim } from '../../sim/store.ts'
 import { Avatar, EASE, LOGOS, SPRING } from '../bits.tsx'
 import { AttachButton, FileCard, Rich } from '../files.tsx'
 import { DragBar, Lights } from '../Window.tsx'
 
 const FOLDERS = [['inbox', 'Inbox', Inbox], ['alerts', 'Alerts', Bell], ['sent', 'Sent Items', Send], ['archive', 'Archive', Archive], ['deleted', 'Deleted Items', Trash2]] as const
-const CONTACTS = (Object.keys(PEOPLE) as PersonId[]).filter(k => k !== 'maya' && k !== 'cloudwatch')
+const CONTACTS = (Object.keys(PEOPLE) as PersonId[]).filter(k => !['maya', 'cloudwatch', 'jira', 'people'].includes(k))
 const sender = (e: Email) => (e.who === 'maya' ? 'To: ' + e.toName : PEOPLE[e.who].name)
 
 const Tool = ({ icon: Icon, label, onClick, disabled }: { icon: LucideIcon; label: string; onClick: () => void; disabled?: boolean }) => (

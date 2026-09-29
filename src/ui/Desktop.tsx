@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useAnimate, useMotionValue, useSpring, useTransform } from 'motion/react'
 import type { MotionValue } from 'motion/react'
 import { BatteryFull, Search, Wifi, X } from 'lucide-react'
-import { APP_IDS, APP_NAMES, LIVE, clock } from '../sim/data.ts'
-import type { AppId, SimState } from '../sim/data.ts'
-import { sim, useSim, wallpaper } from '../sim/store.ts'
+import { APP_IDS, APP_NAMES, clock } from '../../shared/types.ts'
+import type { AppId, Theme } from '../../shared/types.ts'
+import { live, sim, useSim, wallpaperName } from '../sim/store.ts'
+import type { State } from '../sim/store.ts'
 import { AppIcon, Company, LOGOS, SPRING } from './bits.tsx'
 import { Window } from './Window.tsx'
 import { Mail } from './apps/Mail.tsx'
@@ -14,6 +15,21 @@ import { Tracker } from './apps/Tracker.tsx'
 import { Monitor } from './apps/Monitor.tsx'
 import { Docs } from './apps/Docs.tsx'
 
+const WALL: Record<string, Record<Theme, string>> = {
+  Dusk: {
+    light: 'radial-gradient(90% 70% at 15% 15%, #f6c7a4 0%, rgba(246,199,164,0) 60%), radial-gradient(80% 70% at 85% 25%, #c3b2ee 0%, rgba(195,178,238,0) 60%), radial-gradient(90% 80% at 60% 100%, #5b5fae 0%, rgba(91,95,174,0) 70%), linear-gradient(160deg, #e9b99f, #8a7cc0 55%, #3f4486)',
+    dark: 'radial-gradient(90% 70% at 15% 15%, #6d4234 0%, rgba(109,66,52,0) 60%), radial-gradient(80% 70% at 85% 25%, #3a3070 0%, rgba(58,48,112,0) 60%), linear-gradient(160deg, #35262f, #1d1d3a 55%, #0c0d1a)',
+  },
+  Graphite: {
+    light: 'radial-gradient(100% 80% at 30% 0%, #d2d6dd 0%, rgba(210,214,221,0) 60%), linear-gradient(170deg, #a9b1bc, #5b6470)',
+    dark: 'radial-gradient(100% 80% at 30% 0%, #3a3f47 0%, rgba(58,63,71,0) 60%), linear-gradient(170deg, #24272d, #0e1013)',
+  },
+  Tide: {
+    light: 'radial-gradient(90% 70% at 80% 10%, #c4e6e8 0%, rgba(196,230,232,0) 60%), radial-gradient(90% 80% at 10% 90%, #2f6f8f 0%, rgba(47,111,143,0) 70%), linear-gradient(165deg, #9fd0d6, #3d7fa0 55%, #1e3f5e)',
+    dark: 'radial-gradient(90% 70% at 80% 10%, #1d4852 0%, rgba(29,72,82,0) 60%), linear-gradient(165deg, #15313a, #0b1a27 60%, #060c14)',
+  },
+}
+const wallpaper = WALL[wallpaperName] ?? WALL.Dusk
 const APP_VIEWS: Record<AppId, () => React.JSX.Element> = { mail: Mail, chat: Chat, code: Code, tracker: Tracker, docs: Docs, monitor: Monitor }
 
 export function Desktop() {
@@ -83,11 +99,11 @@ function Toasts() {
   )
 }
 
-const badgeOf = (s: SimState, id: AppId): number | string =>
-  id === 'mail' ? s.emails.filter(e => !e.read && e.folder !== 'sent').length
-    : id === 'chat' ? Object.values(s.unreadChat).reduce((a, b) => a + b, 0)
-    : id === 'tracker' ? s.trackerNew
-    : id === 'monitor' && LIVE.includes(s.phase) && !s.monitorSeen ? '!' : 0
+const badgeOf = (s: State, id: AppId): number | string =>
+  id === 'mail' ? s.emails.filter(e => !e.read && !['sent', 'deleted', 'archive'].includes(e.folder)).length
+    : id === 'chat' ? Object.values(s.unread).reduce((a, b) => a + b, 0)
+    : id === 'code' ? s.code.changes.length
+    : id === 'monitor' && live(s) && !(s.wins.monitor.open && !s.wins.monitor.min) ? '!' : 0
 
 function Dock() {
   const mouseX = useMotionValue(Infinity)
