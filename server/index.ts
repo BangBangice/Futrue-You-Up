@@ -9,12 +9,16 @@ import { api, errors } from './routes.ts'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PORT = Number(process.env.PORT ?? 5183)
 const APP_PASSWORD = process.env.APP_PASSWORD
+const PUBLIC = process.env.PUBLIC_ACCESS === '1'
 const app = express()
 app.disable('x-powered-by')
 
 // This server runs the player's code. Locally it only answers to this machine; once hosted
-// publicly (APP_PASSWORD set), a shared password stands in for that instead.
-if (APP_PASSWORD) {
+// publicly (APP_PASSWORD set), a shared password stands in for that instead. PUBLIC_ACCESS=1 lets
+// anyone in with no login, leaning on the sandbox's guards and the per-shift AI call limits.
+if (PUBLIC) {
+  console.warn('PUBLIC_ACCESS=1: anyone with the URL can use this server, no login.')
+} else if (APP_PASSWORD) {
   app.use((req: Request, res: Response, next: NextFunction) => {
     const [scheme, encoded] = (req.headers.authorization ?? '').split(' ')
     const creds = scheme === 'Basic' && encoded ? Buffer.from(encoded, 'base64').toString() : ''
