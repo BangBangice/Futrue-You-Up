@@ -67,7 +67,7 @@ export function Monitor() {
           {tiles.map(t => <div key={t.label} className="panel tile-stat"><span>{t.label}</span><b className={t.bad ? 'bad' : ''}>{t.value}</b><span className="small">{t.sub}</span></div>)}
         </div>
         <div className="mon-row wide-left">
-          <div className="panel">
+          <div className="panel" data-guide="error-rate">
             <div className="panel-head"><b>401 error rate</b><span>Dashed red: {ALARM}% alert threshold</span></div>
             <Chart />
             <div className="ticks">{[59, 44, 29, 14, 0].map(i => <span key={i}>{i === 0 ? 'now' : clock(m - i).replace(/ [AP]M/, '')}</span>)}</div>
@@ -83,7 +83,7 @@ export function Monitor() {
                   <dt>Revenue exposed</dt><dd>{money((end - incident.startedAt) * RATE)}</dd>
                   <dt>Owner</dt><dd>Maya Chen</dd>
                 </dl>
-                {on && prod?.sha === incident.sha && <div className="recover"><button className="btn btn-danger" disabled={!!busy} onClick={() => sim.exec('ldg rollback auth-api')}><Undo2 size={14} strokeWidth={2.4} />Roll back release</button></div>}
+                {on && prod?.sha === incident.sha && <div className="recover"><button className="btn btn-danger" data-guide="rollback" disabled={!!busy} onClick={() => sim.exec('ldg rollback auth-api')}><Undo2 size={14} strokeWidth={2.4} />Roll back release</button></div>}
                 {on && prod?.sha !== incident.sha && <div className="progress"><i />Rolling out auth-api@{prod?.sha}…</div>}
               </motion.div>
             )}

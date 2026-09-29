@@ -66,7 +66,7 @@ export function Chat() {
     const n = unread[k] || 0, latest = chats[k].at(-1)
     if (q && !label(k).toLowerCase().includes(q)) return null
     return (
-      <button key={k} className={'side-item tm-item' + (chan === k ? ' on' : '') + (n ? ' bold' : '')} onClick={() => sim.openChat(k)}>
+      <button key={k} data-guide={'chan:' + k} className={'side-item tm-item' + (chan === k ? ' on' : '') + (n ? ' bold' : '')} onClick={() => sim.openChat(k)}>
         {chan === k && <motion.i layoutId="chan" className="side-pill" transition={SPRING} />}
         {CHANS[k].dm ? <span className="presence"><Avatar who={k as 'priya'} size={32} /><i className={k === 'daniel' ? 'away' : ''} /></span> : <span className="chan-icon"><Hash size={15} strokeWidth={2.3} /></span>}
         <span className="tm-item-text">
@@ -118,7 +118,7 @@ export function Chat() {
           </div>
           <form className="tm-compose" onSubmit={e => { e.preventDefault(); sim.sendChat() }}>
             {files.length > 0 && <div className="files">{files.map((a, i) => <FileCard key={i} a={a} onRemove={() => sim.set(s => ({ chatFiles: s.chatFiles.filter((_, j) => j !== i) }))} />)}</div>}
-            <input value={draft} onChange={e => sim.set({ chatDraft: e.target.value })} placeholder="Type a message" aria-label={'Message ' + label(chan)} />
+            <input data-guide="chat-input" value={draft} onChange={e => sim.set({ chatDraft: e.target.value })} placeholder="Type a message" aria-label={'Message ' + label(chan)} />
             <div className="tm-compose-bar">
               <AttachButton onPick={a => sim.set(s => ({ chatFiles: [...s.chatFiles, a] }))} />
               <div className="grow" />

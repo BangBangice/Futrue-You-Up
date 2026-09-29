@@ -52,7 +52,7 @@ function Explorer() {
           }
           const st = changes.find(c => c.path === r.path)?.status
           return (
-            <button key={r.path} className={'tree-row leaf' + (current === r.path ? ' on' : '') + (st ? ' mod' : '')} style={pad} onClick={() => sim.openFile(r.path)}>
+            <button key={r.path} data-guide={'file:' + r.path} className={'tree-row leaf' + (current === r.path ? ' on' : '') + (st ? ' mod' : '')} style={pad} onClick={() => sim.openFile(r.path)}>
               {icon(r.path)}<span className="grow ellipsis">{name(r.path)}</span>{st && <b title={STATUS[st]}>{st === '??' ? 'U' : st}</b>}
             </button>
           )
@@ -74,7 +74,7 @@ function SourceControl() {
   return (
     <>
       <div className="explorer-head">SOURCE CONTROL</div>
-      <form className="scm" onSubmit={commit}>
+      <form className="scm" data-guide="commit" onSubmit={commit}>
         <textarea rows={2} value={message} onChange={e => setMessage(e.target.value)} placeholder={`Message (commit on ${code.branch})`} aria-label="Commit message" onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) commit(e) }} />
         <button className="btn btn-vs sm" disabled={!message.trim() || !code.changes.length || !!code.busy}>Commit</button>
       </form>
@@ -169,16 +169,16 @@ export function Code() {
               ))}
               {diff && <div className="tab on"><GitCompare size={13} className="ic-json" /><span>{name(diff.path)} (changes)</span><button aria-label="Close comparison" onClick={() => sim.set({ diff: null })}><X size={12} strokeWidth={2.4} /></button></div>}
             </div>
-            <button className="btn btn-ghost sm" disabled={!!code.busy} onClick={() => sim.exec('npm test')}><Play size={12} strokeWidth={2.6} />Run tests</button>
+            <button className="btn btn-ghost sm" data-guide="run-tests" disabled={!!code.busy} onClick={() => sim.exec('npm test')}><Play size={12} strokeWidth={2.6} />Run tests</button>
             {outage
-              ? <button className="btn btn-danger sm" disabled={!!code.busy} onClick={() => sim.exec('ldg rollback auth-api')}><Undo2 size={13} strokeWidth={2.4} />Roll back</button>
-              : <button className="btn btn-go sm" disabled={!!code.busy} onClick={() => sim.exec('ldg deploy auth-api --env prod')}><Rocket size={13} strokeWidth={2.2} />Deploy</button>}
+              ? <button className="btn btn-danger sm" data-guide="rollback-code" disabled={!!code.busy} onClick={() => sim.exec('ldg rollback auth-api')}><Undo2 size={13} strokeWidth={2.4} />Roll back</button>
+              : <button className="btn btn-go sm" data-guide="deploy" disabled={!!code.busy} onClick={() => sim.exec('ldg deploy auth-api --env prod')}><Rocket size={13} strokeWidth={2.2} />Deploy</button>}
           </div>
           <AnimatePresence initial={false}>
             {banner && <motion.div key={banner} className={'code-banner' + (prod?.kind === 'rollback' ? ' warn' : '')} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: EASE }}><div>{banner}</div></motion.div>}
           </AnimatePresence>
           {file && <div className="crumbs">{(diff?.path ?? file).replaceAll('/', '  ›  ')}{dirty(file) && !diff && <span> · unsaved, ⌘S to save</span>}</div>}
-          <div className="source">
+          <div className="source" data-guide="editor">
             <Suspense fallback={<div className="empty-full"><LoaderCircle size={20} className="spin" />Loading the editor</div>}>
               {diff ? <Compare path={diff.path} before={diff.head} after={buffers[diff.path]?.text ?? ''} />
                 : file && buffer ? <Editor path={file} value={buffer.text} onChange={t => sim.edit(file, t)} onSave={() => void sim.save(file)} />

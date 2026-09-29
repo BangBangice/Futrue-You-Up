@@ -36,7 +36,7 @@ function Detail({ tk }: { tk: Ticket }) {
       <h3><Editable label="Title" value={tk.title} onSave={title => sim.saveTicket(tk.id, { title })} /></h3>
       <dl>
         <dt>Status</dt>
-        <dd><select className="select" value={tk.status} disabled={locked} aria-label="Status" onChange={e => sim.saveTicket(tk.id, { status: e.target.value as TicketStatus })}>{COLS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select></dd>
+        <dd><select className="select" data-guide="ticket-status" value={tk.status} disabled={locked} aria-label="Status" onChange={e => sim.saveTicket(tk.id, { status: e.target.value as TicketStatus })}>{COLS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select></dd>
         <dt>Assignee</dt>
         <dd className="assignee">{tk.who && <Avatar who={tk.who} size={18} />}<select className="select" value={tk.who ?? ''} aria-label="Assignee" onChange={e => sim.saveTicket(tk.id, { who: (e.target.value || null) as PersonId | null })}><option value="">Unassigned</option>{TEAM.map(p => <option key={p} value={p}>{PEOPLE[p].name}</option>)}</select></dd>
         <dt>Priority</dt>
@@ -114,7 +114,7 @@ export function Tracker() {
                 <AnimatePresence initial={false}>
                   {cards.map(t => (
                     <motion.div key={t.id} layout layoutId={t.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={SPRING}>
-                      <button className={'ticket' + (t.id === selId ? ' on' : '')} draggable={!t.id.startsWith('INC')} onDragStart={e => e.dataTransfer.setData('text/plain', t.id)} onClick={() => sim.set({ ticketSel: t.id })}>
+                      <button className={'ticket' + (t.id === selId ? ' on' : '')} data-guide={'ticket:' + t.id} draggable={!t.id.startsWith('INC')} onDragStart={e => e.dataTransfer.setData('text/plain', t.id)} onClick={() => sim.set({ ticketSel: t.id })}>
                         <div className="ticket-title">{t.title}</div>
                         <div className="ticket-meta">
                           <span className="ticket-id">{t.id}</span>

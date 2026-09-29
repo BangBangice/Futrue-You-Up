@@ -98,7 +98,7 @@ export function Docs() {
               <div key={g}>
                 <div className="side-label">{g}</div>
                 {hits.filter(d => d.group === g).map(d => (
-                  <button key={d.id} className={'side-item' + (page === d.id ? ' on' : '')} onClick={() => sim.openDoc(d.id)}>
+                  <button key={d.id} data-guide={'doc:' + d.id} className={'side-item' + (page === d.id ? ' on' : '')} onClick={() => sim.openDoc(d.id)}>
                     {page === d.id && <motion.i layoutId="page" className="side-pill" transition={SPRING} />}
                     <FileText size={14} strokeWidth={1.9} className="sub" />
                     <span className="grow ellipsis">{d.title}</span>
