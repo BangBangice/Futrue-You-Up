@@ -83,7 +83,7 @@ class Store {
       const res = await fetch('/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ level, background, pace }) })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'The server could not start a shift.')
       this.connect((await res.json()).id)
-    } catch (e) { this.set({ starting: false, error: (e as Error).message.includes('fetch') ? 'Cannot reach the Onshift server. Is "npm run dev" running?' : (e as Error).message }) }
+    } catch (e) { this.set({ starting: false, error: (e as Error).message.includes('fetch') ? 'Cannot reach the Work Prep server. Is "npm run dev" running?' : (e as Error).message }) }
   }
   leave() { this.stream?.close(); this.stream = null }
   /** Picks up a shift that was already running, for instance after a reload. */

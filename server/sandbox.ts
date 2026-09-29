@@ -17,6 +17,20 @@ const ACCEPTANCE = join(HERE, 'acceptance.ts')
 const NODE = process.execPath
 const SEATBELT = process.platform === 'darwin' && existsSync('/usr/bin/sandbox-exec') ? ['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)'] : []
 const MAX_FILE = 200_000, MAX_FILES = 200, MAX_OUTPUT = 64_000
+
+// Node's --permission flag has no network switch, and sandbox-exec above only exists on macOS.
+// Preloaded into the player's process on every OS: removes the network globals and refuses the
+// networking built-ins. JS-level only, so a container is still the real boundary for public hosting.
+const NETBLOCK_IMPORT = `data:text/javascript,${encodeURIComponent(`
+import { registerHooks } from 'node:module'
+const BLOCKED = new Set(['http', 'https', 'http2', 'net', 'tls', 'dgram', 'dns', 'dns/promises', 'inspector', 'inspector/promises'])
+const blocked = id => BLOCKED.has(String(id).replace(/^node:/, ''))
+const refuse = n => { throw new Error(n + ': network access is not available on this workstation.') }
+for (const n of ['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource']) Object.defineProperty(globalThis, n, { value: () => refuse(n), writable: false, configurable: false })
+const getBuiltin = process.getBuiltinModule
+Object.defineProperty(process, 'getBuiltinModule', { value: id => blocked(id) ? refuse(id) : getBuiltin(id), writable: false, configurable: false })
+registerHooks({ resolve: (specifier, context, next) => blocked(specifier) ? refuse(specifier) : next(specifier, context) })
+`)}`
 export const FAKE_HOME = '/Users/maya/ledgerly-api'
 
 /** Thrown for anything the player may not do. The message is shown to them, so it should help. */
@@ -168,7 +182,7 @@ export class Workspace {
   }
   /** Player code. No file writes, no child processes, no network, reads fenced to the workspace. */
   private node(args: string[], reads: string[], emit?: Emit, timeout = 20_000) {
-    const argv = [NODE, '--no-warnings', '--permission', ...reads.map(r => `--allow-fs-read=${r}`), '--experimental-strip-types', '--max-old-space-size=256', ...args]
+    const argv = [NODE, '--no-warnings', '--permission', ...reads.map(r => `--allow-fs-read=${r}`), '--import', NETBLOCK_IMPORT, '--experimental-strip-types', '--max-old-space-size=256', ...args]
     const [bin, ...rest] = [...SEATBELT, ...argv]
     return this.run(bin, rest, { emit, timeout, env: { NODE_OPTIONS: '' } })
   }

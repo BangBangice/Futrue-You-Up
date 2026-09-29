@@ -2,7 +2,7 @@
 Team Future, You Up?
 whats good gang - moby
 
-## Onshift
+## Work Prep
 
 A workplace simulator for the people whose first rung has been automated away.
 

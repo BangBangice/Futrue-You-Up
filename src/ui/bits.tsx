@@ -26,7 +26,7 @@ export function Brand({ size = 15 }: { size?: number }) {
   return (
     <div className="brand">
       <div className="brand-mark"><i /></div>
-      <span style={{ fontSize: size }}>onshift</span>
+      <span style={{ fontSize: size }}>Work Prep</span>
     </div>
   )
 }
