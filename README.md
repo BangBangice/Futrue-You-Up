@@ -42,6 +42,8 @@ No key? It still runs. Colleagues fall back to scripted lines and no network is 
 | Confluence | Read, create and edit pages in Markdown |
 | CloudWatch | Error rates and incidents that follow from the code you deployed |
 
+The step list in the top-left corner shows what to do next and ticks steps off as you do them. **Show me** brings the right window forward and flashes where to click. The steps say what to do and where, never what the bug is. New grads also get the checks a senior engineer would make first.
+
 Useful terminal commands: `help`, `npm test -- src/auth`, `git status`, `git commit -am "..."`, `ldg deploy auth-api --env prod`, `ldg rollback auth-api`, `ldg status`, `ldg logs`.
 
 ### How it works

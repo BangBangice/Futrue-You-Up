@@ -14,6 +14,7 @@ import { Code } from './apps/Code.tsx'
 import { Tracker } from './apps/Tracker.tsx'
 import { Monitor } from './apps/Monitor.tsx'
 import { Docs } from './apps/Docs.tsx'
+import { Guide } from './Guide.tsx'
 
 const WALL: Record<string, Record<Theme, string>> = {
   Dusk: {
@@ -51,6 +52,7 @@ export function Desktop() {
       <div ref={desk} className="desk" style={{ backgroundImage: wallpaper[theme] }}>
         <MenuBar />
         {ready && APP_IDS.map(id => { const View = APP_VIEWS[id]; return <Window key={id} id={id}><View /></Window> })}
+        {ready && <Guide />}
         <Toasts />
         <Dock />
       </div>
@@ -134,7 +136,7 @@ function DockIcon({ id, mouseX }: { id: AppId; mouseX: MotionValue<number> }) {
   }, [badge, bounce, tile])
 
   return (
-    <button ref={ref} className="dock-item" aria-label={'Open ' + APP_NAMES[id]} onClick={() => sim.open(id)}>
+    <button ref={ref} className="dock-item" data-guide={'dock:' + id} aria-label={'Open ' + APP_NAMES[id]} onClick={() => sim.open(id)}>
       <span className="dock-tip">{APP_NAMES[id]}</span>
       <motion.div ref={tile} className="dock-tile" style={{ width: size, height: size, borderRadius: radius }}>
         <img src={LOGOS[id]} alt="" draggable={false} />

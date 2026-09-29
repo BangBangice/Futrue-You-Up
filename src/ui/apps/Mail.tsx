@@ -13,8 +13,8 @@ const FOLDERS = [['inbox', 'Inbox', Inbox], ['alerts', 'Alerts', Bell], ['sent',
 const CONTACTS = (Object.keys(PEOPLE) as PersonId[]).filter(k => !['maya', 'cloudwatch', 'jira', 'people'].includes(k))
 const sender = (e: Email) => (e.who === 'maya' ? 'To: ' + e.toName : PEOPLE[e.who].name)
 
-const Tool = ({ icon: Icon, label, onClick, disabled }: { icon: LucideIcon; label: string; onClick: () => void; disabled?: boolean }) => (
-  <button className="ol-tool" title={label} disabled={disabled} onClick={onClick}><Icon size={16} strokeWidth={1.8} /><span>{label}</span></button>
+const Tool = ({ icon: Icon, label, onClick, disabled, guide }: { icon: LucideIcon; label: string; onClick: () => void; disabled?: boolean; guide?: string }) => (
+  <button className="ol-tool" data-guide={guide} title={label} disabled={disabled} onClick={onClick}><Icon size={16} strokeWidth={1.8} /><span>{label}</span></button>
 )
 
 export function Mail() {
@@ -44,7 +44,7 @@ export function Mail() {
         <Tool icon={Trash2} label="Delete" disabled={!sel || folder === 'deleted'} onClick={() => sim.moveMail(sel!.id, 'deleted')} />
         <Tool icon={Archive} label="Archive" disabled={!sel || folder === 'archive'} onClick={() => sim.moveMail(sel!.id, 'archive')} />
         <i className="vsep" />
-        <Tool icon={Reply} label="Reply" disabled={!theirs} onClick={sim.reply} />
+        <Tool icon={Reply} label="Reply" guide="mail-reply" disabled={!theirs} onClick={sim.reply} />
         <Tool icon={ReplyAll} label="Reply all" disabled={!theirs} onClick={sim.reply} />
         <Tool icon={Forward} label="Forward" disabled={!sel} onClick={sim.forward} />
         <i className="vsep" />
@@ -72,7 +72,7 @@ export function Mail() {
             {groups.flatMap(([title, rows]) => rows.length === 0 ? [] : [
               <motion.div layout key={title} className="mail-group">{title}</motion.div>,
               ...rows.map(e => (
-                <motion.button layout key={e.id} className={'mail-row' + (e.id === selId ? ' on' : '') + (e.read ? '' : ' unread')} initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} onClick={() => sim.openMail(e.id)}>
+                <motion.button layout key={e.id} data-guide={'mail:' + e.id} className={'mail-row' + (e.id === selId ? ' on' : '') + (e.read ? '' : ' unread')} initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} onClick={() => sim.openMail(e.id)}>
                   <div className="mail-row-top">
                     <b>{sender(e)}</b>
                     {e.files.length > 0 && <Paperclip size={12} strokeWidth={2.2} className="sub" />}

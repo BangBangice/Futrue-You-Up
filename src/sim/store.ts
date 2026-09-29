@@ -10,6 +10,8 @@ export interface Toast { id: number; app: AppId; title: string; body: string; go
 export interface Compose { mode: 'reply' | 'new' | 'forward'; to: string; subject: string }
 /** A file open in the editor. `saved` is what is on disk, so the two differ while there are unsaved edits. */
 export interface Buffer { text: string; saved: string }
+/** A request to flash an element tagged data-guide: the first of `keys` on screen, or `fallback` if none turns up. */
+export interface Spot { keys: string[]; fallback?: string; n: number }
 export interface View {
   stage: 'onboard' | 'sim' | 'recap'; theme: Theme; online: boolean; starting: boolean; error: string
   wins: Record<AppId, Win>; topZ: number; focus: AppId | null; toasts: Toast[]; desk: { W: number; H: number }
@@ -17,6 +19,8 @@ export interface View {
   chan: ChanId; chatDraft: string; chatFiles: Attachment[]
   ticketSel: string; docPage: string
   tabs: string[]; codeFile: string; buffers: Record<string, Buffer>; side: 'files' | 'git'; diff: { path: string; head: string } | null
+  /** What the player has looked at or run, for the step guide. Only the browser knows this. */
+  seen: string[]; spot: Spot | null; guideOpen: boolean
 }
 export type State = Omit<World, 'stage'> & View
 
@@ -24,6 +28,8 @@ const win = (x: number, y: number, w: number, h: number, open: boolean, z: numbe
 const LAYOUT: Record<AppId, [number, number, number, number]> = { mail: [0.04, 44, 1060, 620], docs: [0.12, 52, 1000, 640], chat: [0.3, 64, 900, 580], code: [0.06, 40, 1180, 700], tracker: [0.14, 58, 1040, 600], monitor: [0.17, 42, 1020, 660] }
 const NO_DRAFT = { compose: null, mailDraft: '', mailFiles: [] as Attachment[] }
 const KEY = 'onshift.session'
+const SEEN = 'onshift.seen'
+const TEST = /^\s*(npm (test|t|run test)\b|node --test)/
 
 const view = (): View => ({
   stage: 'onboard', theme: 'light', online: false, starting: false, error: '',
@@ -33,6 +39,7 @@ const view = (): View => ({
   chan: 'team', chatDraft: '', chatFiles: [],
   ticketSel: 'LED-214', docPage: 'home',
   tabs: [], codeFile: '', buffers: {}, side: 'files', diff: null,
+  seen: [], spot: null, guideOpen: true,
 })
 const nowhere = (): Omit<World, 'stage'> => ({
   id: '', level: 'bootcamp', background: '', ai: 'live', pace: 4, simMin: START,
@@ -103,7 +110,7 @@ class Store {
       const { world } = read(e) as { world: World }
       const fresh = this.state.id !== world.id
       this.remember(world)
-      this.set({ ...(fresh ? view() : {}), theme: this.state.theme, desk: this.state.desk, ...world, online: true, starting: false })
+      this.set({ ...(fresh ? { ...view(), seen: this.recall(world.id) } : {}), theme: this.state.theme, desk: this.state.desk, ...world, online: true, starting: false })
       if (fresh) this.fit(this.state.desk.W, this.state.desk.H)
     })
     es.addEventListener('patch', e => { const d = read(e); if (d) this.apply(d.patch) })
@@ -146,7 +153,7 @@ class Store {
   // ---------- shift ----------
   setPace = (pace: number) => (this.state.id ? void this.act({ type: 'pace', pace }) : this.set({ pace }))
   endShift = () => void this.act({ type: 'end' })
-  replay = () => { this.stream?.close(); this.stream = null; sessionStorage.removeItem(KEY); this.known.clear(); const { theme, level, background } = this.state; this.set({ ...nowhere(), ...view(), theme, level, background }) }
+  replay = () => { this.stream?.close(); this.stream = null; sessionStorage.removeItem(KEY); sessionStorage.removeItem(SEEN); this.known.clear(); const { theme, level, background } = this.state; this.set({ ...nowhere(), ...view(), theme, level, background }) }
 
   // ---------- notifications ----------
   toast(t: Omit<Toast, 'id'>) {
@@ -155,6 +162,17 @@ class Store {
     setTimeout(() => this.dismissToast(id), 6500)
   }
   dismissToast = (id: number) => this.set(s => ({ toasts: s.toasts.filter(x => x.id !== id) }))
+
+  // ---------- the step guide ----------
+  mark = (key: string) => {
+    if (this.state.seen.includes(key)) return
+    this.set(s => ({ seen: [...s.seen, key] }))
+    try { sessionStorage.setItem(SEEN, JSON.stringify({ id: this.state.id, seen: this.state.seen })) } catch { /* only a convenience */ }
+  }
+  private recall(id: string): string[] {
+    try { const r = JSON.parse(sessionStorage.getItem(SEEN) ?? 'null'); return r?.id === id ? r.seen : [] } catch { return [] }
+  }
+  spotlight = (keys: string[], fallback?: string) => this.set({ spot: { keys, fallback, n: ++this.uid } })
 
   // ---------- windows ----------
   fit(W: number, H: number) {
@@ -173,7 +191,8 @@ class Store {
     const s = this.state
     if (app === 'chat' && s.unread[s.chan]) void this.act({ type: 'seen', what: 'chan:' + s.chan })
     if (app === 'code' && !s.codeFile && s.files.length) void this.openFile(s.files.includes('src/auth/verifySession.ts') ? 'src/auth/verifySession.ts' : s.files[0])
-    if (app === 'docs') void this.act({ type: 'seen', what: 'doc:' + s.docPage })
+    if (app === 'docs') { this.mark('doc:' + s.docPage); void this.act({ type: 'seen', what: 'doc:' + s.docPage }) }
+    if (app === 'monitor') this.mark('monitor@' + s.deploys.length)
   }
   focusWin = (app: AppId) => { const s = this.state; if (s.focus === app && s.wins[app].z === s.topZ) return; this.open(app) }
   private patchWin(app: AppId, p: Partial<Win>, blur = false) { this.set(s => ({ wins: { ...s.wins, [app]: { ...s.wins[app], ...p } }, focus: blur && s.focus === app ? null : s.focus })) }
@@ -233,6 +252,7 @@ class Store {
   }
   openFile = async (path: string) => {
     this.set(s => ({ tabs: s.tabs.includes(path) ? s.tabs : [...s.tabs, path], codeFile: path, diff: null }))
+    this.mark('file:' + path)
     if (!this.state.buffers[path]) await this.load(path).catch(() => this.closeFile(path))
   }
   openCode = async (path?: string) => { this.open('code'); if (path && this.state.files.includes(path)) await this.openFile(path) }
@@ -258,6 +278,9 @@ class Store {
   }
   /** Saves whatever is unsaved first, so a command never runs against stale files. */
   exec = async (cmd: string) => {
+    const s = this.state
+    // Tests count towards the guide once there is something of yours to test.
+    if (TEST.test(cmd) && (s.code.changes.length || !s.deploys.some(d => d.sha === s.code.head))) this.mark('tested@' + s.deploys.length)
     this.open('code')
     await Promise.all(this.state.tabs.map(p => this.save(p))).catch(() => {})
     await this.act({ type: 'exec', cmd }).catch(() => {})
