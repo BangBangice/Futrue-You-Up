@@ -24,7 +24,7 @@ if (PUBLIC) {
     const creds = scheme === 'Basic' && encoded ? Buffer.from(encoded, 'base64').toString() : ''
     const pass = creds.includes(':') ? creds.slice(creds.indexOf(':') + 1) : undefined
     if (pass === APP_PASSWORD) return next()
-    res.set('WWW-Authenticate', 'Basic realm="Work Prep"').status(401).end()
+    res.set('WWW-Authenticate', 'Basic realm="LARP"').status(401).end()
   })
 } else {
   app.use((req: Request, res: Response, next: NextFunction) => {
@@ -49,4 +49,4 @@ if (process.env.NODE_ENV === 'production') {
   app.use((await createServer({ root: ROOT, server: { middlewareMode: true, watch }, appType: 'spa' })).middlewares)
 }
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Work Prep is running on port ${PORT}  (colleagues: ${mode() === 'live' ? 'AI' : 'scripted, no network needed'})`))
+app.listen(PORT, '0.0.0.0', () => console.log(`LARP is running on port ${PORT}  (colleagues: ${mode() === 'live' ? 'AI' : 'scripted, no network needed'})`))

@@ -11,6 +11,8 @@ import vscode from '../assets/logos/vscode.png'
 import jira from '../assets/logos/jira.svg'
 import aws from '../assets/logos/aws.png'
 import confluence from '../assets/logos/confluence.png'
+import larpBlack from '../assets/logos/larp-dice-black.png'
+import larpWhite from '../assets/logos/larp-dice-white.png'
 
 export const LOGOS: Record<AppId, string> = { mail: outlook, chat: teams, code: vscode, tracker: jira, docs: confluence, monitor: aws }
 export const SPRING = { type: 'spring', stiffness: 420, damping: 34, mass: 0.9 } as const
@@ -23,10 +25,11 @@ export const rise = {
 export const stagger = (gap = 0.06, delay = 0) => ({ hidden: {}, show: { transition: { staggerChildren: gap, delayChildren: delay } } })
 
 export function Brand({ size = 15 }: { size?: number }) {
+  const theme = useSim(s => s.theme)
   return (
     <div className="brand">
-      <div className="brand-mark"><i /></div>
-      <span style={{ fontSize: size }}>Work Prep</span>
+      <img className="brand-logo" src={theme === 'dark' ? larpWhite : larpBlack} alt="" draggable={false} />
+      <span style={{ fontSize: size }}>LARP</span>
     </div>
   )
 }

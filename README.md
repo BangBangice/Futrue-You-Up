@@ -2,7 +2,7 @@
 Team Future, You Up?
 whats good gang - moby
 
-## Work Prep
+## LARP
 
 A workplace simulator for the people whose first rung has been automated away.
 

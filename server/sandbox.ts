@@ -21,8 +21,11 @@ const MAX_FILE = 200_000, MAX_FILES = 200, MAX_OUTPUT = 64_000
 // Node's --permission flag has no network switch, and sandbox-exec above only exists on macOS.
 // Preloaded into the player's process on every OS: removes the network globals and refuses the
 // networking built-ins. JS-level only, so a container is still the real boundary for public hosting.
+// registerHooks arrived in Node 22.15. Older Node still runs on macOS, where sandbox-exec blocks the
+// network below JS. Anywhere else, refuse to run player code rather than run it with an open network.
 const NETBLOCK_IMPORT = `data:text/javascript,${encodeURIComponent(`
-import { registerHooks } from 'node:module'
+import * as nodeModule from 'node:module'
+const registerHooks = nodeModule.registerHooks ?? (process.platform === 'darwin' ? () => {} : () => { throw new Error('Node 22.15 or newer is needed to run code safely on this system.') })
 const BLOCKED = new Set(['http', 'https', 'http2', 'net', 'tls', 'dgram', 'dns', 'dns/promises', 'inspector', 'inspector/promises'])
 const blocked = id => BLOCKED.has(String(id).replace(/^node:/, ''))
 const refuse = n => { throw new Error(n + ': network access is not available on this workstation.') }
