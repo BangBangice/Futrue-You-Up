@@ -1,6 +1,8 @@
 {
   "id": "ledgerly-day2",
   "title": "Ledgerly, Day 2: the SSO bug",
+  "summary": "Fix an SSO logout bug before a client's renewal demo, and keep production and people steady if a deploy goes wrong.",
+  "tags": ["engineering", "incident-response", "communication", "debugging"],
   "company": {
     "name": "Ledgerly",
     "description": "a 40-person invoicing software company"

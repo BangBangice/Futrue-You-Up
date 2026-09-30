@@ -5,6 +5,7 @@
 import { z } from 'zod'
 import { DONE_KEYS, NEW, SHOW_KEYS } from './guide.ts'
 import type { Done, GuideStep } from './guide.ts'
+import { normalizeTags } from './tags.ts'
 import { APP_IDS, COLS, FOLDERS, LEVELS, PRIORITIES, firstName, initials, minutes } from './types.ts'
 
 const line = z.string().min(1)
@@ -136,6 +137,10 @@ const level = z.strictObject({ label: line, blurb: line, mentorGuidance: line })
 export const Scenario = z.object({
   id: key,
   title: line,
+  /** One line for the lesson library. */
+  summary: line.max(200).optional(),
+  /** What the library filters by. Stored cleaned, so older specs without tags still parse. */
+  tags: z.array(z.string()).transform(normalizeTags).optional(),
   company: z.strictObject({ name: line, description: line }),
   /** The cast member the player plays. */
   player: line,

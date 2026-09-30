@@ -8,8 +8,10 @@ import type { AddressInfo } from 'node:net'
 import express from 'express'
 import { done, stepsFor } from '../shared/guide.ts'
 import { Scenario, personalize } from '../shared/scenario.ts'
+import { normalizeTags } from '../shared/tags.ts'
 import { errAt, isOutage } from '../shared/types.ts'
 import * as director from './director.ts'
+import { lessonTags, listLessons } from './lessons.ts'
 import { api, errors } from './routes.ts'
 import { store } from './runs.ts'
 import { conform } from './sandbox.ts'
@@ -274,6 +276,17 @@ const refused = await fetch(base + '/sessions', { method: 'POST', headers: { 'co
 assert.equal(refused.status, 400)
 assert.match((await refused.json()).error, /scenario must be one of: .*ledgerly-day2/)
 server.close()
+
+// ---- the lesson library. Tags are cleaned one way everywhere; without a database the scenario files are the library.
+assert.deepEqual(normalizeTags([' Incident Response', 'incident_response', 'C++', '---', 'x'.repeat(30), ...'bcdefgh']), ['incident-response', 'c', 'x'.repeat(24), 'b', 'd', 'e', 'f', 'g'])
+assert.deepEqual(normalizeTags(['沟通', ' 团队 协作', 'Résumé', 'हिंदी', '한국어']), ['沟通', '团队-协作', 'resume', 'हिंदी', '한국어'], 'letters in any script are kept')
+assert.equal(Scenario.parse({ ...good, tags: ['Engineering '] }).tags?.[0], 'engineering', 'a spec keeps its tags cleaned')
+if (!process.env.DATABASE_URL) {
+  const [lesson] = await listLessons({ tag: 'incident-response' })
+  assert.deepEqual([lesson?.id, lesson?.author], ['ledgerly-day2', null], 'a built-in is a public lesson with no author')
+  assert.deepEqual(await listLessons({ tag: 'no-such-tag' }), [])
+  assert.ok((await lessonTags()).some(t => t.tag === 'communication' && t.count === 1))
+}
 
 s.stop()
 console.log(`server check passed · ${s.priv.events.length} events · ${events.length} stream messages`)
