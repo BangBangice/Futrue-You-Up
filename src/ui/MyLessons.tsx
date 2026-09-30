@@ -27,9 +27,11 @@ interface Quota { remaining: number; limit: number; resetsAt: string }
 
 class Failed extends Error { data: { generations?: Quota } = {} }
 async function send<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
+  const init: RequestInit = { method }
+  if (body !== undefined) { init.headers = { 'content-type': 'application/json' }; init.body = JSON.stringify(body) }
   let res: Response
   try {
-    res = await fetch(url, { method, headers: body === undefined ? undefined : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) })
+    res = await fetch(url, init)
   } catch { throw new Failed('Cannot reach the LARP server.') }
   const data = await res.json().catch(() => ({}))
   if (res.ok) return data as T

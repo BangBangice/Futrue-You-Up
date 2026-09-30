@@ -39,6 +39,7 @@ No key? It still runs. Colleagues fall back to scripted lines and no network is 
 | Command | What it does |
 |---|---|
 | `npm run dev` | The app and its API on one port |
+| `npm run lint` | Lints the whole codebase with [oxlint](https://oxc.rs) (no warnings allowed) |
 | `npm run check` | Plays a whole shift without a browser or the AI model and checks the outcome |
 | `npm run llm:smoke` | One real call to the AI model, to check the key works |
 | `npm run build` then `npm start` | Type-check and production build, served by the same server |
@@ -189,7 +190,7 @@ Three rules the design follows:
 
 ### CI and deploy
 
-GitHub Actions runs on every pull request and push to `main`: type-check and build, `npm run check` (stubbed model, no secrets), and a Docker image build. Railway deploys `main`; turn on "Wait for CI" there so a red run blocks the deploy. The image runs the server as the unprivileged `node` user; the entrypoint only uses root to hand a mounted `/app/.data` volume to it.
+GitHub Actions runs on every pull request and push to `main`: lint (`npm run lint`, oxlint), type-check and build, `npm run check` (stubbed model, no secrets), and a Docker image build. Railway deploys `main`; turn on "Wait for CI" there so a red run blocks the deploy. The image runs the server as the unprivileged `node` user; the entrypoint only uses root to hand a mounted `/app/.data` volume to it.
 
 ### Limits
 
