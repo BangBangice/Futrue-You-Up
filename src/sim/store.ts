@@ -53,7 +53,7 @@ const view = (): View => ({
   scenario: '',
 })
 const nowhere = (): Omit<World, 'stage'> => ({
-  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: 0, company: '', workspace: { repo: '', host: '' }, calendar: { weekday: '', date: '', day: 0, start: 0 }, cast: {}, channels: {}, player: '', mentor: '', levels: {}, deadline: null, guide: [],
+  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: 0, lesson: { id: '', title: '', summary: null }, company: '', workspace: { repo: '', host: '' }, calendar: { weekday: '', date: '', day: 0, start: 0 }, cast: {}, channels: {}, player: '', mentor: '', levels: {}, deadline: null, guide: [],
   impact: { alarmPercent: 0, checks: [], customers: { named: [], otherAccounts: 0, otherPasswordUsers: 0 } },
   emails: [], chats: {}, unread: {}, typing: [],
   tickets: [], docs: [], files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
@@ -133,7 +133,7 @@ export class Store {
       const { scenario } = this.state
       const res = await fetch('/api/scenario' + (scenario ? '?id=' + encodeURIComponent(scenario) : ''))
       if (!res.ok) return
-      const cast = await res.json() as Pick<World, 'company' | 'workspace' | 'calendar' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact'>
+      const cast = await res.json() as Pick<World, 'lesson' | 'company' | 'workspace' | 'calendar' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact'>
       this.set(s => (s.stage === 'onboard' && s.scenario === scenario ? cast : null))
     } catch { /* the server is down; starting a shift will say so */ }
   }

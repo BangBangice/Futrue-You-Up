@@ -176,8 +176,8 @@ const sessions = new Map<string, Session>()
 const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
 // Persona cards and mentor guidance are prompts, so they stay on the server. So do security checks: the browser must not learn they exist.
-export const roster = (sc: Scenario): Pick<World, 'company' | 'workspace' | 'calendar' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
-  company: sc.company.name, workspace: sc.workspace,
+export const roster = (sc: Scenario): Pick<World, 'lesson' | 'company' | 'workspace' | 'calendar' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
+  lesson: { id: sc.id, title: sc.title, summary: sc.summary ?? null }, company: sc.company.name, workspace: sc.workspace,
   calendar: { weekday: sc.story.weekday ?? STORY.weekday, date: sc.story.date ?? STORY.date, day: sc.story.day ?? STORY.day, start: minutes(sc.clock.start) },
   cast: Object.fromEntries(Object.entries(sc.cast).map(([id, { persona: _, ...p }]) => [id, p])), channels: sc.channels, player: sc.player, mentor: sc.mentor,
   levels: Object.fromEntries(Object.entries(sc.levels).map(([k, { mentorGuidance: _, ...l }]) => [k, l])),
@@ -195,9 +195,9 @@ async function evict() {
 }
 
 /** `who` is the person playing. Without accounts the scenario's own player is used. `scenario` is an id from the catalog,
- * or a lesson's spec with the version row it is pinned to (see authoring.ts). */
+ * or a lesson's spec with the version row it is pinned to (see authoring.ts), and whether its author is the one playing. */
 export async function create(level: Level, background: string, pace: number, ai: World['ai'], userId: string | null = null, who?: { name: string; short?: string },
-  scenario: string | { spec: Scenario; version: string } = DEFAULT_SCENARIO) {
+  scenario: string | { spec: Scenario; version: string; mine?: boolean } = DEFAULT_SCENARIO) {
   const file = typeof scenario === 'string' ? scenarioFile(scenario) : undefined
   if (typeof scenario === 'string' && !file) throw new Error(`No scenario "${scenario}".`)
   await evict()
@@ -211,6 +211,7 @@ export async function create(level: Level, background: string, pace: number, ai:
     deploys: [], incident: null, demo: 'pending',
     timeline: [{ time: '12:02 PM', text: `Deploy billing-api@e0c3a18 (${firstName(spec.cast[spec.mentor])})`, tone: 'dim' }], recap: null,
   }
+  if (typeof scenario !== 'string' && scenario.mine) world.lesson.mine = true
   const s = new Session(world, { uid: 100, beats: [], verdicts: {}, attempts: 0, aiCalls: 0, events: [], f: { seen: [], praised: [], reviewed: [] } }, spec)
   s.userId = userId
   await mkdir(s.dir, { recursive: true })

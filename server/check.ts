@@ -172,6 +172,8 @@ assert.deepEqual(events.map(e => e.data.seq), events.map((_, i) => i + 1), 'ever
 // ---- end of shift: a recap, no numbers to be graded by
 await director.end(s)
 const recap = s.world.recap!
+assert.equal(recap.finished, true, 'the fix shipped and every check passes')
+assert.deepEqual(s.world.lesson, { id: s.scenario.id, title: s.scenario.title, summary: s.scenario.summary ?? null }, 'the shift knows its lesson')
 assert.ok(recap.ready && recap.note && recap.next.length >= 2 && recap.happened.length >= 8)
 assert.ok(!/score|\/100|grade|rating|\d+%/i.test(JSON.stringify([recap.note, recap.corrected, recap.next])), 'the recap does not grade')
 assert.ok(recap.happened.some(l => /Rolled production back/.test(l)) && recap.happened.some(l => /INC-37 opened/.test(l)))

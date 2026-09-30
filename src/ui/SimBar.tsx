@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { LogOut, Sparkles, TriangleAlert, WifiOff } from 'lucide-react'
 import { clock, shortDay } from '../../shared/types.ts'
-import { DAYS } from '../../shared/scenario.ts'
 import { useAccount } from '../sim/auth.ts'
 import { sim, useSim } from '../sim/store.ts'
 import { Brand, ThemeToggle } from './bits.tsx'
@@ -32,14 +31,14 @@ export function SimBar() {
   const stage = useSim(s => s.stage)
   const sec = useSimSeconds(m, pace, stage === 'sim' && online)
   const account = useAccount()
-  const company = useSim(s => s.company)
+  const company = useSim(s => s.company), role = useSim(s => s.cast[s.player]?.title)
   const cal = useSim(s => s.calendar)
   return (
     <header className="simbar">
       <Brand size={14} />
       <div className="simbar-role">
         <i className="vsep" />
-        <div className="stack"><b>Backend Developer · {company}</b><span>Day {cal.day} of {DAYS} · {shortDay(cal.weekday)}, {cal.date}</span></div>
+        <div className="stack"><b>{role} · {company}</b><span>Day {cal.day} · {shortDay(cal.weekday)}, {cal.date}</span></div>
       </div>
       <div className="stack simclock"><b>{clock(m, sec)}</b><span>SIM TIME</span></div>
       {aiProblem
