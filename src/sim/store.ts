@@ -6,7 +6,8 @@ import { APP_NAMES } from '../../shared/types.ts'
 import type { AppId, Attachment, ChanId, Doc, Folder, Level, Patch, Priority, TermLine, Theme, Ticket, World } from '../../shared/types.ts'
 
 export interface Win { open: boolean; min: boolean; max: boolean; x: number; y: number; w: number; h: number; z: number }
-export interface Toast { id: number; app: AppId; title: string; body: string; go: () => void }
+/** Without an app it is a notice from LARP itself. */
+export interface Toast { id: number; app?: AppId; title: string; body: string; go: () => void }
 export interface Compose { mode: 'reply' | 'new' | 'forward'; to: string; subject: string }
 /** A file open in the editor. `saved` is what is on disk, so the two differ while there are unsaved edits. */
 export interface Buffer { text: string; saved: string }
@@ -21,6 +22,8 @@ export interface View {
   tabs: string[]; codeFile: string; buffers: Record<string, Buffer>; side: 'files' | 'git'; diff: { path: string; head: string } | null
   /** What the player has looked at or run, for the step guide. Only the browser knows this. */
   seen: string[]; spot: Spot | null; guideOpen: boolean
+  /** On a phone an app shows one pane at a time: its list, or (true) what was opened from it. Wider screens show both and ignore this. */
+  deep: Record<AppId, boolean>
 }
 export type State = Omit<World, 'stage'> & View
 
@@ -30,6 +33,8 @@ const NO_DRAFT = { compose: null, mailDraft: '', mailFiles: [] as Attachment[] }
 const KEY = 'larp.session'
 const SEEN = 'larp.seen'
 const TEST = /^\s*(npm (test|t|run test)\b|node --test)/
+/** Matches the media query in mobile.css. */
+export const phone = () => matchMedia('(max-width: 720px), (pointer: coarse) and (max-height: 540px)').matches
 
 const view = (): View => ({
   stage: 'onboard', theme: 'light', online: false, starting: false, error: '',
@@ -40,6 +45,7 @@ const view = (): View => ({
   ticketSel: 'LED-214', docPage: 'home',
   tabs: [], codeFile: '', buffers: {}, side: 'files', diff: null,
   seen: [], spot: null, guideOpen: true,
+  deep: { mail: false, chat: false, code: true, tracker: false, docs: true, monitor: false },
 })
 const nowhere = (): Omit<World, 'stage'> => ({
   id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: 0, company: '', cast: {}, channels: {}, player: '', mentor: '', levels: {}, deadline: null, guide: [],
@@ -65,6 +71,7 @@ class Store {
   private uid = 0
   /** Messages and mail already on screen, so reconnecting does not announce them again. */
   private known = new Set<string>()
+  private saver: ReturnType<typeof setTimeout> | undefined
 
   subscribe = (fn: () => void) => { this.subs.add(fn); return () => { this.subs.delete(fn) } }
   set(p: Partial<State> | ((s: State) => Partial<State> | null)) {
@@ -139,6 +146,7 @@ class Store {
       this.remember(world)
       this.set({ ...(fresh ? { ...view(), seen: this.recall(world.id) } : {}), theme: this.state.theme, desk: this.state.desk, ...world, online: true, starting: false })
       if (fresh) this.fit(this.state.desk.W, this.state.desk.H)
+      if (fresh && phone()) this.toast({ title: 'Best on a laptop', body: 'LARP is built for a bigger screen. It works on your phone too, with less room.', go: () => {} })
     })
     es.addEventListener('patch', e => { const d = read(e); if (d) this.apply(d.patch) })
     es.addEventListener('term', e => {
@@ -178,7 +186,7 @@ class Store {
     if (before.code.busy && !s.code.busy) s.tabs.forEach(p => { if (s.buffers[p]?.text === s.buffers[p]?.saved) void this.load(p) })
     if (patch.files) this.set(x => ({ tabs: x.tabs.filter(p => x.files.includes(p)), codeFile: x.files.includes(x.codeFile) ? x.codeFile : '' }))
   }
-  private watching = (chan: ChanId) => { const s = this.state; return s.stage === 'sim' && s.wins.chat.open && !s.wins.chat.min && s.chan === chan }
+  private watching = (chan: ChanId) => { const s = this.state; return s.stage === 'sim' && s.wins.chat.open && !s.wins.chat.min && s.chan === chan && (s.deep.chat || !phone()) }
 
   // ---------- shift ----------
   setPace = (pace: number) => (this.state.id ? void this.act({ type: 'pace', pace }) : this.set({ pace }))
@@ -219,7 +227,7 @@ class Store {
   open = (app: AppId) => {
     this.set(s => { const z = s.topZ + 1; return { wins: { ...s.wins, [app]: { ...s.wins[app], open: true, min: false, z } }, topZ: z, focus: app } })
     const s = this.state
-    if (app === 'chat' && s.unread[s.chan]) void this.act({ type: 'seen', what: 'chan:' + s.chan })
+    if (app === 'chat' && s.unread[s.chan] && this.watching(s.chan)) void this.act({ type: 'seen', what: 'chan:' + s.chan })
     if (app === 'code' && !s.codeFile && s.files.length) void this.openFile(s.files.includes('src/auth/verifySession.ts') ? 'src/auth/verifySession.ts' : s.files[0])
     if (app === 'docs') { this.mark('doc:' + s.docPage); void this.act({ type: 'seen', what: 'doc:' + s.docPage }) }
     if (app === 'monitor') this.mark('monitor@' + s.deploys.length)
@@ -230,10 +238,12 @@ class Store {
   minWin = (app: AppId) => this.patchWin(app, { min: true }, true)
   maxWin = (app: AppId) => this.patchWin(app, { max: !this.state.wins[app].max })
   moveWin = (app: AppId, p: Partial<Pick<Win, 'x' | 'y' | 'w' | 'h'>>) => this.patchWin(app, p)
+  /** Which pane a phone shows: what was opened (the default), or back to the list with `false`. */
+  dive = (app: AppId, on = true) => this.set(s => (s.deep[app] === on ? null : { deep: { ...s.deep, [app]: on } }))
 
-  openChat = (chan: ChanId) => { this.set({ chan }); this.open('chat') }
-  openTicket = (id: string) => { if (this.state.tickets.some(t => t.id === id)) this.set({ ticketSel: id }); this.open('tracker') }
-  openDoc = (id: string) => { if (this.state.docs.some(d => d.id === id)) this.set({ docPage: id }); this.open('docs') }
+  openChat = (chan: ChanId) => { this.set({ chan }); this.dive('chat'); this.open('chat') }
+  openTicket = (id: string) => { if (this.state.tickets.some(t => t.id === id)) this.set({ ticketSel: id }); this.dive('tracker'); this.open('tracker') }
+  openDoc = (id: string) => { if (this.state.docs.some(d => d.id === id)) this.set({ docPage: id }); this.dive('docs'); this.open('docs') }
   openAttachment = (a: Attachment) => {
     if (a.kind === 'code') void this.openCode(a.path)
     else if (a.kind === 'doc') this.openDoc(a.doc)
@@ -247,10 +257,11 @@ class Store {
     const em = this.state.emails.find(e => e.id === id)
     this.set(s => ({ mailSel: id, mailFolder: em?.folder ?? s.mailFolder, ...NO_DRAFT }))
     if (em && !em.read) void this.act({ type: 'mailPatch', id, read: true })
+    this.dive('mail')
     this.open('mail')
   }
   reply = () => { this.set({ compose: { mode: 'reply', to: '', subject: '' }, mailDraft: '', mailFiles: [] }); const e = this.state.emails.find(x => x.id === this.state.mailSel); if (e && !e.read) this.patchMail(e.id, { read: true }) }
-  newMail = () => { this.set({ compose: { mode: 'new', to: '', subject: '' }, mailDraft: '', mailFiles: [] }); this.open('mail') }
+  newMail = () => { this.set({ compose: { mode: 'new', to: '', subject: '' }, mailDraft: '', mailFiles: [] }); this.dive('mail'); this.open('mail') }
   forward = () => { const e = this.state.emails.find(x => x.id === this.state.mailSel); if (e) this.set({ compose: { mode: 'forward', to: '', subject: 'Fw: ' + e.subject }, mailDraft: '', mailFiles: e.files }) }
   discardMail = () => this.set(NO_DRAFT)
   patchMail = (id: string, p: { read?: boolean; flagged?: boolean }) => void this.act({ type: 'mailPatch', id, ...p })
@@ -282,6 +293,7 @@ class Store {
   }
   openFile = async (path: string) => {
     this.set(s => ({ tabs: s.tabs.includes(path) ? s.tabs : [...s.tabs, path], codeFile: path, diff: null }))
+    this.dive('code')
     this.mark('file:' + path)
     if (!this.state.buffers[path]) await this.load(path).catch(() => this.closeFile(path))
   }
@@ -290,7 +302,13 @@ class Store {
     const tabs = s.tabs.filter(p => p !== path), { [path]: _gone, ...buffers } = s.buffers
     return { tabs, buffers, codeFile: s.codeFile === path ? tabs.at(-1) ?? '' : s.codeFile }
   })
-  edit = (path: string, text: string) => this.set(s => (s.buffers[path] ? { buffers: { ...s.buffers, [path]: { ...s.buffers[path], text } } } : null))
+  edit = (path: string, text: string) => {
+    this.set(s => (s.buffers[path] ? { buffers: { ...s.buffers, [path]: { ...s.buffers[path], text } } } : null))
+    // A phone has no ⌘S, so edits save themselves once the typing pauses.
+    if (phone()) { clearTimeout(this.saver); this.saver = setTimeout(() => void this.save(path).catch(() => {}), 800) }
+  }
+  /** Explorer or source control. On a phone, tapping the one already showing goes back to the editor, as in VS Code. */
+  sidebar = (side: View['side']) => this.set(s => ({ side, deep: { ...s.deep, code: s.side === side && !s.deep.code } }))
   save = async (path = this.state.codeFile) => {
     const b = this.state.buffers[path]
     if (!b || b.text === b.saved) return
@@ -305,6 +323,7 @@ class Store {
     const head = (await this.call(`/file?rev=HEAD&path=${encodeURIComponent(path)}`)).text
     if (!this.state.buffers[path] && this.state.files.includes(path)) await this.load(path)
     this.set({ diff: { path, head }, codeFile: path })
+    this.dive('code')
   }
   /** Saves whatever is unsaved first, so a command never runs against stale files. */
   exec = async (cmd: string) => {
@@ -312,6 +331,7 @@ class Store {
     // Tests count towards the guide once there is something of yours to test.
     if (TEST.test(cmd) && (s.code.changes.length || !s.deploys.some(d => d.sha === s.code.head))) this.mark('tested@' + s.deploys.length)
     this.open('code')
+    this.dive('code')
     await Promise.all(this.state.tabs.map(p => this.save(p))).catch(() => {})
     await this.act({ type: 'exec', cmd }).catch(() => {})
   }

@@ -3,7 +3,7 @@ import type { FormEvent, KeyboardEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Blocks, Bug, ChevronDown, ChevronRight, CircleStop, FileCode2, FileJson, FilePlus2, FileText, Files, FlaskConical, GitBranch, GitCompare, LoaderCircle, Play, Rocket, Search, Undo2, X } from 'lucide-react'
 import { clock, login } from '../../../shared/types.ts'
-import { live, sim, useSim } from '../../sim/store.ts'
+import { live, phone, sim, useSim } from '../../sim/store.ts'
 import { EASE, LOGOS } from '../bits.tsx'
 import { DragBar, Lights } from '../Window.tsx'
 
@@ -95,7 +95,7 @@ function Terminal() {
   const term = useSim(s => s.term)
   const busy = useSim(s => s.code.busy)
   const prompt = useSim(s => `${s.cast[s.player] ? login(s.cast[s.player]) : 'dev'}@ws-02 ledgerly-api % `)
-  const shown = useSim(s => s.wins.code.open && !s.wins.code.min)
+  const shown = useSim(s => s.wins.code.open && !s.wins.code.min && (s.deep.code || !phone()))
   const [line, setLine] = useState('')
   const history = useRef<string[]>([]), at = useRef(0)
   const scroller = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null)
@@ -154,8 +154,8 @@ export function Code() {
       </DragBar>
       <div className="app-body">
         <div className="activity">
-          <button className={side === 'files' ? 'on' : ''} title="Explorer" aria-label="Explorer" onClick={() => sim.set({ side: 'files' })}><Files size={20} strokeWidth={1.7} /></button>
-          <button className={side === 'git' ? 'on' : ''} title="Source control" aria-label="Source control" onClick={() => sim.set({ side: 'git' })}><GitBranch size={20} strokeWidth={1.7} />{code.changes.length > 0 && <i>{code.changes.length}</i>}</button>
+          <button className={side === 'files' ? 'on' : ''} title="Explorer" aria-label="Explorer" onClick={() => sim.sidebar('files')}><Files size={20} strokeWidth={1.7} /></button>
+          <button className={side === 'git' ? 'on' : ''} title="Source control" aria-label="Source control" onClick={() => sim.sidebar('git')}><GitBranch size={20} strokeWidth={1.7} />{code.changes.length > 0 && <i>{code.changes.length}</i>}</button>
           <Search size={20} strokeWidth={1.7} /><Bug size={20} strokeWidth={1.7} /><Blocks size={20} strokeWidth={1.7} />
         </div>
         <nav className="explorer">{side === 'files' ? <Explorer /> : <SourceControl />}</nav>

@@ -3,10 +3,10 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { LayoutGroup, animate, motion, useMotionValue } from 'motion/react'
 import type { MotionValue } from 'motion/react'
-import { Maximize2, Minus, X } from 'lucide-react'
+import { ChevronLeft, Maximize2, Minus, X } from 'lucide-react'
 import { APP_IDS } from '../../shared/types.ts'
 import type { AppId } from '../../shared/types.ts'
-import { sim, useSim, winRect } from '../sim/store.ts'
+import { phone, sim, useSim, winRect } from '../sim/store.ts'
 
 type Drag = (e: ReactPointerEvent<HTMLElement>, mode?: 'move' | 'resize') => void
 const Ctx = createContext<{ id: AppId; drag: Drag }>(null!)
@@ -17,6 +17,7 @@ export function Window({ id, children }: { id: AppId; children: ReactNode }) {
   const w = useSim(s => s.wins[id])
   const desk = useSim(s => s.desk)
   const focused = useSim(s => s.focus === id)
+  const deep = useSim(s => s.deep[id])
   const r = winRect(w, desk)
   const left = useMotionValue(r.left), top = useMotionValue(r.top), width = useMotionValue(r.width), height = useMotionValue(r.height)
 
@@ -36,7 +37,7 @@ export function Window({ id, children }: { id: AppId; children: ReactNode }) {
 
   // Drag writes straight to motion values (no React work per frame) and commits to the sim on release.
   const drag: Drag = (e, mode = 'move') => {
-    if (e.button !== 0 || isControl(e.target) || sim.state.wins[id].max) return
+    if (e.button !== 0 || isControl(e.target) || sim.state.wins[id].max || phone()) return
     e.preventDefault()
     const el = e.currentTarget, sx = e.clientX, sy = e.clientY
     const o = { x: left.get(), y: top.get(), w: width.get(), h: height.get() }
@@ -65,6 +66,7 @@ export function Window({ id, children }: { id: AppId; children: ReactNode }) {
       <motion.div
         className={'win' + (focused ? ' focused' : '')}
         data-app={id}
+        data-deep={deep || undefined}
         layoutRoot
         style={{ left, top, width, height, zIndex: w.z, display: visible ? 'block' : 'none', pointerEvents: shown ? 'auto' : 'none' }}
         initial={{ opacity: 0, scale: 0.95 }}
@@ -82,12 +84,16 @@ export function Window({ id, children }: { id: AppId; children: ReactNode }) {
 
 export function Lights() {
   const { id } = useContext(Ctx)
+  // A phone has no windows to manage: the lights give way to Back, from what is open to the list it came from (mobile.css).
   return (
-    <div className="lights">
-      <button className="light close" aria-label="Close window" onClick={() => sim.closeWin(id)}><X size={8} strokeWidth={3.5} /></button>
-      <button className="light min" aria-label="Minimise window" onClick={() => sim.minWin(id)}><Minus size={8} strokeWidth={3.5} /></button>
-      <button className="light max" aria-label="Zoom window" onClick={() => sim.maxWin(id)}><Maximize2 size={7} strokeWidth={3.5} /></button>
-    </div>
+    <>
+      <button className="win-back" aria-label="Back" onClick={() => sim.dive(id, false)}><ChevronLeft size={22} strokeWidth={2.2} /></button>
+      <div className="lights">
+        <button className="light close" aria-label="Close window" onClick={() => sim.closeWin(id)}><X size={8} strokeWidth={3.5} /></button>
+        <button className="light min" aria-label="Minimise window" onClick={() => sim.minWin(id)}><Minus size={8} strokeWidth={3.5} /></button>
+        <button className="light max" aria-label="Zoom window" onClick={() => sim.maxWin(id)}><Maximize2 size={7} strokeWidth={3.5} /></button>
+      </div>
+    </>
   )
 }
 

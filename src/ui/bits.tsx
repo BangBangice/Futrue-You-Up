@@ -13,6 +13,7 @@ import confluence from '../assets/logos/confluence.png'
 import larpBlack from '../assets/logos/larp-black.png'
 import larpWhite from '../assets/logos/larp-white.png'
 
+export const LARP_LOGO = larpBlack
 export const LOGOS: Record<AppId, string> = { mail: outlook, chat: teams, code: vscode, tracker: jira, docs: confluence, monitor: aws }
 export const SPRING = { type: 'spring', stiffness: 420, damping: 34, mass: 0.9 } as const
 export const EASE = [0.2, 0.8, 0.2, 1] as const

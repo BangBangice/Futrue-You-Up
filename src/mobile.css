@@ -1,0 +1,206 @@
+/* ───────── Phones ─────────
+   A phone has no room for a desktop of overlapping windows, so the same shift is laid out the way a phone works:
+   one app fills the screen, the dock is a tab bar, the step list is a strip that unfolds, and an app with a list
+   and a detail (mail, chat, board, wiki, code) shows one at a time with Back between them (View.deep in store.ts).
+   Everything here sits inside the media query, which store.ts's phone() repeats. Wider screens never see it. */
+.win-back, .pace-select { display: none; }
+
+@media (max-width: 720px), (pointer: coarse) and (max-height: 540px) {
+  :root { --dock-h: 60px; --guide-h: 42px; }
+  html { touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+  html, body { overscroll-behavior: none; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  .wide { display: none; }
+  .input { font-size: 15px; }
+  .select { height: 34px; font-size: 14px; }
+  .icon-btn.ghost { width: 36px; height: 36px; }
+  .menu button { height: 40px; }
+  .file-text > * { max-width: 56vw; }
+
+  /* ───────── Top bars ───────── */
+  .topbar { height: 50px; gap: 10px; padding: 0 14px; }
+  .topbar-right { gap: 8px; }
+  .topbar-right > span { display: none; }
+  .simbar { height: auto; min-height: 50px; flex-wrap: wrap; gap: 0 7px; padding: 9px 10px; overflow: visible; }
+  .simbar :is(.simbar-role, .brand span, .chip:not(.bad), .seg, .btn-soft) { display: none; }
+  .simclock b { font-size: 15px; }
+  /* Takes what the first row has left, so a narrow phone squeezes it rather than wrapping the row. */
+  .pace-select { display: block; flex: 100 1 0; min-width: 0; max-width: 96px; height: 32px; }
+  /* Anything that is news (the AI is down, reconnecting, production is on fire) gets a second row to itself. */
+  .simbar::after { content: ''; order: 1; flex: 0 0 100%; }
+  .simbar > :is(.chip.bad, .live) { order: 2; margin-top: 9px; }
+  .simbar .chip.bad { max-width: 100%; }
+  .live { flex: 1 0 100%; height: auto; min-height: 30px; flex-wrap: wrap; justify-content: center; gap: 1px 8px; padding: 5px 12px; border-radius: 10px; font-size: 11.5px; box-shadow: none; }
+
+  /* ───────── Start, sign-in and recap pages ───────── */
+  .onboard { padding: 26px 18px 44px; gap: 26px; }
+  .hero { gap: 14px; padding-top: 0; }
+  .hero h1 { font-size: 32px; }
+  .lede { font-size: 15px; }
+  .setup { padding: 18px; gap: 22px; border-radius: 16px; }
+  .signin { flex: 1 1 100%; }
+  .roles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile { padding: 10px; }
+  .seg-grow button { padding: 9px 4px; white-space: normal; line-height: 1.2; }
+  .recap { padding: 22px 16px 44px; gap: 16px; }
+  .post-head h1 { font-size: 28px; }
+  .recap .panel { padding: 16px; }
+  .recap-grid { gap: 16px; }
+  .mentor-note { gap: 12px; }
+  .mentor-note p { font-size: 15px; }
+  .comment-head { flex-wrap: wrap; column-gap: 8px; }
+
+  /* ───────── Desktop: one app at a time ───────── */
+  .desk-host { padding: 0; }
+  .desk { border-radius: 0; box-shadow: none; }
+  .menubar, .lights, .win-resize { display: none; }
+  /* Window.tsx positions windows inline for dragging; here they all fill the space between the steps and the tab bar. */
+  .win { left: 0 !important; top: var(--guide-h) !important; width: 100% !important; height: calc(100% - var(--guide-h) - var(--dock-h)) !important; border-radius: 0; box-shadow: none !important; }
+  .win-body { background: linear-gradient(var(--win), var(--win)), var(--page); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .win[data-deep] .win-back { display: grid; place-items: center; flex: none; width: 34px; height: 34px; margin: 0 -6px 0 -8px; border-radius: 8px; color: inherit; }
+  .win-back:active { background: var(--hover); }
+
+  .dock-wrap { inset: auto 0 0; }
+  .dock { width: 100%; height: var(--dock-h); align-items: center; justify-content: space-around; gap: 0; padding: 0 6px; border-radius: 0; box-shadow: 0 -0.5px 0 var(--edge); }
+  .dock-item { gap: 4px; padding-top: 4px; }
+  .dock-tile { width: 42px !important; height: 42px !important; border-radius: 10px !important; }
+  .dock-tip { display: none; }
+  /* The dot marks the app you are in, not every app that is running. */
+  .dock-dot { width: 16px; height: 3px; border-radius: 2px; background: var(--accent); }
+  .dock-dot.on { opacity: 0; transform: scale(0); }
+  .dock-item.here .dock-dot { opacity: 1; transform: none; }
+  .badge { top: -2px; right: -7px; min-width: 18px; height: 18px; font-size: 11px; }
+
+  .toasts { top: 6px; left: 8px; right: 8px; width: auto; }
+  /* Three at once would cover half the screen: the newest two are enough. */
+  .toast:nth-last-child(n + 3) { display: none; }
+  .toast-x { opacity: 1; transform: none; }
+  .toast-head span:last-child { visibility: hidden; }
+
+  /* ───────── Step guide: a strip that unfolds over the app ───────── */
+  .guide { top: 0; left: 0; right: 0; width: auto; max-height: calc(100% - var(--dock-h) - 16px); border-radius: 0 0 16px 16px; }
+  .guide-head { height: var(--guide-h); padding: 0 14px; }
+  .guide-head b { font-size: 14px; }
+  .guide-track { margin: 0 14px 10px; }
+  .guide-sub { padding: 0 14px 8px; font-size: 13px; }
+  .guide-steps { padding: 0 8px 8px; }
+  .gstep { gap: 10px; padding: 8px 8px 8px 9px; font-size: 14px; }
+  .gtext em { font-size: 12.5px; }
+  .gmark { margin-top: 2px; }
+  .gpin { opacity: 1; width: 32px; height: 32px; margin: -6px -4px -6px 0; }
+  /* Folded, it is one line: the step you are on, where to find it, and how far along you are. */
+  .guide[data-folded] { flex-direction: row; align-items: center; height: var(--guide-h); border-radius: 0; box-shadow: 0 0.5px 0 var(--edge); }
+  .guide[data-folded] .guide-body { display: none; }
+  .guide[data-folded] .guide-head { order: 2; flex: 1; gap: 6px; padding: 0 12px 0 6px; }
+  .guide[data-folded]:has(.guide-next) .guide-head { flex: none; }
+  .guide[data-folded]:has(.guide-next) .guide-head > :is(svg:first-child, b) { display: none; }
+  .guide[data-folded] .guide-next { order: 1; flex: 1; min-width: 0; padding: 0 0 0 14px; font-size: 13.5px; }
+  .guide[data-folded] .guide-next::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .guide[data-folded] .guide-track { position: absolute; inset: auto 0 0; height: 2px; margin: 0; border-radius: 0; }
+
+  /* ───────── App chrome ───────── */
+  .titlebar, .brandbar { gap: 10px; padding: 0 12px; }
+  .title-logo { flex: none; }
+  .title { flex: 0 10 auto; min-width: 0; }
+  .title span { overflow: hidden; text-overflow: ellipsis; }
+  .views { display: none; }
+  .search { flex: 1 1 130px; width: auto; min-width: 90px; height: 32px; }
+  .brandbar-name, .brandbar-me { width: auto; }
+  .brandbar-search { flex: 1; min-width: 0; margin: 0; height: 32px; }
+  .brandbar-search input, .search input { font-size: 14px; }
+  /* Search filters the list, so it steps aside while you read what you opened from it. */
+  .win[data-deep] .brandbar-search { visibility: hidden; }
+  .win[data-deep] .search { display: none; }
+  .side-item { min-height: 42px; font-size: 14.5px; }
+  .side-scroll { padding: 2px 8px 12px; }
+
+  /* ───────── Outlook: folders across the top, then the list or the message ───────── */
+  .outlook .app-body { flex-direction: column; }
+  .outlook .sidebar { width: auto !important; flex-direction: row; gap: 4px; padding: 7px 8px; overflow: auto hidden; border-right: 0; border-bottom: 1px solid var(--line); }
+  .outlook .side-label { display: none; }
+  .outlook .side-item { flex: none; min-height: 32px; font-size: 13px; }
+  .mail-list { flex: 1; width: auto; min-height: 0; border-right: 0; }
+  .mail-row { padding: 11px 12px 12px 15px; gap: 3px; }
+  .mail-row b { font-size: 14.5px; }
+  .mail-subject { font-size: 13.5px; }
+  .mail-preview { font-size: 13px; }
+  .win[data-deep] :is(.outlook .sidebar, .mail-list), .win:not([data-deep]) .reader { display: none; }
+  /* The ribbon acts on the open message, so the list keeps only New mail. */
+  .ol-ribbon { overflow: auto hidden; }
+  .win:not([data-deep]) .ol-ribbon > :not(.ol-new) { display: none; }
+  .win[data-deep] .ol-new { gap: 0; padding: 0 10px; font-size: 0; }
+  .ol-new, .ol-tool { height: 36px; }
+  .ol-tool { padding: 0 10px; }
+  .reader article { padding: 14px 12px 24px; }
+  .reader h2 { font-size: 17px; }
+  .mail-card { padding: 14px; }
+  .mail-body, .mail-card .pre { font-size: 15px; }
+  .composer.full { margin: 12px; }
+  .composer-row input, .composer textarea { font-size: 15px; }
+
+  /* ───────── Teams: the chat list, or one conversation ───────── */
+  .tm-rail { display: none; }
+  .tm-list { flex: 1; width: auto; min-width: 0; border-right: 0; }
+  .tm-item { min-height: 62px; }
+  .tm-preview { font-size: 13px; }
+  .win[data-deep] .tm-list, .win:not([data-deep]) .chat-main { display: none; }
+  .chat-head { height: 50px; padding: 0 14px; }
+  .chat-head .stack { min-width: 0; }
+  .chat-head .stack span { overflow: hidden; text-overflow: ellipsis; }
+  .chat-scroll { padding: 12px; }
+  .msg { max-width: 94%; gap: 8px; }
+  .bubble { font-size: 15px; }
+  .alert { font-size: 12.5px; }
+  .coach-row { font-size: 14px; }
+  .tm-compose { margin: 0 10px 10px; }
+  .tm-compose input { height: 44px; font-size: 15px; }
+
+  /* ───────── VS Code: the explorer or source control, or the editor with its terminal ───────── */
+  .win:not([data-deep]) .editor, .win[data-deep] :is(.activity, .explorer) { display: none; }
+  .activity > svg { display: none; }
+  .explorer { flex: 1; width: auto; min-width: 0; border-right: 0; font-size: 14.5px; }
+  .tree-row { height: 36px; gap: 8px; }
+  .tree-row b { font-size: 12px; }
+  .tree-new input, .scm textarea { font-size: 15px; }
+  .scm .btn { height: 36px; }
+  .scm-empty, .scm-head { font-size: 13px; }
+  .tabs { gap: 6px; padding-right: 8px; }
+  /* The ⌘S hint: a phone has no ⌘S, so edits save themselves (store.ts). */
+  .crumbs span { display: none; }
+  .statusbar { gap: 8px; padding: 0 10px; }
+  .statusbar > span:is(:nth-child(2), :nth-last-child(-n + 2)) { display: none; }
+
+  /* ───────── Jira: the board as one column, or one issue ───────── */
+  .board { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .col { min-height: auto; }
+  .ticket { padding: 12px; }
+  .ticket-title { font-size: 14px; }
+  .win[data-deep] .board, .win:not([data-deep]) .ticket-panel { display: none; }
+  .ticket-panel { flex: 1; width: auto; min-width: 0; border-left: 0; }
+  .ticket-detail { padding: 16px; }
+  .ticket-detail h3 { font-size: 18px; }
+  .ticket-detail dl { font-size: 14px; }
+  .ticket-desc, .comment { font-size: 14px; }
+  .ticket-tabs button { padding: 8px 0; font-size: 13.5px; }
+
+  /* ───────── Confluence: the page tree, or one page ───────── */
+  .cf-side { flex: 1; width: auto; min-width: 0; border-right: 0; }
+  .win[data-deep] .cf-side, .win:not([data-deep]) .cf-page { display: none; }
+  .cf-page article { padding: 16px 16px 44px; }
+  .cf-page h1 { font-size: 25px; }
+  .cf-title { font-size: 24px; }
+  .cf-byline .stack { white-space: normal; }
+  .cf-body { font-size: 15.5px; }
+  .cf-body table { display: block; overflow-x: auto; }
+  .cf-body tbody th { white-space: normal; }
+  .cf-editbar { flex-wrap: wrap; }
+  .cf-source { min-height: 300px; font-size: 14px; }
+
+  /* ───────── CloudWatch: everything in one column ───────── */
+  .monitor { padding: 12px; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tile-stat b { font-size: 22px; }
+  .mon-row, .mon-row.wide-left { grid-template-columns: minmax(0, 1fr); }
+  .recover .btn { height: 40px; }
+  .event, .cust { font-size: 13.5px; }
+}

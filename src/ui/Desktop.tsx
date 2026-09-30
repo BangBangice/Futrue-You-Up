@@ -6,7 +6,7 @@ import { APP_IDS, APP_NAMES, clock } from '../../shared/types.ts'
 import type { AppId, Theme } from '../../shared/types.ts'
 import { live, sim, useSim, wallpaperName } from '../sim/store.ts'
 import type { State } from '../sim/store.ts'
-import { AppIcon, Company, LOGOS, SPRING } from './bits.tsx'
+import { AppIcon, Company, LARP_LOGO, LOGOS, SPRING } from './bits.tsx'
 import { Window } from './Window.tsx'
 import { Mail } from './apps/Mail.tsx'
 import { Chat } from './apps/Chat.tsx'
@@ -87,9 +87,9 @@ function Toasts() {
       <AnimatePresence mode="popLayout" initial={false}>
         {toasts.map(t => (
           <motion.div key={t.id} layout className="toast" role="status" initial={{ opacity: 0, x: 70, scale: 0.95 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 70, scale: 0.95, transition: { duration: 0.2 } }} transition={SPRING} onClick={() => { t.go(); sim.dismissToast(t.id) }}>
-            <AppIcon app={t.app} size={32} />
+            {t.app ? <AppIcon app={t.app} size={32} /> : <div className="app-icon" style={{ width: 32, height: 32, borderRadius: 7.5 }}><img src={LARP_LOGO} alt="" draggable={false} /></div>}
             <div className="toast-main">
-              <div className="toast-head"><span>{APP_NAMES[t.app].toUpperCase()}</span><span>now</span></div>
+              <div className="toast-head"><span>{t.app ? APP_NAMES[t.app].toUpperCase() : 'LARP'}</span><span>now</span></div>
               <b>{t.title}</b>
               <p>{t.body}</p>
             </div>
@@ -122,6 +122,7 @@ function DockIcon({ id, mouseX }: { id: AppId; mouseX: MotionValue<number> }) {
   const ref = useRef<HTMLButtonElement>(null)
   const [tile, bounce] = useAnimate<HTMLDivElement>()
   const running = useSim(s => s.wins[id].open)
+  const here = useSim(s => s.focus === id)
   const badge = useSim(s => badgeOf(s, id))
 
   // Magnify with proximity to the cursor, like the macOS dock.
@@ -136,7 +137,7 @@ function DockIcon({ id, mouseX }: { id: AppId; mouseX: MotionValue<number> }) {
   }, [badge, bounce, tile])
 
   return (
-    <button ref={ref} className="dock-item" data-guide={'dock:' + id} aria-label={'Open ' + APP_NAMES[id]} onClick={() => sim.open(id)}>
+    <button ref={ref} className={'dock-item' + (here ? ' here' : '')} data-guide={'dock:' + id} aria-label={'Open ' + APP_NAMES[id]} onClick={() => sim.open(id)}>
       <span className="dock-tip">{APP_NAMES[id]}</span>
       <motion.div ref={tile} className="dock-tile" style={{ width: size, height: size, borderRadius: radius }}>
         <img src={LOGOS[id]} alt="" draggable={false} />

@@ -27,6 +27,8 @@ export function SimBar() {
       </div>
       <div className="stack simclock"><b>{clock(m)}</b><span>SIM TIME</span></div>
       <Segmented id="pace" value={String(pace)} options={PACES.map(([n, label]) => [String(n), label])} onChange={v => sim.setPace(Number(v))} />
+      {/* The same control for a phone, where three buttons do not fit (mobile.css shows one or the other). */}
+      <select className="select pace-select" value={pace} aria-label="Pace" onChange={e => sim.setPace(Number(e.target.value))}>{PACES.map(([n, label]) => <option key={n} value={n}>{label}</option>)}</select>
       {aiProblem
         ? <span className="chip bad" role="alert" title={`AI calls are failing: ${aiProblem}. Colleagues fall back to scripted lines until it recovers.`}><TriangleAlert size={12} strokeWidth={2.4} /><span className="ellipsis">AI unavailable: {aiProblem}</span></span>
         : <span className="chip" title={ai === 'live' ? 'Colleagues are played by an AI model' : 'Colleagues use scripted lines. No network needed.'}><Sparkles size={12} strokeWidth={2.2} />{ai === 'live' ? 'AI colleagues' : 'Scripted colleagues'}</span>}

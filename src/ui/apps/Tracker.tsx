@@ -102,7 +102,7 @@ export function Tracker() {
         <div className="stack title"><b>LED · Sprint 14</b><span>Auth &amp; Identity · Sep 22 – Oct 3</span></div>
         <div className="grow" />
         <div className="views"><span className="on">Board</span><span>Backlog</span><span>Reports</span></div>
-        <button className="btn btn-accent sm" onClick={() => setAdding(true)}><Plus size={14} strokeWidth={2.6} />Create</button>
+        <button className="btn btn-accent sm" onClick={() => { setAdding(true); sim.dive('tracker', false) }}><Plus size={14} strokeWidth={2.6} />Create</button>
       </DragBar>
       <div className="app-body">
         <motion.div layoutScroll className="board">
@@ -115,7 +115,7 @@ export function Tracker() {
                 <AnimatePresence initial={false}>
                   {cards.map(t => (
                     <motion.div key={t.id} layout layoutId={t.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={SPRING}>
-                      <button className={'ticket' + (t.id === selId ? ' on' : '')} data-guide={'ticket:' + t.id} draggable={!t.id.startsWith('INC')} onDragStart={e => e.dataTransfer.setData('text/plain', t.id)} onClick={() => sim.set({ ticketSel: t.id })}>
+                      <button className={'ticket' + (t.id === selId ? ' on' : '')} data-guide={'ticket:' + t.id} draggable={!t.id.startsWith('INC')} onDragStart={e => e.dataTransfer.setData('text/plain', t.id)} onClick={() => { sim.set({ ticketSel: t.id }); sim.dive('tracker') }}>
                         <div className="ticket-title">{t.title}</div>
                         <div className="ticket-meta">
                           <span className="ticket-id">{t.id}</span>

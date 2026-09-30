@@ -21,10 +21,12 @@ export interface Guide { phase: string; title: string; sub: string; steps: Step[
 const VERIFY = 'src/auth/verifySession.ts'
 
 // ---------- where "Show me" points ----------
-const inApp = (app: AppId, ...keys: string[]) => () => { sim.open(app); sim.spotlight(keys, 'dock:' + app) }
-const inCode = (side: 'files' | 'git', ...keys: string[]) => () => { sim.set({ side }); sim.open('code'); sim.spotlight(keys, 'dock:code') }
+// Each also picks the pane a phone has to be on for the target to be on screen (sim.dive); wider screens show both.
+const inApp = (app: AppId, ...keys: string[]) => () => { sim.open(app); sim.dive(app, false); sim.spotlight(keys, 'dock:' + app) }
+const inCode = (side: 'files' | 'git', ...keys: string[]) => () => { sim.set({ side }); sim.open('code'); sim.dive('code', !keys.some(k => k === 'commit' || k.startsWith('file:'))); sim.spotlight(keys, 'dock:code') }
 const inChat = (chan: ChanId) => () => {
   const s = sim.state, here = s.chan === chan && s.wins.chat.open && !s.wins.chat.min
+  sim.dive('chat', here)
   sim.open('chat')
   sim.spotlight(here ? ['chat-input'] : ['chan:' + chan], 'dock:chat')
 }
@@ -32,6 +34,7 @@ const inChat = (chan: ChanId) => () => {
 const inMail = (e: Email, reply = false) => () => {
   const s = sim.state, reading = s.mailSel === e.id && s.mailFolder === e.folder && s.wins.mail.open && !s.wins.mail.min
   sim.set({ mailFolder: e.folder })
+  sim.dive('mail', reply && reading)
   sim.open('mail')
   sim.spotlight(reply && reading ? ['mail-reply'] : ['mail:' + e.id], 'dock:mail')
 }

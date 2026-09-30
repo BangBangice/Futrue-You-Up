@@ -23,7 +23,7 @@ export function Onboarding() {
       <header className="topbar">
         <Brand />
         <div className="topbar-right">
-          {account?.isAnonymous && account.save && <button className="btn sm btn-soft" onClick={account.save}>Save your progress</button>}
+          {account?.isAnonymous && account.save && <button className="btn sm btn-soft" onClick={account.save}><span>Save<span className="wide"> your progress</span></span></button>}
           <ThemeToggle />
           {/* Signed in, you play as yourself: the shift is cast with your account's name (a guest's is made up). */}
           {account

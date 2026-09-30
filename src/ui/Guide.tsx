@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Check, ChevronDown, ListChecks, LocateFixed } from 'lucide-react'
 import { guide } from '../sim/guide.ts'
 import type { Step } from '../sim/guide.ts'
-import { sim, useSim } from '../sim/store.ts'
+import { phone, sim, useSim } from '../sim/store.ts'
 import { EASE, SPRING } from './bits.tsx'
 
 const HOLD = 4200 // how long the ring stays, in ms
@@ -26,7 +26,7 @@ export function Guide() {
 
   return (
     <>
-      <motion.aside ref={panel} className="guide" aria-label="Your steps" initial={{ y: -16, scale: 0.96 }} animate={{ y: 0, scale: 1 }} transition={{ ...SPRING, delay: 0.3 }}>
+      <motion.aside ref={panel} className="guide" data-folded={!open || undefined} aria-label="Your steps" initial={{ y: -16, scale: 0.96 }} animate={{ y: 0, scale: 1 }} transition={{ ...SPRING, delay: 0.3 }}>
         <button className="guide-head" aria-expanded={open} onClick={() => sim.set({ guideOpen: !open })}>
           <ListChecks size={15} strokeWidth={2.2} className="accent" />
           <AnimatePresence mode="wait" initial={false}>
@@ -78,9 +78,11 @@ function Row({ x, now }: { x: Step; now: boolean }) {
 }
 
 function ShowMe({ x, small }: { x: Step; small?: boolean }) {
+  // On a phone the list covers the app it points into, so it folds out of the way.
+  const show = () => { x.show(); if (phone()) sim.set({ guideOpen: false }) }
   return small
-    ? <button className="gpin" title="Show me" aria-label={'Show me: ' + x.text} onClick={x.show}><LocateFixed size={13} strokeWidth={2.2} /></button>
-    : <button className="btn btn-accent sm guide-show" onClick={x.show}><LocateFixed size={13} strokeWidth={2.4} />Show me</button>
+    ? <button className="gpin" title="Show me" aria-label={'Show me: ' + x.text} onClick={show}><LocateFixed size={13} strokeWidth={2.2} /></button>
+    : <button className="btn btn-accent sm guide-show" onClick={show}><LocateFixed size={13} strokeWidth={2.4} />Show me</button>
 }
 
 const visible = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 }

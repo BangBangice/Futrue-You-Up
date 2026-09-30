@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Bell, CalendarDays, TriangleAlert, CircleCheck, CircleHelp, Flame, Footprints, Hash, Lightbulb, MessageSquareText, Radius, Phone, Rocket, Search, SendHorizontal, Users } from 'lucide-react'
 import type { ChanId, ChatMsg, Channels, Coaching } from '../../../shared/types.ts'
-import { sim, useSim } from '../../sim/store.ts'
+import { phone, sim, useSim } from '../../sim/store.ts'
 import { Avatar, EASE, LOGOS, SPRING } from '../bits.tsx'
 import { AttachButton, FileCard, Rich } from '../files.tsx'
 import { DragBar, Lights } from '../Window.tsx'
@@ -52,7 +52,7 @@ export function Chat() {
   const draft = useSim(s => s.chatDraft)
   const files = useSim(s => s.chatFiles)
   const cast = useSim(s => s.cast), channels = useSim(s => s.channels), me = useSim(s => s.player), mentor = useSim(s => s.mentor)
-  const shown = useSim(s => s.wins.chat.open && !s.wins.chat.min)
+  const shown = useSim(s => s.wins.chat.open && !s.wins.chat.min && (s.deep.chat || !phone()))
   const [query, setQuery] = useState('')
   const meta = channels[chan], msgs = chats[chan]
   const typers = typing.filter(t => t.chan === chan)

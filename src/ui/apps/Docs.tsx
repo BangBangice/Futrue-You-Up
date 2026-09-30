@@ -88,7 +88,7 @@ export function Docs() {
         <div className="stack title"><b>Confluence</b><span>{company} · Engineering</span></div>
         <div className="grow" />
         <label className="search"><Search size={13} strokeWidth={2.4} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search pages" aria-label="Search pages" /></label>
-        <button className="btn btn-accent sm" onClick={() => setMode('new')}><Plus size={14} strokeWidth={2.6} />Create</button>
+        <button className="btn btn-accent sm" onClick={() => { setMode('new'); sim.dive('docs') }}><Plus size={14} strokeWidth={2.6} />Create</button>
       </DragBar>
       <div className="app-body">
         <nav className="sidebar cf-side">
