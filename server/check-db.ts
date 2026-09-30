@@ -1,14 +1,16 @@
 // Checks that a run survives a round trip through Postgres, and that the lesson library lists only public lessons. Run with: DATABASE_URL=... npm run check:db
 import assert from 'node:assert/strict'
+import { rm } from 'node:fs/promises'
 import { eq, like } from 'drizzle-orm'
 import { closeDb, db, dbEnabled, migrateDb } from './db/index.ts'
 import { publish } from './db/publish.ts'
-import { runEvents, runs, scenarioVersions, scenarios, users } from './db/schema.ts'
+import { runEvents, runWorkspaces, runs, scenarioVersions, scenarios, users } from './db/schema.ts'
 import { lessonTags, listLessons } from './lessons.ts'
 import * as director from './director.ts'
 import { store } from './runs.ts'
 import { scenarioFile } from './scenarios.ts'
-import { create, drop, find } from './world.ts'
+import { create, discard, drop, find } from './world.ts'
+import { MAX_SNAPSHOT } from './sandbox.ts'
 
 process.env.LLM = 'stub'
 if (!dbEnabled()) throw new Error('Set DATABASE_URL to run this check.')
@@ -61,6 +63,50 @@ assert.ok(ended.endedAt)
 
 await drop(id)
 
+// ---- the workspace: commits, the branch and unsaved work come back when the disk copy is gone, as after a redeploy.
+const wsUser = `check-ws-${Date.now()}`
+const p = await create('bootcamp', 'Ten years in logistics', 4, 'stub', wsUser, undefined, 'ledgerly-day2')
+p.timeScale = 0.001
+await director.start(p)
+const vs = 'src/auth/verifySession.ts', readme = 'README.md'
+const template = await p.ws.state()
+await director.command(p, 'git checkout -b maya/led-214-hotfix')
+await director.saveFile(p, vs, (await p.ws.read(vs)) + '\n// committed\n')
+await director.commit(p, 'fix(auth): accept bearer tokens')
+const committed = await p.ws.state()
+assert.equal(committed.subject, 'fix(auth): accept bearer tokens')
+await director.saveFile(p, readme, (await p.ws.read(readme)) + '\nNot committed yet.\n')
+await director.saveFile(p, 'notes/todo.md', 'untracked\n')
+await director.command(p, 'rm src/keys.ts')
+await p.flushWorkspace()
+const [snap] = await db().select().from(runWorkspaces).where(eq(runWorkspaces.runId, p.world.id))
+assert.ok(snap && snap.bytes === snap.bundle.length && snap.bytes < MAX_SNAPSHOT, 'the workspace is snapshotted')
+const was = { state: await p.ws.state(), readme: await p.ws.read(readme), tree: await p.ws.tree() }
+await drop(p.world.id)
+await rm(p.dir, { recursive: true, force: true })
+const q = (await find(p.world.id))!
+assert.notEqual(q, p)
+const after = await q.ws.state()
+assert.deepEqual({ ...after, changes: after.changes.map(c => c.path).sort() }, { ...was.state, changes: was.state.changes.map(c => c.path).sort() }, 'branch, HEAD and changed paths come back')
+assert.equal(after.branch, 'maya/led-214-hotfix')
+assert.equal(after.head, committed.head, 'the commit comes back')
+assert.equal(await q.ws.read(readme), was.readme, 'an uncommitted change comes back')
+assert.equal(await q.ws.read('notes/todo.md'), 'untracked\n', 'an untracked file comes back')
+assert.deepEqual(await q.ws.tree(), was.tree, 'a deleted file stays deleted')
+assert.equal((await q.ws.git(['rev-parse', 'maya/led-214-sso-expiry'])).out.trim().length, 40, 'other branches come back')
+// A run with no snapshot starts from the template, as before.
+await db().delete(runWorkspaces).where(eq(runWorkspaces.runId, q.world.id))
+await drop(q.world.id)
+await db().delete(runWorkspaces).where(eq(runWorkspaces.runId, q.world.id))
+await rm(q.dir, { recursive: true, force: true })
+const t = (await find(q.world.id))!
+assert.deepEqual(await t.ws.state(), template, 'no snapshot: a fresh template')
+// Deleting a player's runs takes their snapshots with them.
+await t.flushWorkspace()
+assert.equal((await db().select().from(runWorkspaces).where(eq(runWorkspaces.runId, t.world.id))).length, 1)
+await discard(wsUser)
+assert.equal((await db().select().from(runWorkspaces).where(eq(runWorkspaces.runId, t.world.id))).length, 0, 'discard deletes the snapshot')
+
 // ---- the library: a seeded built-in is public with its tags; a private lesson is not listed, whatever its tags.
 await publish(scenarioFile('ledgerly-day2')!)
 const ids = async (q = {}) => (await listLessons(q)).map(l => l.id)
@@ -93,5 +139,5 @@ await db().delete(scenarios).where(like(scenarios.id, `${tag}-%`))
 const listedCount = (await ids()).length
 
 await closeDb()
-console.log(`db check passed · ${logged.length} events · run ${id} · library lists ${listedCount} lesson(s)`)
+console.log(`db check passed · ${logged.length} events · run ${id} · workspace snapshot ${snap.bytes} bytes · library lists ${listedCount} lesson(s)`)
 process.exit(0)

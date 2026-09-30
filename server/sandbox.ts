@@ -7,7 +7,8 @@
 // boundary: it runs as the local user, with file reads fenced to the workspace and the network blocked on macOS.
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { cp, lstat, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { gunzipSync, gzipSync } from 'node:zlib'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { login } from '../shared/types.ts'
@@ -19,6 +20,8 @@ export const ACCEPTANCE = join(HERE, 'acceptance.ts')
 const NODE = process.execPath
 const SEATBELT = process.platform === 'darwin' && existsSync('/usr/bin/sandbox-exec') ? ['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)'] : []
 const MAX_FILE = 200_000, MAX_FILES = 200, MAX_OUTPUT = 64_000
+/** The most a workspace snapshot may take in the database. */
+export const MAX_SNAPSHOT = 5_000_000
 
 // Node's --permission flag has no network switch, and sandbox-exec above only exists on macOS.
 // Preloaded into the player's process on every OS, E2B included: removes the network globals and refuses the
@@ -131,16 +134,28 @@ export class Workspace {
   private constructor(root: string, home: string, me: Workspace['me'], repo: string) { this.root = root; this.home = home; this.me = me; this.repo = repo }
 
   /** `author` wrote the commit the player's branch starts from. */
-  static async open(dir: string, player: Person, { repo, author }: { repo: string; author: Person }) {
+  /** Without a repository on disk, `saved` is asked for a snapshot (see pack()) to rebuild it from, and only without one does the
+   * shift start from the template. A repository on disk wins: on this instance it is at least as new as any snapshot. */
+  static async open(dir: string, player: Person, { repo, author, saved }: { repo: string; author: Person; saved?: () => Promise<Buffer | null> }) {
     const root = join(dir, 'workspace')
-    const fresh = !existsSync(join(root, '.git'))
+    let fresh = !existsSync(join(root, '.git'))
+    const snapshot = fresh && saved ? await saved() : null
     if (fresh) {
       await rm(root, { recursive: true, force: true })
-      await cp(TEMPLATE, root, { recursive: true })
+      if (snapshot) await mkdir(root, { recursive: true })
+      else await cp(TEMPLATE, root, { recursive: true })
     }
     const ws = new Workspace(await realpath(root), await realpath(dir), { name: player.name, email: player.email, user: login(player) }, repo)
     // The E2B client is only loaded when it is used. Nothing starts until the first run (see e2b.ts).
     ws.runner = useE2B() ? new (await import('./e2b.ts')).Remote(ws.root, basename(ws.home)) : new Local(ws.root, ws.home)
+    if (snapshot) {
+      try { await ws.unpack(snapshot); fresh = false }
+      catch (err) {
+        console.error(`[workspace] ${basename(dir)}: its snapshot could not be restored, starting from the template`, err)
+        await rm(ws.root, { recursive: true, force: true })
+        await cp(TEMPLATE, ws.root, { recursive: true })
+      }
+    }
     if (fresh) {
       const past = { GIT_AUTHOR_NAME: author.name, GIT_AUTHOR_EMAIL: author.email, GIT_COMMITTER_NAME: author.name, GIT_COMMITTER_EMAIL: author.email, GIT_AUTHOR_DATE: '2026-09-22T16:40:00', GIT_COMMITTER_DATE: '2026-09-22T16:40:00' }
       await ws.git(['init', '-q', '-b', 'main'])
@@ -149,6 +164,70 @@ export class Workspace {
       await ws.git(['checkout', '-q', '-b', `${ws.me.user}/led-214-sso-expiry`])
     }
     return ws
+  }
+
+  // ---------- snapshots ----------
+  /**
+   * The whole repository as one buffer, to keep it off this machine: a git bundle of every ref, the working-tree files that
+   * differ from HEAD (players save without committing), and where HEAD is. Staged changes come back unstaged.
+   * Layout: gzip of [header length, 4 bytes][header JSON][bundle][each changed file's contents, in header order].
+   */
+  async pack(): Promise<Buffer> {
+    const tmp = await mkdtemp(join(this.home, '.pack-'))
+    try {
+      const bundle = join(tmp, 'all.bundle')
+      const made = await this.plumb(['bundle', 'create', '-q', bundle, '--all'])
+      if (made.code !== 0) throw new Error(`git bundle failed: ${made.out.trim()}`)
+      const [branch, head, status] = await Promise.all([
+        this.plumb(['symbolic-ref', '-q', '--short', 'HEAD']), this.plumb(['rev-parse', 'HEAD']),
+        this.plumb(['status', '--porcelain', '-z', '--no-renames', '--untracked-files=all']),
+      ])
+      if (status.code !== 0) throw new Error(`git status failed: ${status.out.trim()}`)
+      const paths = [...new Set(status.out.split('\0').filter(Boolean).map(l => l.slice(3)))].filter(p => !/(^|\/)(\.git|node_modules)(\/|$)/.test(p)).sort()
+      const files: [string, number][] = [], deleted: string[] = [], bodies: Buffer[] = []
+      for (const p of paths) {
+        const info = await lstat(join(this.root, p)).catch(() => null)
+        if (!info) deleted.push(p)
+        else if (info.isFile()) { const body = await readFile(join(this.root, p)); files.push([p, body.length]); bodies.push(body) }
+      }
+      const data = await readFile(bundle)
+      const header = Buffer.from(JSON.stringify({ v: 1, branch: branch.code === 0 ? branch.out.trim() : null, head: head.out.trim(), bundle: data.length, files, deleted }))
+      const size = Buffer.alloc(4)
+      size.writeUInt32BE(header.length)
+      return gzipSync(Buffer.concat([size, header, data, ...bodies]))
+    } finally { await rm(tmp, { recursive: true, force: true }) }
+  }
+  /** Rebuilds the repository from pack()'s buffer, into an empty root. */
+  private async unpack(snapshot: Buffer) {
+    const raw = gunzipSync(snapshot), n = raw.readUInt32BE(0)
+    const h = JSON.parse(raw.subarray(4, 4 + n).toString()) as { v: number; branch: string | null; head: string; bundle: number; files: [string, number][]; deleted: string[] }
+    if (h.v !== 1) throw new Error(`unknown snapshot version ${h.v}`)
+    const must = async (args: string[]) => {
+      const r = await this.plumb(args)
+      if (r.code !== 0) throw new Error(`git ${args[0]} failed: ${r.out.trim()}`)
+      return r.out
+    }
+    const tmp = await mkdtemp(join(this.home, '.unpack-'))
+    try {
+      let at = 4 + n
+      const bundle = join(tmp, 'all.bundle')
+      await writeFile(bundle, raw.subarray(at, at += h.bundle))
+      await must(['init', '-q', '-b', 'main'])
+      // Unbundling stores the objects and lists the refs, which we then set. No transport is involved.
+      for (const line of (await must(['bundle', 'unbundle', bundle])).split('\n').filter(Boolean)) {
+        const [sha, ref] = line.split(' ')
+        if (ref?.startsWith('refs/')) await must(['update-ref', ref, sha])
+      }
+      if (h.branch) await must(['symbolic-ref', 'HEAD', `refs/heads/${h.branch}`])
+      else await must(['update-ref', '--no-deref', 'HEAD', h.head])
+      await must(['reset', '-q', '--hard', 'HEAD'])
+      for (const [rel, len] of h.files) {
+        const p = this.inside(rel)
+        await mkdir(dirname(p), { recursive: true })
+        await writeFile(p, raw.subarray(at, at += len))
+      }
+      for (const rel of h.deleted) await rm(this.inside(rel), { force: true })
+    } finally { await rm(tmp, { recursive: true, force: true }) }
   }
 
   // ---------- paths ----------
@@ -194,7 +273,7 @@ export class Workspace {
 
   // ---------- processes ----------
   /** Streams a process's output line by line, and stops it when it runs too long, says too much, or the player stops it. */
-  private async supervise(start: (take: (text: string) => void) => Promise<Proc>, emit?: Emit, timeout = 15_000) {
+  private async supervise(start: (take: (text: string) => void) => Promise<Proc>, emit?: Emit, timeout = 15_000, own = true) {
     let out = '', tail = '', killed = '', proc: Proc | null = null
     const stop = (why: string) => { if (!killed) { killed = why; proc?.kill() } }
     const take = (text: string) => {
@@ -206,7 +285,7 @@ export class Workspace {
       lines.forEach(l => emit?.(tone(l)))
     }
     const handle = { kill: () => stop('Stopped.') }
-    this.running = handle
+    if (own) this.running = handle
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       proc = await start(take)
@@ -228,15 +307,17 @@ export class Workspace {
   close() { return this.runner.close() }
 
   /** Git, pinned to this workspace so it can never walk up into the repository that hosts the simulator. Always runs here. */
-  git(args: string[], env: Record<string, string> = {}, emit?: Emit, cwd?: string) {
+  git(args: string[], env: Record<string, string> = {}, emit?: Emit, cwd?: string, own = true) {
     const argv = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'protocol.allow=never', '-c', 'core.pager=cat', '-c', 'advice.detachedHead=false', ...args]
     return this.supervise(async take => spawnProc('git', argv, cwd ?? this.root, {
       ...bareEnv(this.home),
       GIT_DIR: join(this.root, '.git'), GIT_WORK_TREE: this.root, GIT_CEILING_DIRECTORIES: dirname(this.root),
       GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_PAGER: 'cat', GIT_EDITOR: 'true', GIT_OPTIONAL_LOCKS: '0',
       GIT_AUTHOR_NAME: this.me.name, GIT_AUTHOR_EMAIL: this.me.email, GIT_COMMITTER_NAME: this.me.name, GIT_COMMITTER_EMAIL: this.me.email, ...env,
-    }, take), emit)
+    }, take), emit, 15_000, own)
   }
+  /** Git for our own bookkeeping next to whatever the player runs: not theirs to stop, and it does not make the workspace busy. */
+  private plumb(args: string[]) { return this.git(args, {}, undefined, undefined, false) }
   /** Player code. No file writes, no child processes, no network, reads fenced to the workspace. `reads` and `args` get the runner's paths. */
   private node(r: Runner, args: (r: Runner) => string[], reads: (r: Runner) => string[], emit?: Emit, timeout = 20_000) {
     const argv = ['--no-warnings', '--permission', ...reads(r).map(p => `--allow-fs-read=${p}`), '--import', NETBLOCK_IMPORT, '--experimental-strip-types', '--max-old-space-size=256', ...args(r)]

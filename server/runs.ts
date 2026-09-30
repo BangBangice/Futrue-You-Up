@@ -1,4 +1,4 @@
-// Where a shift's state and event log are kept: .data/ by default, Postgres when DATABASE_URL is set.
+// Where a shift's state, event log and workspace snapshot are kept: .data/ by default, Postgres when DATABASE_URL is set.
 import { appendFile, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -8,7 +8,7 @@ import type { World } from '../shared/types.ts'
 import { db, dbEnabled } from './db/index.ts'
 import { publish } from './db/publish.ts'
 import { DEFAULT_SCENARIO, scenarioFile } from './scenarios.ts'
-import { runEvents, runs, scenarioVersions, scenarios } from './db/schema.ts'
+import { runEvents, runWorkspaces, runs, scenarioVersions, scenarios } from './db/schema.ts'
 import type { Event, Priv, Session } from './world.ts'
 
 export interface Saved { world: World; priv: Priv; scenario: Scenario; rev: number; userId: string | null }
@@ -20,6 +20,11 @@ export interface RunStore {
   saveRun(s: Session): Promise<boolean>
   appendEvent(s: Session, e: Event): void
   loadRun(id: string, dir: string): Promise<Saved | null>
+  /** Keeping the workspace elsewhere than this disk. Absent for the file store, where the disk is the record. */
+  workspaces?: {
+    save(id: string, snapshot: Buffer): Promise<void>
+    load(id: string): Promise<Buffer | null>
+  }
 }
 
 /** The file a saved run plays on: its own scenario's, or the default's once that file is gone. */
@@ -86,6 +91,16 @@ const postgres: RunStore = {
     if (!spec.success) console.warn(`[runs] ${id}: its scenario version no longer matches the schema, using ${file.id}.json`)
     return { world: row.run.world as World, priv, scenario: spec.success ? spec.data : file, rev: row.run.version, userId: row.run.userId }
   },
+  workspaces: {
+    async save(id, snapshot) {
+      const row = { bundle: snapshot, bytes: snapshot.length, updatedAt: new Date() }
+      await db().insert(runWorkspaces).values({ runId: id, ...row }).onConflictDoUpdate({ target: runWorkspaces.runId, set: row })
+    },
+    async load(id) {
+      const [row] = await db().select({ bundle: runWorkspaces.bundle }).from(runWorkspaces).where(eq(runWorkspaces.runId, id))
+      return row?.bundle ?? null
+    },
+  },
 }
 
 // Chosen on first use, so a script can drop DATABASE_URL before any run starts.
@@ -99,6 +114,6 @@ export const listRuns = (userId: string) => db()
   .where(eq(runs.userId, userId)).orderBy(desc(runs.startedAt))
 
 export const moveRuns = (from: string, to: string) => db().update(runs).set({ userId: to }).where(eq(runs.userId, from))
-/** Deletes a player's shifts, their event logs with them, and says which. */
+/** Deletes a player's shifts, their event logs and workspace snapshots with them (on delete cascade), and says which. */
 export const deleteRuns = async (userId: string) =>
   (await db().delete(runs).where(eq(runs.userId, userId)).returning({ id: runs.id })).map(r => r.id)
