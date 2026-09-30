@@ -15,7 +15,7 @@
     "db:migrate": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/db/migrate.ts",
     "db:seed-scenarios": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/db/seed.ts",
     "db:studio": "drizzle-kit studio",
-    "llm:smoke":"node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/ai/llm.ts"
+    "llm:smoke": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/ai/llm.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.3",
