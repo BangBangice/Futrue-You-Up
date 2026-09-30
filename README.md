@@ -7,9 +7,24 @@ A workplace simulator for the people whose first rung has been automated away.
 
 You get a work computer, a real codebase and a real ticket. Colleagues message you, a client escalates, and what you ship decides what happens next. When it goes wrong, a senior engineer steps in on Teams, shows you who it affected, and helps you put it right. There is no score.
 
+### Tech stack
+
+| Layer | What |
+|---|---|
+| Runtime | Node 22.15+, running TypeScript directly with `--experimental-strip-types` (no build step for the server) |
+| Browser app | React 19, React Router 7, Vite 8, Monaco editor (VS Code), Motion, lucide-react icons, react-markdown with remark-gfm |
+| Server | Express 5, Server-Sent Events for the live world stream, Zod 4 for validating requests and scenario files |
+| AI | Perplexity's Agent API (OpenAI-style tool calls), default model `openai/gpt-6-luna`; scripted fallback when it is off or down |
+| Database (optional) | PostgreSQL 17 through Drizzle ORM and drizzle-kit migrations, `pg` driver |
+| Accounts (with a database) | Better Auth: email and password, Google, guests, JWT/JWKS for other services |
+| Email | Resend in production, Mailpit locally, console otherwise |
+| Player code sandbox | A guarded local child process, or an [E2B](https://e2b.dev) cloud sandbox when `E2B_API_KEY` is set |
+| Language | TypeScript 7 throughout (`shared/` is used by both sides) |
+| Ops | Docker (`node:26-slim`), docker compose for local Postgres and Mailpit, Railway for hosting, GitHub Actions CI |
+
 ### Run it
 
-Needs Node 22 or newer and git.
+Needs Node 22.15 or newer (CI and the Docker image use Node 26) and git.
 
 ```
 npm install
@@ -26,7 +41,28 @@ No key? It still runs. Colleagues fall back to scripted lines and no network is 
 | `npm run dev` | The app and its API on one port |
 | `npm run check` | Plays a whole shift without a browser or the AI model and checks the outcome |
 | `npm run llm:smoke` | One real call to the AI model, to check the key works |
-| `npm run build` then `npm start` | Production build, served by the same server |
+| `npm run build` then `npm start` | Type-check and production build, served by the same server |
+| `npm run check:db` | Against a running database: run round trip, lesson library, authoring and moderation |
+| `npm run check:auth` | Against a running database: sign-in, ownership, email confirmation, guest upgrades, password reset |
+| `npm run check:e2b` | One live run in an E2B sandbox (passes without a key) |
+| `npm run db:migrate` / `db:seed-scenarios` / `db:generate` / `db:studio` | Apply migrations, publish changed scenario files, generate a migration from `server/db/schema.ts`, browse the database |
+
+#### Configuration
+
+Everything is read from `.env` (see `.env.example`) or the environment. The account variables are listed under [Accounts](#accounts).
+
+| Variable | |
+|---|---|
+| `PERPLEXITY_API_KEY` | The AI model. Without it colleagues use scripted lines |
+| `PERPLEXITY_MODEL` | Any model from `GET https://api.perplexity.ai/v1/models`. Default `openai/gpt-6-luna` |
+| `PERPLEXITY_BASE_URL` | Override the API address. Default `https://api.perplexity.ai/v1` |
+| `LLM` | `stub` for scripted replies and no network, `live` otherwise |
+| `PORT` | Default `5183` |
+| `APP_PASSWORD` | Without a database, when hosted: HTTP Basic Auth with this password (any username) instead of this-machine-only |
+| `PUBLIC_ACCESS` | `1` lets anyone in with no login. Takes priority over `APP_PASSWORD` |
+| `DATABASE_URL` | Postgres. Turns on accounts, lesson authoring and moderation |
+| `E2B_API_KEY` | Runs player code in E2B cloud sandboxes. Set it when hosting |
+| `SANDBOX` | `local` forces the local process even with an E2B key |
 
 **Never commit `.env`.** This repository is public. `.env` and `.data/` are git-ignored.
 
@@ -63,7 +99,17 @@ With neither Resend nor Mailpit, the server prints each email, link included, to
 
 Other services can check a player with a JWT from `GET /api/auth/token` against the keys at `GET /api/auth/jwks`. Admins are promoted by hand: `update users set role = 'admin' where email = '...'`. `npm run check:auth` checks sign-in, ownership, email confirmation, guest upgrades and password reset against a running database.
 
+#### Lessons: library, authoring and moderation
+
+A lesson is a scenario: the story, cast and starting content a shift plays. The built-in one is `scenarios/ledgerly-day2.json`.
+
+- **Library** (`/`, `server/lessons.ts`). Every public, published lesson, searchable by text and tag, readable without signing in. Each has a page (`/lessons/:id`) with a Start button. Without a database it lists the built-ins.
+- **Writing lessons** (`/my/lessons`, `server/authoring.ts`, `server/generate.ts`). Needs a database and a confirmed email account (not a guest). Describe a lesson and the AI writes the draft, or revises it on request, up to 10 generations a day per author (reset at midnight UTC). Power users can edit the JSON directly. Every lesson still plays on the one codebase (`workspace-template/ledgerly-api`), so the AI may rewrite the story but not the parts tied to the code: the checks, the customers' figures, the bug's ticket and the ids the engine uses. To publish, the author must first finish a shift on that exact draft with every check passing. Lessons are `private`, `unlisted` or `public`; each publish is a new version, and running shifts stay pinned to the version they started on. Up to 20 lessons per author.
+- **Moderation** (`/admin`, `server/moderation.ts`). Signed-in players can report a lesson. Admins see the queue, unpublish or restore lessons, and ban or unban authors (a ban signs them out and hides their lessons). Anyone else gets a 404. There is no content editing here.
+
 ### What you can do in a shift
+
+Before a shift you pick your background (new grad, bootcamp, career switcher) and can describe it in a sentence; the mentor pitches explanations to it. The clock runs at an adjustable pace, and the shift ends when you press End shift. Afterwards a debrief page shows what happened, what you put right, and what to practise next.
 
 | App | What is real |
 |---|---|
@@ -78,26 +124,72 @@ The step list in the top-left corner shows what to do next and ticks steps off a
 
 Useful terminal commands: `help`, `npm test -- src/auth`, `git status`, `git commit -am "..."`, `ldg deploy auth-api --env prod`, `ldg rollback auth-api`, `ldg status`, `ldg logs`.
 
-### How it works
+### Architecture overview
+
+One Node process on one port serves the API and the browser app (through Vite middleware in development, from `dist/` once built).
+
+```
+ Browser (React)                            Server (Express, one process)
+ ┌──────────────────────────┐   REST /api   ┌────────────────────────────────────────────┐
+ │ Library, My lessons,     │ ────────────► │ routes.ts  validates every request         │
+ │ Admin, Sign in           │               │  ├─ auth.ts (Better Auth, /api/auth)       │
+ │                          │               │  ├─ lessons, authoring, generate, moderation│
+ │ Desktop (the shift)      │  POST /act    │  └─ director.ts  clock, triggers, outcomes │
+ │  src/sim/store.ts ───────┼─────────────► │      ├─ world.ts    live shift + stream    │
+ │  copy of the world,      │  SSE /events  │      ├─ ai/  personas, mentor → llm.ts ────┼──► Perplexity
+ │  windows, drafts ◄───────┼────────────── │      ├─ sandbox.ts  git, files, code ──────┼──► E2B (optional)
+ │  apps: VS Code, Outlook, │               │      │    └─ acceptance.ts  hidden checks  │
+ │  Teams, Jira, Confluence,│               │      └─ runs.ts     state + event log      │
+ │  CloudWatch              │               └─────────────────────┬──────────────────────┘
+ └──────────────────────────┘                                     │
+                                      .data/ (files)  or  PostgreSQL (Drizzle) + .data/ workspaces
+```
+
+**A shift, end to end**
+
+1. `POST /api/sessions` picks the lesson (the author's latest draft, or the latest published version), copies `workspace-template/ledgerly-api` into a fresh git workspace, and starts the director.
+2. The browser opens `GET /api/sessions/:id/events`, a Server-Sent Events stream: a full snapshot first, then each change. The clock only runs while someone is watching.
+3. Every player action (a chat, an email, a ticket, a terminal command, a commit, a file save) is a request that `routes.ts` validates before it reaches `director.ts`. Long-running ones (`exec`, `commit`) answer over the stream.
+4. `ldg deploy` runs `server/acceptance.ts` against what the player actually wrote. Failing checks become an incident: CloudWatch alarms, customer figures, an angry client. Scripted scenario triggers (`server/triggers.ts`) fire on the clock and on events.
+5. Colleagues (`server/ai/personas.ts`) each see only the facts they could know and act through a fixed set of validated tools. The mentor (`server/ai/mentor.ts`) opens from facts at once and escalates how much it gives away after each bad deploy. All model calls go through `server/ai/llm.ts`, which queues, rate-limits, times out and never throws; `null` means use the scripted line.
+6. State and the event log are saved through `server/runs.ts`: to `.data/` without a database, to `runs`, `run_events` and `run_workspaces` with one. `world.ts` is only a cache of live shifts.
+
+**Database tables** (`server/db/schema.ts`): `scenarios` and `scenario_versions` (lessons and their versions), `lesson_generations` (the daily AI quota), `runs`, `run_events`, `run_workspaces`, `lesson_reports`, and Better Auth's `users`, `sessions`, `accounts`, `verifications`, `jwks`.
+
+**Pages** (`src/App.tsx`): `/` library, `/lessons/:id` lesson, `/play` the shift, `/my/lessons` and `/my/lessons/:id` authoring, `/admin` moderation, `/reset-password`.
+
+### Where things live
 
 | Folder | Contents |
 |---|---|
 | `src/` | The browser app (React, TypeScript). Holds a read-only copy of the world and what only the browser knows, such as window positions |
 | `server/` | Express. Owns the world, runs the clock, decides consequences, talks to the AI model |
+| `server/director.ts` | Runs the shift: clock, scheduled events, consequences. No model calls |
+| `server/world.ts`, `server/runs.ts` | The live shift and its stream; where shifts are stored (files or Postgres) |
+| `server/routes.ts`, `server/auth.ts` | The API and its validation; accounts |
+| `server/lessons.ts`, `server/authoring.ts`, `server/generate.ts`, `server/moderation.ts` | Library, lesson writing, AI generation, moderation |
+| `server/db/` | Drizzle schema, migrations, migrate and seed scripts |
+| `server/check*.ts` | The `npm run check*` scripts |
 | `server/sandbox.ts` | The only code that touches disk or starts a process for the player |
 | `server/e2b.ts` | Runs the player's code in an E2B cloud sandbox when `E2B_API_KEY` is set |
 | `server/acceptance.ts` | Hidden production checks run against the player's code on every deploy |
 | `server/ai/` | The model client, the colleagues, and the mentor |
-| `shared/` | Types, pure helpers and the scenario schema, used by both sides |
+| `shared/` | Types, pure helpers, the scenario schema, the opening step list and tag rules, used by both sides |
 | `scenarios/` | Scenario content as data: the cast, the chat channels, and the inbox, chats, tickets and wiki the shift starts with. Checked against the schema at startup |
 | `workspace-template/ledgerly-api/` | The codebase the player works on. Copied fresh for each shift |
 | `.data/` | Running shifts: state, event log, and each player's workspace. Safe to delete |
+| `Dockerfile`, `docker-compose.yml`, `docker-entrypoint.sh`, `railway.json` | Image, local stack, volume permissions, Railway pre-deploy |
+| `.github/workflows/ci.yml` | CI |
 
 Three rules the design follows:
 
 1. **The code decides what happens.** Deploying runs hidden checks against what the player actually wrote. Nothing is scripted to fail.
 2. **Nothing the player is waiting on waits for the AI.** The mentor's first message is built from facts and arrives at once. The AI writes the coaching that follows, and starts on it when the player commits.
 3. **The AI chooses words, not facts.** What broke and who it affected come from the checks. Colleagues can only act through a fixed set of tools, and every argument is validated.
+
+### CI and deploy
+
+GitHub Actions runs on every pull request and push to `main`: type-check and build, `npm run check` (stubbed model, no secrets), and a Docker image build. Railway deploys `main`; turn on "Wait for CI" there so a red run blocks the deploy. The image runs the server as the unprivileged `node` user; the entrypoint only uses root to hand a mounted `/app/.data` volume to it.
 
 ### Limits
 
