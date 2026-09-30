@@ -6,7 +6,8 @@ import type { Attachment, Level } from '../shared/types.ts'
 import { mode, probe } from './ai/llm.ts'
 import * as director from './director.ts'
 import { Refusal } from './sandbox.ts'
-import { authEnabled, me } from './auth.ts'
+import { authEnabled, googleEnabled, me } from './auth.ts'
+import { mailReady } from './mail.ts'
 import { listRuns } from './runs.ts'
 import { create, find, roster, valid } from './world.ts'
 
@@ -56,7 +57,7 @@ api.get('/scenario', (_req, res) => { res.json(roster()) })
 
 api.get('/auth-config', (_req, res) => {
   const on = authEnabled()
-  res.json({ enabled: on, guest: on, email: false, google: false })
+  res.json({ enabled: on, guest: on, email: on && mailReady(), google: on && googleEnabled() })
 })
 
 // Everything below needs a signed-in user (a guest counts) once accounts are on.

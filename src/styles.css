@@ -158,7 +158,17 @@ img { display: block; user-select: none; }
 .day.now i { background: var(--accent); }
 
 .setup { flex: 1 1 480px; min-width: 0; padding: 28px; border-radius: 18px; gap: 26px; display: flex; flex-direction: column; background: var(--card); box-shadow: 0 0 0 0.5px var(--edge), 0 18px 50px rgba(0, 0, 0, 0.09); }
-.signin { flex: 0 1 420px; }
+.signin { flex: 0 1 420px; gap: 18px; }
+.signin .input { height: 40px; }
+.signin .cta { margin-top: 4px; }
+.signin .cta-note { margin-top: -6px; }
+.signin-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin: -8px 0 -6px; font-size: 12.5px; }
+.signin-head { display: flex; align-items: center; gap: 8px; }
+.signin-links { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+.signin-others { display: flex; flex-direction: column; gap: 10px; }
+.signin-or { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--sub); }
+.signin-or::before, .signin-or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.signin-alt { height: 40px; width: 100%; font-size: 13.5px; }
 .field { display: flex; flex-direction: column; gap: 10px; }
 .field-label { font-weight: 600; }
 .roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }

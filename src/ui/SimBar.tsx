@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { LogOut, Sparkles, TriangleAlert, WifiOff } from 'lucide-react'
 import { PACES, RATE, clock, dur, lockedAt, money } from '../../shared/types.ts'
+import { useAccount } from '../sim/auth.ts'
 import { live, sim, useSim } from '../sim/store.ts'
 import { Brand, SPRING, Segmented, ThemeToggle } from './bits.tsx'
 
@@ -14,6 +15,7 @@ export function SimBar() {
   const online = useSim(s => s.online)
   const impact = useSim(s => s.impact)
   const deadline = useSim(s => s.deadline)
+  const account = useAccount()
   const on = live({ incident }), toDemo = deadline === null ? null : deadline - m
   return (
     <header className={'simbar' + (on ? ' compact' : '')}>
@@ -39,6 +41,7 @@ export function SimBar() {
           </motion.div>
         )}
       </AnimatePresence>
+      {account?.isAnonymous && account.save && <button className="btn btn-soft" onClick={account.save}>Save your progress</button>}
       <ThemeToggle />
       <button className="btn btn-ink" data-guide="end-shift" onClick={sim.endShift}><LogOut size={14} strokeWidth={2.4} />End shift</button>
     </header>

@@ -1,19 +1,88 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 import { motion } from 'motion/react'
-import { ArrowRight, LoaderCircle } from 'lucide-react'
+import { ArrowLeft, ArrowRight, LoaderCircle, MailCheck } from 'lucide-react'
 import { authClient } from '../sim/auth.ts'
+import type { AuthConfig } from '../sim/auth.ts'
 import { Brand, ThemeToggle, rise, stagger } from './bits.tsx'
 
-export function SignIn() {
+type Mode = 'signin' | 'register' | 'inbox' | 'forgot' | 'sent' | 'reset'
+interface Problem { code?: string; message?: string; status?: number }
+
+const LINK_ERRORS: Record<string, string> = {
+  INVALID_TOKEN: 'That link is invalid or has already been used.',
+  TOKEN_EXPIRED: 'That link has expired. Sign in and we will send a new one.',
+  USER_NOT_FOUND: 'That link is for an account that no longer exists.',
+}
+const say = (e: Problem) => (e.status === 429 ? 'Too many tries. Wait a minute, then try again.' : e.message || 'Something went wrong. Try again.')
+
+// Links from emails and Google land on the app with a reset token or an error. Read once, then tidied from the URL so a reload doesn't replay them.
+function fromUrl() {
+  const q = new URLSearchParams(location.search)
+  const token = location.pathname === '/reset-password' ? q.get('token') ?? '' : ''
+  const code = q.get('error')
+  if (token || code) history.replaceState(null, '', '/')
+  const error = code ? LINK_ERRORS[code] ?? `Sign-in didn't work (${code.replace(/_/g, ' ')}). Try again or use another way in.` : ''
+  return { token, error }
+}
+let arrival = fromUrl()
+export const arrivedByLink = !!(arrival.token || arrival.error)
+
+export function SignIn({ config, start, onDone, onBack }: { config: AuthConfig; start?: Mode; onDone: () => void; onBack?: () => void }) {
+  const [landed] = useState(arrival)
+  useEffect(() => { arrival = { token: '', error: '' } }, [])
+  const [mode, setMode] = useState<Mode>(landed.token ? 'reset' : start ?? (config.email ? 'signin' : 'register'))
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const guest = async () => {
+  const [error, setError] = useState(landed.error)
+  const [note, setNote] = useState('')
+  const go = (m: Mode) => { setMode(m); setError(''); setNote('') }
+  const saving = !!onBack && start === 'register'
+
+  const run = async (e: FormEvent | null, work: () => Promise<{ error: Problem | null }>, then: () => void) => {
+    e?.preventDefault()
     setBusy(true)
     setError('')
-    const { error } = await authClient.signIn.anonymous()
-    // On success the session updates and this page goes away.
-    if (error) { setError(error.message ?? 'Could not sign you in. Try again.'); setBusy(false) }
+    setNote('')
+    const { error } = await work()
+    setBusy(false)
+    if (!error) return then()
+    if (error.code === 'EMAIL_NOT_VERIFIED') return setMode('inbox')
+    setError(say(error))
   }
+  const signIn = (e: FormEvent) => run(e, () => authClient.signIn.email({ email, password, callbackURL: '/' }), onDone)
+  const register = (e: FormEvent) => run(e, () => authClient.signUp.email({ name: name.trim(), email, password, callbackURL: '/' }), () => setMode('inbox'))
+  const resend = () => run(null, () => authClient.sendVerificationEmail({ email, callbackURL: '/' }), () => setNote('Sent again. It can take a minute to arrive.'))
+  const forgot = (e: FormEvent) => run(e, () => authClient.requestPasswordReset({ email, redirectTo: '/reset-password' }), () => setMode('sent'))
+  const reset = (e: FormEvent) => run(e, () => authClient.resetPassword({ newPassword: password, token: landed.token }), () => {
+    setPassword('')
+    go('signin')
+    setNote('Password changed. Sign in with your new password.')
+  })
+  const google = () => run(null, () => authClient.signIn.social({ provider: 'google', callbackURL: '/', errorCallbackURL: '/' }), () => {})
+  const guest = () => run(null, () => authClient.signIn.anonymous(), onDone)
+
+  const submit = (label: string, doing: string) => (
+    <button className="cta" type="submit" disabled={busy}>
+      {busy ? <><LoaderCircle size={17} className="spin" />{doing}</> : <>{label} <ArrowRight size={17} strokeWidth={2.4} /></>}
+    </button>
+  )
+  const emailField = <input className="input" type="email" required autoComplete="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+  const passwordField = (fresh: boolean) => (
+    <input className="input" type="password" required minLength={fresh ? 8 : undefined} maxLength={128} autoComplete={fresh ? 'new-password' : 'current-password'}
+      placeholder={fresh ? 'Password (8 characters or more)' : 'Password'} value={password} onChange={e => setPassword(e.target.value)} />
+  )
+  const others = (mode === 'signin' || mode === 'register') && (config.google || (config.guest && !onBack)) && (
+    <div className="signin-others">
+      {config.email && <div className="signin-or"><span>or</span></div>}
+      {config.google && <button className="btn btn-chip signin-alt" disabled={busy} onClick={google}>Continue with Google</button>}
+      {config.guest && !onBack && <button className="btn btn-chip signin-alt" disabled={busy} onClick={guest}>Continue as guest</button>}
+      {config.guest && !onBack && <div className="level-note">As a guest, your shifts stay with this browser. Create an account any time to keep them.</div>}
+    </div>
+  )
+
   return (
     <div className="page">
       <header className="topbar">
@@ -27,14 +96,65 @@ export function SignIn() {
           <motion.p variants={rise} className="lede">Sign in to start a shift. Your shifts are kept with your account, so you can pick up where you left off.</motion.p>
         </section>
         <motion.section variants={rise} className="card setup signin">
-          <div className="field">
-            <div className="field-label">Sign in</div>
-            <div className="level-note">No account needed. As a guest, your shifts stay with this browser; signing out leaves them behind.</div>
-          </div>
-          <button className="cta" disabled={busy} onClick={guest}>
-            {busy ? <><LoaderCircle size={17} className="spin" />Signing you in</> : <>Continue as guest <ArrowRight size={17} strokeWidth={2.4} /></>}
-          </button>
-          {error && <div className="cta-note bad">{error}</div>}
+          {onBack && <button className="link signin-back" onClick={onBack}><ArrowLeft size={14} /> Back</button>}
+          {config.email && mode === 'signin' && (
+            <form className="field" onSubmit={signIn}>
+              <div className="field-label">Sign in</div>
+              {emailField}
+              {passwordField(false)}
+              {submit('Sign in', 'Signing you in')}
+              <div className="signin-links">
+                <button type="button" className="link" onClick={() => go('forgot')}>Forgot password?</button>
+                <button type="button" className="link" onClick={() => go('register')}>Create an account</button>
+              </div>
+            </form>
+          )}
+          {config.email && mode === 'register' && (
+            <form className="field" onSubmit={register}>
+              <div className="field-label">{saving ? 'Save your progress' : 'Create an account'}</div>
+              {saving && <div className="level-note">Your shifts so far move to the new account once you confirm your email.</div>}
+              <input className="input" required maxLength={80} autoComplete="name" placeholder="Name" value={name} onChange={e => setName(e.target.value)} />
+              {emailField}
+              {passwordField(true)}
+              {submit('Create account', 'Creating your account')}
+              <div className="signin-links"><button type="button" className="link" onClick={() => go('signin')}>I already have an account</button></div>
+            </form>
+          )}
+          {mode === 'inbox' && (
+            <div className="field">
+              <div className="field-label signin-head"><MailCheck size={18} /> Check your inbox</div>
+              <div className="level-note">We sent a link to <b>{email}</b>. Open it to confirm your email and you're in.{onBack ? ' Your shifts come with you.' : ''}</div>
+              <div className="signin-links">
+                <button className="link" disabled={busy} onClick={resend}>Send it again</button>
+                <button className="link" onClick={() => go('signin')}>Back to sign in</button>
+              </div>
+            </div>
+          )}
+          {mode === 'forgot' && (
+            <form className="field" onSubmit={forgot}>
+              <div className="field-label">Reset your password</div>
+              <div className="level-note">We'll email you a link to choose a new one.</div>
+              {emailField}
+              {submit('Send reset link', 'Sending')}
+              <div className="signin-links"><button type="button" className="link" onClick={() => go('signin')}>Back to sign in</button></div>
+            </form>
+          )}
+          {mode === 'sent' && (
+            <div className="field">
+              <div className="field-label signin-head"><MailCheck size={18} /> Check your inbox</div>
+              <div className="level-note">If <b>{email}</b> has an account, a reset link is on its way. It works for an hour.</div>
+              <div className="signin-links"><button className="link" onClick={() => go('signin')}>Back to sign in</button></div>
+            </div>
+          )}
+          {mode === 'reset' && (
+            <form className="field" onSubmit={reset}>
+              <div className="field-label">Choose a new password</div>
+              {passwordField(true)}
+              {submit('Set new password', 'Saving')}
+            </form>
+          )}
+          {error ? <div className="cta-note bad" role="alert">{error}</div> : note && <div className="cta-note">{note}</div>}
+          {others}
         </motion.section>
       </motion.main>
     </div>
