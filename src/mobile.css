@@ -48,6 +48,12 @@
   .library-search { max-width: none; }
   .lesson-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .lesson-card { padding: 16px; }
+  .author-card { padding: 16px; }
+  .author-actions > .btn, .ask-foot > .btn { flex: 1 1 auto; }
+  .json-edit { height: 70vh; }
+  .author-vis { width: 100%; }
+  .author-vis .select { flex: 1 1 auto; }
+  .beats li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .post-head h1 { font-size: 28px; }
   .recap .panel { padding: 16px; }
   .recap-grid { gap: 16px; }

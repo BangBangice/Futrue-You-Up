@@ -1,7 +1,7 @@
 // The lesson library: every public lesson, readable without signing in, and a page for each with a Start button.
 import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
-import { ArrowLeft, ArrowRight, Flag, Play, Search, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Flag, PenLine, Play, Search, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { LEVELS } from '../../shared/types.ts'
 import type { World } from '../../shared/types.ts'
@@ -37,6 +37,17 @@ export function Top() {
       </div>
     </header>
   )
+}
+
+/** Writing lessons takes a confirmed account: the way in for those who have one, and the way to one for everyone else. */
+function Authoring() {
+  const { config, userId, loading } = useWho()
+  const account = useAccount()
+  if (!config.enabled || loading || (account && !account.isAnonymous && !account.verified)) return null
+  if (account?.verified) return <div><Link className="btn btn-soft" to="/my/lessons"><PenLine size={14} />My lessons</Link></div>
+  const signUp = account?.save ?? (!userId && (config.email || config.google) ? true : undefined)
+  if (!signUp) return null
+  return <div>{signUp === true ? <Link className="btn btn-chip" to="/my/lessons">Sign up to create lessons</Link> : <button className="btn btn-chip" onClick={signUp}>Sign up to create lessons</button>}</div>
 }
 
 /** An unfinished shift to go back to: this tab's, or with an account the newest one still going. */
@@ -93,6 +104,7 @@ export function Library() {
             <div className="eyebrow">LESSON LIBRARY</div>
             <h1>Pick a shift to practise.</h1>
             <p className="lede">Each lesson is a day at work: a real codebase, colleagues who message you, and a mentor who steps in when it goes wrong.</p>
+            <Authoring />
           </motion.section>
           {run && (
             <motion.button variants={rise} className="lesson-card resume" onClick={() => resume(run.id)}>

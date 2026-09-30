@@ -12,6 +12,7 @@ import { Post } from './ui/Post.tsx'
 import { SignIn, arrivedByLink } from './ui/SignIn.tsx'
 import { LessonPage, Library } from './ui/Library.tsx'
 import { Admin } from './ui/Admin.tsx'
+import { LessonEditor, MyLessons } from './ui/MyLessons.tsx'
 
 export default function App() {
   const theme = useSim(s => s.theme)
@@ -31,6 +32,8 @@ function Pages() {
     <Routes>
       <Route path="/" element={<Library />} />
       <Route path="/lessons/:id" element={<LessonPage />} />
+      <Route path="/my/lessons" element={<MyLessons />} />
+      <Route path="/my/lessons/:id" element={<LessonEditor />} />
       <Route path="/play" element={<Play />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/reset-password" element={<ResetPassword />} />
@@ -48,6 +51,7 @@ function Accounts({ config, children }: { config: AuthConfig; children: ReactNod
     name: user.name,
     isAnonymous: !!user.isAnonymous,
     role: (user as { role?: string }).role ?? 'learner',
+    verified: !!user.emailVerified,
     signOut: async () => { await authClient.signOut(); sim.replay() },
     save: config.email || config.google ? () => setSigning('save') : undefined,
   }, [user, config])

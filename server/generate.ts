@@ -103,7 +103,8 @@ function stub(prompt: string, base?: Scenario): Scenario {
   const words = prompt.trim().replace(/\s+/g, ' ')
   const s = structuredClone(base ?? LEDGERLY)
   if (!base) {
-    s.title = (words[0].toUpperCase() + words.slice(1, 60)).replace(/[.\s]+$/, '')
+    const short = words.length > 60 ? words.slice(0, 60).replace(/\s+\S*$/, '') : words
+    s.title = (short[0].toUpperCase() + short.slice(1)).replace(/[.,;:\s]+$/, '')
     s.tags = [...(s.tags ?? []), 'ai-draft']
   }
   s.summary = (base ? `Revised: ${words}` : words).slice(0, 200)
