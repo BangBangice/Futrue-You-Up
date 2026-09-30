@@ -146,7 +146,8 @@ class Store {
       this.remember(world)
       this.set({ ...(fresh ? { ...view(), seen: this.recall(world.id) } : {}), theme: this.state.theme, desk: this.state.desk, ...world, online: true, starting: false })
       if (fresh) this.fit(this.state.desk.W, this.state.desk.H)
-      if (fresh && phone()) this.toast({ title: 'Best on a laptop', body: 'LARP is built for a bigger screen. It works on your phone too, with less room.', go: () => {} })
+      // Only on a touch device: a narrow laptop window gets the phone layout too, but it is still a laptop.
+      if (fresh && phone() && matchMedia('(pointer: coarse)').matches) this.toast({ title: 'Best on a laptop', body: 'LARP is built for a bigger screen. It works on your phone too, with less room.', go: () => {} })
     })
     es.addEventListener('patch', e => { const d = read(e); if (d) this.apply(d.patch) })
     es.addEventListener('term', e => {
