@@ -7,7 +7,7 @@ import { anonymous, jwt } from 'better-auth/plugins'
 import type { IncomingHttpHeaders } from 'node:http'
 import { db, dbEnabled } from './db/index.ts'
 import { accounts, jwks, sessions, users, verifications } from './db/schema.ts'
-import { letter, mailScope, send } from './mail.ts'
+import { letter, mailScope, mask, send } from './mail.ts'
 import { guestName } from './names.ts'
 import { adopt } from './world.ts'
 
@@ -15,6 +15,7 @@ export const authEnabled = dbEnabled
 export const googleEnabled = () => !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
 
 const HOUR = 3600
+const QUIET = ['/sign-up/email', '/send-verification-email', '/request-password-reset']
 const upgrade = (userId: string) => `guest-upgrade:${userId}`
 
 const build = () => betterAuth({
@@ -30,6 +31,12 @@ const build = () => betterAuth({
     requireEmailVerification: true,
     revokeSessionsOnPasswordReset: true,
     resetPasswordTokenExpiresIn: HOUR,
+    // Signing up with an address that already has an account (from Google, say) answers "check your inbox" like any other
+    // sign-up, so nobody can probe which addresses have accounts. Without this, that inbox stays empty.
+    onExistingUserSignUp: ({ user }) => send(letter(user.email, 'You already have a LARP account', [
+      `Hi ${user.name},`, 'Someone, probably you, tried to create a LARP account with this address, but it already has one.',
+      'Sign in instead. If you signed up with Google, choose "Continue with Google". If you have forgotten your password, choose "Forgot password" on the sign-in page.',
+    ], { label: 'Go to sign in', url: process.env.BETTER_AUTH_URL ?? '/' })),
     sendResetPassword: ({ user, url }) => send(letter(user.email, 'Reset your LARP password', [
       `Hi ${user.name},`, 'Someone asked to reset the password for your LARP account. The link works for an hour.',
     ], { label: 'Choose a new password', url })),
@@ -50,8 +57,14 @@ const build = () => betterAuth({
   advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for'] } },
   rateLimit: { enabled: process.env.NODE_ENV === 'production' },
   hooks: {
-    after: createAuthMiddleware(async () => {
-      if (mailScope.getStore()?.failed) throw new APIError('SERVICE_UNAVAILABLE', { message: "We couldn't send the email just now. Try again in a minute." })
+    after: createAuthMiddleware(async ctx => {
+      const scope = mailScope.getStore()
+      // These answer "sent" even when Better Auth decided not to send (no such account, or already confirmed). Say so in the log.
+      if (QUIET.includes(ctx.path) && !scope?.sent && !scope?.failed && !(ctx.context.returned instanceof APIError)) {
+        const email = typeof ctx.body?.email === 'string' ? mask(ctx.body.email) : 'an address'
+        console.warn(`[mail] ${ctx.path} for ${email}: no email sent. Better Auth sends none when the address has no account or is already confirmed.`)
+      }
+      if (scope?.failed) throw new APIError('SERVICE_UNAVAILABLE', { message: "We couldn't send the email just now. Try again in a minute." })
     }),
   },
   // A guest registering by email gets no session until the address is confirmed, perhaps in another browser, where the

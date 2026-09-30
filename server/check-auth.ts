@@ -126,6 +126,10 @@ assert.equal((await blocked.json()).code, 'EMAIL_NOT_VERIFIED')
 const samCookie = await confirm(sam)
 assert.deepEqual(Object.values(await (await call('/api/me', samCookie)).json()).slice(1), ['Sam', false, 'learner'])
 assert.equal((await signIn(sam, PASSWORD)).status, 200, 'signs in once confirmed')
+// Signing up again answers like any sign-up, and the inbox gets a nudge to sign in rather than nothing.
+assert.equal((await register(sam)).status, 200, 'a second sign-up looks the same')
+assert.match(printed, /You already have a LARP account/)
+await mailTo(sam)
 
 // A guest who registers keeps their shifts, whichever browser opens the confirmation link.
 for (const sameBrowser of [false, true]) {
