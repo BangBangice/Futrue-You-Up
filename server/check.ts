@@ -191,6 +191,13 @@ assert.deepEqual(broken(c => { warning(c).do[1].post.files = [{ kind: 'doc', doc
 assert.deepEqual(broken(c => { warning(c).do.push({ flag: 'warnedAt', post: warning(c).do[1].post }) }), ['an action needs exactly one of post, mail, flag'])
 assert.deepEqual(broken(c => { warning(c).if = { incident: 'still-open' } }), ['"incident": "still-open" only applies to triggers on incident.opened'])
 assert.deepEqual(broken(c => { c.triggers.push(warning(c)) }), ['duplicate trigger id "daniel_warning"'])
+assert.deepEqual(broken(c => { c.cast.leo.persona.can.push('deploy') }), ['no tool "deploy"'])
+assert.deepEqual(broken(c => { c.cast.leo.persona.can = ['send_teams_message'] }), ['a persona must be able to do_nothing'])
+assert.deepEqual(broken(c => { c.cast.leo.persona.rooms.push('random') }), ['no channel with id "random"'])
+assert.deepEqual(broken(c => { c.mentor = 'nobody' }), ['no cast member with id "nobody"'])
+assert.deepEqual(broken(c => { c.mentor = 'sam' }), ['the mentor needs a DM channel with id "sam"'])
+// Versions stored before personas were data must not parse, so runs fall back to the file rather than lose every AI colleague.
+assert.ok(broken(c => { delete c.mentor }).length)
 
 s.stop()
 console.log(`server check passed · ${s.priv.events.length} events · ${events.length} stream messages`)

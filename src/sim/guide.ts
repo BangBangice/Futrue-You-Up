@@ -46,8 +46,9 @@ export function guide(s: State): Guide {
   const pmDone = !!pm?.thread.length || s.docs.some(d => d.owner === s.player && /post-?mortem/i.test(d.title))
 
   const watch = (text: string): Step => ({ id: 'watch', text, done: watched, hint: 'A deploy takes about two minutes to show up.', show: inApp('monitor', 'error-rate') })
-  const daniel = (after: number, side = false): Step[] => s.chats.daniel.some(m => m.who === 'daniel' && m.id > after)
-    ? [{ id: 'daniel', text: 'Read Daniel’s message in Teams', done: !s.unread.daniel, side, show: inChat('daniel') }] : []
+  const mid = s.mentor, mentorName = s.cast[mid]?.name.split(' ')[0]
+  const mentor = (after: number, side = false): Step[] => s.chats[mid]?.some(m => m.who === mid && m.id > after)
+    ? [{ id: 'mentor', text: `Read ${mentorName}’s message in Teams`, done: !s.unread[mid], side, show: inChat(mid) }] : []
   const replies = (): Step[] => s.emails.filter(e => e.kind === 'client' || e.kind === 'support' || e.kind === 'sam')
     .map(e => ({ id: e.id, text: `Reply to ${s.cast[e.who].name}`, done: e.thread.length > 0, side: true, show: inMail(e, true) }))
   const ship = (again: boolean): Step[] => [
@@ -67,7 +68,7 @@ export function guide(s: State): Guide {
         { id: 'look', text: 'Check CloudWatch: what is failing, and for whom', done: watched, show: inApp('monitor', 'error-rate') },
         { id: 'rollback', text: 'Roll back your release', done: prod?.sha !== s.incident!.sha, hint: 'The incident runbook in Confluence explains why.', show: inApp('monitor', 'rollback', 'rollback-code') },
         { id: 'wait', text: 'Wait for the 401 rate to drop under 5%', done: false, show: inApp('monitor', 'error-rate') },
-        ...daniel(fire, true), ...replies(),
+        ...mentor(fire, true), ...replies(),
       ],
     }
   }
@@ -78,7 +79,7 @@ export function guide(s: State): Guide {
       phase: 'after:' + s.incident.id, title: 'Service is back', sub: fixed ? 'Close out the incident.' : 'Close out the incident, then fix LED-214 for real.',
       steps: [
         { id: 'update', text: 'Tell #incidents that service is restored', done: saidIn('incidents', lastAlert('ok')), show: inChat('incidents') },
-        ...daniel(lastAlert('fire')),
+        ...mentor(lastAlert('fire')),
         ...(pm ? [{ id: 'pm', text: 'Send Priya a short postmortem', done: pmDone, hint: 'Reply to her email, or write it as a page in Confluence. The template is there too.', show: inMail(pm, true) }] : []),
         ...(fixed ? [] : ship(true)),
         ...replies().filter(x => !x.done),
@@ -94,7 +95,7 @@ export function guide(s: State): Guide {
       steps: [
         watch('Watch the 401 rate in CloudWatch for a few minutes'),
         { id: 'tell', text: 'Tell Priya it is out', done: saidIn('priya', out), show: inChat('priya') },
-        { id: 'end', text: 'End your shift when you’re ready', done: false, hint: 'You get a recap of the day and a note from Daniel.', show: () => sim.spotlight(['end-shift']) },
+        { id: 'end', text: 'End your shift when you’re ready', done: false, hint: `You get a recap of the day and a note from ${mentorName}.`, show: () => sim.spotlight(['end-shift']) },
       ],
     }
   }
@@ -103,13 +104,13 @@ export function guide(s: State): Guide {
   if (s.deploys.some(d => d.by === s.player && d.kind === 'deploy')) {
     return {
       phase: 'retry:' + n, title: 'Your deploy is live', sub: 'Jira still shows LED-214 as open. See what production says.',
-      steps: [watch('Watch the 401 rate in CloudWatch'), ...daniel(lastAlert('info')), ...ship(true)],
+      steps: [watch('Watch the 401 rate in CloudWatch'), ...mentor(lastAlert('info')), ...ship(true)],
     }
   }
 
   // ---------- the ticket ----------
   const e1 = s.emails.find(e => e.id === 'e1')
-  const warning = s.chats.team.find(m => m.who === 'daniel' && m.id > NEW)
+  const warning = s.chats.team.find(m => m.who === mid && m.id > NEW)
   const leo = s.chats.leo.find(m => m.who === 'leo' && m.id > NEW && m.text.includes('auth tests'))
   const priya = s.chats.priya.findLast(m => m.who === 'priya' && m.id > NEW && /^(How’s|Any update on) LED-214/.test(m.text))
   const status = s.tickets.find(t => t.id === 'LED-214')?.status
@@ -121,7 +122,7 @@ export function guide(s: State): Guide {
         { id: 'ack', text: 'Reply to Priya so she knows you’ve picked it up', done: e1.thread.length > 0, show: () => { sim.openMail(e1.id); sim.spotlight(['mail-reply'], 'dock:mail') } },
       ] : []),
       { id: 'ticket', text: 'Move LED-214 to In progress in Jira', done: !!status && status !== 'todo', hint: 'Change Status on the ticket, or drag the card.', show: () => { sim.openTicket('LED-214'); sim.spotlight(['ticket-status', 'ticket:LED-214'], 'dock:tracker') } },
-      { id: 'team', text: 'Read Daniel’s heads-up in #team', done: !!warning && !s.unread.team, show: inChat('team') },
+      { id: 'team', text: `Read ${mentorName}’s heads-up in #team`, done: !!warning && !s.unread.team, show: inChat('team') },
       ...(s.level === 'newgrad' ? [
         { id: 'wiki', text: 'Read “Auth service: login paths” in Confluence', done: s.seen.includes('doc:auth'), show: inApp('docs', 'doc:auth') },
         { id: 'password', text: 'Open passwordLogin.ts and see what it sends', done: s.seen.includes('file:' + PASSWORD), show: inCode('files', 'file:' + PASSWORD) },

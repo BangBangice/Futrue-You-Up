@@ -10,7 +10,7 @@ const ROLES = [['Backend developer', Server], ['Frontend developer', LayoutDashb
 const DAYS = [['Setup · done', 'done'], ['First ticket', 'now'], ['Code review', ''], ['On-call', ''], ['Handoff', '']]
 
 export function Onboarding() {
-  const level = useSim(s => s.level)
+  const level = useSim(s => s.level), levels = useSim(s => s.levels)
   const background = useSim(s => s.background)
   const starting = useSim(s => s.starting)
   const error = useSim(s => s.error)
@@ -60,11 +60,11 @@ export function Onboarding() {
           </div>
           <div className="field">
             <div className="field-label">Where you are starting from</div>
-            <Segmented id="level" grow value={level} options={LEVELS.map(([k, label]) => [k, label])} onChange={v => sim.set({ level: v })} />
+            <Segmented id="level" grow value={level} options={LEVELS.map(k => [k, levels[k]?.label ?? ''])} onChange={v => sim.set({ level: v })} />
             <div className="level-note">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div key={level} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }}>
-                  {LEVELS.find(l => l[0] === level)![2]}
+                  {levels[level]?.blurb}
                 </motion.div>
               </AnimatePresence>
             </div>

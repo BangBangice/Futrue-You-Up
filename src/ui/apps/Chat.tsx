@@ -50,7 +50,7 @@ export function Chat() {
   const typing = useSim(s => s.typing)
   const draft = useSim(s => s.chatDraft)
   const files = useSim(s => s.chatFiles)
-  const cast = useSim(s => s.cast), channels = useSim(s => s.channels), me = useSim(s => s.player)
+  const cast = useSim(s => s.cast), channels = useSim(s => s.channels), me = useSim(s => s.player), mentor = useSim(s => s.mentor)
   const shown = useSim(s => s.wins.chat.open && !s.wins.chat.min)
   const [query, setQuery] = useState('')
   const meta = channels[chan], msgs = chats[chan]
@@ -74,7 +74,7 @@ export function Chat() {
     return (
       <button key={k} data-guide={'chan:' + k} className={'side-item tm-item' + (chan === k ? ' on' : '') + (n ? ' bold' : '')} onClick={() => sim.openChat(k)}>
         {chan === k && <motion.i layoutId="chan" className="side-pill" transition={SPRING} />}
-        {channels[k].dm ? <span className="presence"><Avatar who={k} size={32} /><i className={k === 'daniel' ? 'away' : ''} /></span> : <span className="chan-icon"><Hash size={15} strokeWidth={2.3} /></span>}
+        {channels[k].dm ? <span className="presence"><Avatar who={k} size={32} /><i className={k === mentor ? 'away' : ''} /></span> : <span className="chan-icon"><Hash size={15} strokeWidth={2.3} /></span>}
         <span className="tm-item-text">
           <span className="tm-item-top"><b className="ellipsis">{label(channels, k)}</b>{latest && <time>{latest.time.replace(/^Mon .*/, 'Mon')}</time>}</span>
           <span className="tm-preview ellipsis">{latest ? (latest.who === me ? 'You: ' : '') + (latest.text || (latest.fallback ? 'AI reply failed' : 'Sent a file')) : channels[k].topic}</span>

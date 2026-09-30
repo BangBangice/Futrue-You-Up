@@ -42,7 +42,7 @@ const view = (): View => ({
   seen: [], spot: null, guideOpen: true,
 })
 const nowhere = (): Omit<World, 'stage'> => ({
-  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: START, cast: {}, channels: {}, player: '',
+  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: START, cast: {}, channels: {}, player: '', mentor: '', levels: {},
   emails: [], chats: {}, unread: {}, typing: [],
   tickets: [], docs: [], files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
   deploys: [], incident: null, demo: 'pending', timeline: [], recap: null,
@@ -107,7 +107,7 @@ class Store {
     try {
       const res = await fetch('/api/scenario')
       if (!res.ok) return
-      const cast = await res.json() as Pick<World, 'cast' | 'channels' | 'player'>
+      const cast = await res.json() as Pick<World, 'cast' | 'channels' | 'player' | 'mentor' | 'levels'>
       this.set(s => (s.stage === 'onboard' ? cast : null))
     } catch { /* the server is down; starting a shift will say so */ }
   }

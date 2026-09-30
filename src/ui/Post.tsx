@@ -8,7 +8,7 @@ import { Avatar, Brand, ThemeToggle, rise, stagger } from './bits.tsx'
 export function Post() {
   const recap = useSim(s => s.recap)
   const end = useSim(s => s.simMin)
-  const mentor = useSim(s => s.cast.daniel)
+  const mentorId = useSim(s => s.mentor), mentor = useSim(s => s.cast[s.mentor])
   if (!recap) return null
   return (
     <>
@@ -27,10 +27,10 @@ export function Post() {
           </motion.div>
 
           <motion.section variants={rise} className="panel mentor-note">
-            <Avatar who="daniel" size={40} />
+            <Avatar who={mentorId} size={40} />
             <div>
               <div className="comment-head"><b>{mentor.name}</b><span className="sub small">{mentor.title} · your mentor</span></div>
-              {recap.ready ? recap.note.split('\n').filter(Boolean).map((p, i) => <p key={i}>{p}</p>) : <p className="sub writing"><LoaderCircle size={14} className="spin" />Daniel is writing to you. What happened today is below in the meantime.</p>}
+              {recap.ready ? recap.note.split('\n').filter(Boolean).map((p, i) => <p key={i}>{p}</p>) : <p className="sub writing"><LoaderCircle size={14} className="spin" />{mentor.name.split(' ')[0]} is writing to you. What happened today is below in the meantime.</p>}
             </div>
           </motion.section>
 

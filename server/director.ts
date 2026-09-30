@@ -1,10 +1,9 @@
 // Runs the shift: the clock, the things that happen on schedule, and what follows from what the player does.
 // No model calls here. The director decides what is true; personas and the mentor decide how to say it.
 import { ALARM, CHECK_LABEL, COLS, DEMO, SHARE, START, clock, errAt, failing, isOutage, lockedAt, personByName } from '../shared/types.ts'
-import type { Attachment, ChanId, Check, Doc, Email, Folder, TermLine, Ticket } from '../shared/types.ts'
+import type { Attachment, ChanId, Check, Doc, Email, Folder, PersonId, TermLine, Ticket } from '../shared/types.ts'
 import * as mentor from './ai/mentor.ts'
 import { reply } from './ai/personas.ts'
-import type { Persona } from './ai/personas.ts'
 import { Refusal, tokenize } from './sandbox.ts'
 import type { Emit } from './sandbox.ts'
 import * as triggers from './triggers.ts'
@@ -21,7 +20,7 @@ export async function start(s: Session) {
   const [state, base] = [await s.ws.state(), await s.ws.accept()]
   s.priv.verdicts[state.head] = { ...base, diff: '' }
   s.world.term = [{ c: 'dim', t: 'Last login: Tue Sep 29 09:14 on ttys002' }, { c: 'dim', t: 'Type "help" to see what is available here.' }]
-  s.set({ files: await s.ws.tree(), code: state, deploys: [{ sha: state.head, at: START - 300, by: 'daniel', kind: 'deploy', checks: visible(base.checks) }] })
+  s.set({ files: await s.ws.tree(), code: state, deploys: [{ sha: state.head, at: START - 300, by: s.scenario.mentor, kind: 'deploy', checks: visible(base.checks) }] })
   triggers.schedule(s, s.scenario.triggers, 'start')
   s.priv.beats.push({ at: DEMO, kind: 'demo' })
   s.log('start', { level: s.world.level })
@@ -227,9 +226,14 @@ export function patchMail(s: Session, id: string, p: { read?: boolean; flagged?:
 }
 
 // ---------- what the player writes ----------
-const NAMES: [RegExp, Persona][] = [[/\bdaniel\b/i, 'daniel'], [/\bpriya\b/i, 'priya'], [/\bleo\b/i, 'leo']]
+/** Colleagues who chat, by first name, the mentor first so a question naming several goes to them. */
+function named(s: Session, text: string): PersonId | undefined {
+  const { cast, mentor } = s.scenario, words = new Set(text.toLowerCase().match(/\p{L}+/gu))
+  const chatty = Object.keys(cast).filter(id => cast[id].persona?.rooms.length).sort((a, b) => Number(b === mentor) - Number(a === mentor))
+  return chatty.find(id => words.has(cast[id].name.split(' ')[0].toLowerCase()))
+}
 /** The line a colleague falls back on when the model cannot be reached. */
-function scripted(s: Session, who: Persona, firstAck: boolean): string {
+function scripted(s: Session, who: PersonId, firstAck: boolean): string {
   const f = s.priv.f, live = open(s), resolved = !!s.world.incident?.resolvedAt
   if (who === 'leo') return f.leo === 'deferred' ? 'no worries, I’ll poke around the test config' : f.leo === 'helped' && f.leoAskedAt !== undefined && !s.priv.events.some(e => e.type === 'leo-thanked') ? 'oh that’s so much faster. thank you!! owe you a coffee' : live ? 'want me to keep an eye on support tickets while you fix it?' : 'nice, thanks'
   if (who === 'priya') return firstAck ? 'Thanks for owning it. Post updates in #incidents every 10 minutes. Revert or patch is your call, but tell me which before you do it.' : live ? 'Ok. Tell me when it’s green.' : resolved ? 'Thanks. Postmortem in my inbox when you can.' : 'Sounds good.'
@@ -241,11 +245,10 @@ export function chat(s: Session, chan: ChanId, text: string, files: Attachment[]
   s.post(chan, s.world.player, text, { files })
   const firstAck = open(s) && f.ackAt === undefined && (chan === 'incidents' || chan === 'priya')
   if (firstAck) { f.ackAt = m; f.ackText = text; s.timeline('Acknowledged by Maya', 'accent'); void mentor.review(s, 'ack', text) }
-  if (chan === 'daniel') f.askedDanielAt ??= m
+  if (chan === s.scenario.mentor) f.askedDanielAt ??= m
   if (chan === 'leo' && f.leoAskedAt !== undefined && !f.leo) f.leo = /later|busy|after|swamped|not now/i.test(text) ? 'deferred' : 'helped'
 
-  const named = NAMES.find(([re]) => re.test(text))?.[1]
-  const who: Persona = chan === 'team' ? named ?? (text.includes('?') ? 'daniel' : 'leo') : chan === 'incidents' ? named ?? 'priya' : chan as Persona
+  const who = chan === 'team' ? named(s, text) ?? (text.includes('?') ? s.scenario.mentor : 'leo') : chan === 'incidents' ? named(s, text) ?? 'priya' : chan
   const line = scripted(s, who, firstAck)
   if (who === 'leo' && f.leo === 'helped') s.log('leo-thanked')
   void reply(s, who, { room: chan }, text + (files.length ? `\n[attached: ${files.map(a => (a.kind === 'code' ? a.path : a.kind === 'doc' ? 'wiki page ' + a.doc : a.kind === 'ticket' ? a.id : a.kind === 'upload' ? a.name : a.label)).join(', ')}]` : ''), line)
@@ -263,7 +266,7 @@ export function mail(s: Session, a: { mode: 'reply' | 'new' | 'forward'; ref?: s
   const sent: Email = { id: 's' + s.id(), folder: 'sent', who: s.world.player, toName: to ? s.world.cast[to].name : (a.to ?? '').trim().slice(0, 120), subject: a.mode === 'reply' ? 'Re: ' + ref!.subject.replace(/^Re: /, '') : (a.subject ?? '').trim().slice(0, 140) || '(No subject)', time: s.now, read: true, body, files: a.files, thread: [] }
   s.set(x => ({ emails: [sent, ...x.emails.map(e => (e.id === answers?.id ? { ...e, read: true, thread: [...e.thread, { time: s.now, text: a.text, files: a.files }] } : e))] }))
   s.log('mail', { who: s.world.player, to: sent.toName, subject: sent.subject, text: a.text })
-  if (!to || [s.world.player, 'people', 'cloudwatch', 'jira'].includes(to)) return
+  if (!to || !s.scenario.cast[to].persona) return
 
   const kind = answers?.kind
   if (kind === 'assign') f.assignAckAt ??= m
@@ -274,7 +277,7 @@ export function mail(s: Session, a: { mode: 'reply' | 'new' | 'forward'; ref?: s
     : kind === 'pm' ? 'Got it, thank you. We’ll go through the action items at standup tomorrow.'
     : null
   const context = answers ? s.world.emails.find(e => e.id === answers.id)! : { ...sent, who: to, body: [`(Maya wrote to ${s.world.cast[to].name})`], thread: [{ time: s.now, text: a.text, files: [] }] }
-  void reply(s, to as Persona, { room: to === 'priya' && kind !== 'client' ? 'priya' : null, mail: context }, a.text, line)
+  void reply(s, to, { room: to === 'priya' && kind !== 'client' ? 'priya' : null, mail: context }, a.text, line)
 }
 
 export function saveTicket(s: Session, id: string | undefined, p: Partial<Pick<Ticket, 'title' | 'desc' | 'status' | 'pri' | 'who' | 'pts'>>) {

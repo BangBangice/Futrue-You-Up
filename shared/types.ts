@@ -9,7 +9,8 @@ export interface Person { name: string; init: string; color: string; email: stri
 export interface Channel { label: string; topic: string; dm?: boolean }
 export type Cast = Record<PersonId, Person>
 export type Channels = Record<ChanId, Channel>
-export type Level = 'newgrad' | 'bootcamp' | 'switcher'
+export const LEVELS = ['newgrad', 'bootcamp', 'switcher'] as const
+export type Level = typeof LEVELS[number]
 export type Theme = 'light' | 'dark'
 export const FOLDERS = ['inbox', 'alerts', 'sent', 'archive', 'deleted'] as const
 export type Folder = typeof FOLDERS[number]
@@ -66,7 +67,9 @@ export interface Recap { ready: boolean; happened: string[]; corrected: string[]
 export interface World {
   id: string; stage: 'sim' | 'recap'; level: Level; background: string; ai: 'live' | 'stub'
   /** Who is in this scenario and which cast member the player is. Fixed for the shift. */
-  cast: Cast; channels: Channels; player: PersonId
+  cast: Cast; channels: Channels; player: PersonId; mentor: PersonId
+  /** How each starting level is described on the start page. Empty until the scenario has loaded. */
+  levels: Partial<Record<Level, { label: string; blurb: string }>>
   /** Why AI calls are failing right now, or null while they work. */
   aiProblem: string | null
   /** Simulated minutes per real minute. */
@@ -104,11 +107,6 @@ export const APP_NAMES: Record<AppId, string> = {
 }
 export const COLS: [TicketStatus, string][] = [['todo', 'To do'], ['progress', 'In progress'], ['review', 'In review'], ['done', 'Done']]
 export const PRIORITIES: Priority[] = ['Urgent', 'High', 'Medium', 'Low']
-export const LEVELS: [Level, string, string][] = [
-  ['newgrad', 'New grad', 'Your mentor spells out the next step and checks in sooner.'],
-  ['bootcamp', 'Bootcamp grad', 'Your mentor asks pointed questions before giving pointers.'],
-  ['switcher', 'Career switcher', 'Your mentor builds on your past work and expects clear communication.'],
-]
 
 // ---------- who is hurt when a login path breaks ----------
 /** Accounts by how their people sign in. `password` and `sso` are user counts. */

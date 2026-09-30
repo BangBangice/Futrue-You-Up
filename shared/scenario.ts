@@ -1,5 +1,6 @@
 // The shape of a scenario file. Pure: the server validates with it, and a scenario editor can reuse it.
-// It covers the cast, the channels, the starting content and the scripted triggers; personas, the demo and checks are still code.
+// Data: the company, the cast with each AI colleague's persona card, the mentor and how they pitch to each level, the channels, the starting content and the scripted triggers.
+// Still code: the demo, the checks, the facts each persona is told, the mentor's rules and scripted fallback lines.
 import { z } from 'zod'
 import { APP_IDS, COLS, FOLDERS, PRIORITIES } from './types.ts'
 
@@ -87,12 +88,33 @@ const trigger = z.strictObject({
 })
 export type Trigger = z.infer<typeof trigger>
 
+/** What an AI colleague may do. The engine checks every call against the persona's list. */
+export const TOOLS = ['send_teams_message', 'send_email', 'comment_on_ticket', 'update_ticket', 'create_page', 'edit_page', 'do_nothing'] as const
+export type ToolName = typeof TOOLS[number]
+const persona = z.strictObject({
+  voice: line, knows: line, wants: line,
+  /** Channels they may post in. Their own DM is one of them if they have one. */
+  rooms: z.array(chan).default([]),
+  can: z.array(z.enum(TOOLS, { error: i => `no tool "${String(i.input)}"` })).min(1),
+  /** Works at the company, so their prompt says where they work. */
+  internal: z.boolean(),
+})
+export type Persona = z.infer<typeof persona>
+const level = z.strictObject({ label: line, blurb: line, mentorGuidance: line })
+
 export const Scenario = z.object({
   id: key,
   title: line,
+  company: z.strictObject({ name: line, description: line }),
   /** The cast member the player plays. */
   player: line,
-  cast: z.record(key, z.object({ name: line, init: line, color: z.string().regex(/^#[0-9a-f]{6}$/i, 'a #rrggbb colour'), email: line, title: line })),
+  /** Told to every colleague after the player's name and title. */
+  playerBrief: line,
+  /** The cast member who coaches the player, in the DM channel that shares their id. */
+  mentor: line,
+  levels: z.strictObject({ newgrad: level, bootcamp: level, switcher: level }),
+  /** Only a member with a persona answers the player. */
+  cast: z.record(key, z.object({ name: line, init: line, color: z.string().regex(/^#[0-9a-f]{6}$/i, 'a #rrggbb colour'), email: line, title: line, persona: persona.optional() })),
   /** A DM channel's id is the id of the person on the other end. */
   channels: z.record(key, z.object({ label: line, topic: z.string(), dm: z.boolean().optional() })),
   seed: z.object({
@@ -112,6 +134,13 @@ export const Scenario = z.object({
 
   const who = (id: string | null, path: (string | number)[]) => { if (id !== null && !Object.hasOwn(s.cast, id)) bad(path, `no cast member with id "${id}"`) }
   who(s.player, ['player'])
+  who(s.mentor, ['mentor'])
+  if (Object.hasOwn(s.cast, s.mentor) && !s.channels[s.mentor]?.dm) bad(['mentor'], `the mentor needs a DM channel with id "${s.mentor}"`)
+  if (Object.hasOwn(s.cast, s.mentor) && !s.cast[s.mentor].persona) bad(['mentor'], 'the mentor needs a persona')
+  for (const [id, { persona: p }] of Object.entries(s.cast)) {
+    p?.rooms.forEach((c, i) => { if (!Object.hasOwn(s.channels, c)) bad(['cast', id, 'persona', 'rooms', i], `no channel with id "${c}"`) })
+    if (p && !p.can.includes('do_nothing')) bad(['cast', id, 'persona', 'can'], 'a persona must be able to do_nothing')
+  }
   for (const [c, ch] of Object.entries(s.channels)) if (ch.dm) who(c, ['channels', c])
   for (const [field, rec] of [['chats', chats], ['unread', unread]] as const) {
     for (const c of Object.keys(s.channels)) if (!Object.hasOwn(rec, c)) bad(['seed', field], `missing channel "${c}"`)

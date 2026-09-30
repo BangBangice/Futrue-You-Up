@@ -144,7 +144,11 @@ export class Session {
 const sessions = new Map<string, Session>()
 const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
-export const roster = (sc = SCENARIO): Pick<World, 'cast' | 'channels' | 'player'> => structuredClone({ cast: sc.cast, channels: sc.channels, player: sc.player })
+// Persona cards and mentor guidance are prompts, so they stay on the server.
+export const roster = (sc = SCENARIO): Pick<World, 'cast' | 'channels' | 'player' | 'mentor' | 'levels'> => structuredClone({
+  cast: Object.fromEntries(Object.entries(sc.cast).map(([id, { persona: _, ...p }]) => [id, p])), channels: sc.channels, player: sc.player, mentor: sc.mentor,
+  levels: Object.fromEntries(Object.entries(sc.levels).map(([k, { mentorGuidance: _, ...l }]) => [k, l])),
+})
 
 /** Makes room, preferring a shift nobody is watching. Its open streams reconnect and reload it. */
 async function evict() {
