@@ -54,7 +54,8 @@ Useful terminal commands: `help`, `npm test -- src/auth`, `git status`, `git com
 | `server/sandbox.ts` | The only code that touches disk or starts a process for the player |
 | `server/acceptance.ts` | Hidden production checks run against the player's code on every deploy |
 | `server/ai/` | The model client, the colleagues, and the mentor |
-| `shared/` | Types and pure helpers used by both sides |
+| `shared/` | Types, pure helpers and the scenario schema, used by both sides |
+| `scenarios/` | Scenario content as data: the inbox, chats, tickets and wiki the shift starts with. Checked against the schema at startup |
 | `workspace-template/ledgerly-api/` | The codebase the player works on. Copied fresh for each shift |
 | `.data/` | Running shifts: state, event log, and each player's workspace. Safe to delete |
 

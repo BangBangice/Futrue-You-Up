@@ -10,10 +10,12 @@ import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, Person
 import { aiProblem, onAiProblem } from './ai/llm.ts'
 import { Workspace } from './sandbox.ts'
 import type { Verdict } from './sandbox.ts'
-import { initialChats, initialDocs, initialEmails, initialTickets } from './seed.ts'
+import { loadScenario } from './scenarios.ts'
 
 export const DATA = join(dirname(fileURLToPath(import.meta.url)), '..', '.data', 'sessions')
 const MAX_SESSIONS = 8, MAX_TERM = 400
+// Loaded once at startup, so a broken scenario file stops the server instead of a shift.
+const SCENARIO = loadScenario('ledgerly-day2')
 
 export interface Beat { at: number; kind: string; inc?: string }
 export interface Event { t: number; type: string; [k: string]: unknown }
@@ -128,8 +130,7 @@ export async function create(level: Level, background: string, pace: number, ai:
   const id = randomUUID()
   const world: World = {
     id, stage: 'sim', level, background, ai, aiProblem: aiProblem(), pace, simMin: START,
-    emails: initialEmails(), chats: initialChats(), unread: { team: 0, incidents: 0, priya: 0, daniel: 0, leo: 1 }, typing: [],
-    tickets: initialTickets(), docs: initialDocs(),
+    ...structuredClone(SCENARIO.seed), typing: [],
     files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
     deploys: [], incident: null, demo: 'pending',
     timeline: [{ time: '12:02 PM', text: 'Deploy billing-api@e0c3a18 (Daniel)', tone: 'dim' }], recap: null,

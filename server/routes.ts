@@ -1,7 +1,7 @@
 // The API. Every request body is checked here before it reaches the director.
 import { Router } from 'express'
 import type { NextFunction, Request, Response } from 'express'
-import { APP_IDS, CHAN_IDS, COLS, PACES, PEOPLE, PRIORITIES } from '../shared/types.ts'
+import { APP_IDS, CHAN_IDS, COLS, FOLDERS, PACES, PEOPLE, PRIORITIES } from '../shared/types.ts'
 import type { Attachment, Level, PersonId } from '../shared/types.ts'
 import { mode, probe } from './ai/llm.ts'
 import * as director from './director.ts'
@@ -11,7 +11,6 @@ import { create, find, valid } from './world.ts'
 class Bad extends Error { status = 400 }
 class Missing extends Error { status = 404 }
 const LEVELS: Level[] = ['newgrad', 'bootcamp', 'switcher']
-const FOLDERS = ['inbox', 'alerts', 'sent', 'archive', 'deleted'] as const
 
 const text = (v: unknown, max: number, name: string): string => {
   if (typeof v !== 'string' || !v.trim()) throw new Bad(`${name} is required`)

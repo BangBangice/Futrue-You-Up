@@ -15,6 +15,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY server ./server
 COPY shared ./shared
+COPY scenarios ./scenarios
 COPY workspace-template ./workspace-template
 # Player code runs in child processes, so the whole server runs unprivileged.
 RUN mkdir .data && chown node:node .data
