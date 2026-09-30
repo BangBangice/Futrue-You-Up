@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { Undo2 } from 'lucide-react'
-import { ALARM, CUSTOMERS, OTHER_ACCOUNTS, RATE, clock, errAt, lockedAt, lockedFor, money } from '../../../shared/types.ts'
+import { RATE, clock, errAt, lockedAt, lockedFor, money } from '../../../shared/types.ts'
 import { live, sim, useSim } from '../../sim/store.ts'
 import { LOGOS, SPRING } from '../bits.tsx'
 import { DragBar, Lights } from '../Window.tsx'
@@ -13,13 +13,14 @@ function Chart() {
   const m = useSim(s => s.simMin)
   const deploys = useSim(s => s.deploys)
   const pace = useSim(s => s.pace)
+  const impact = useSim(s => s.impact)
   // One extra point on each side: the newest waits past the right edge and slides in.
   const from = m - 1 - SPAN
-  const pts = Array.from({ length: SPAN + 2 }, (_, i) => `${((i / SPAN) * 600).toFixed(1)},${Y(errAt(deploys, from + i)).toFixed(1)}`).join(' ')
+  const pts = Array.from({ length: SPAN + 2 }, (_, i) => `${((i / SPAN) * 600).toFixed(1)},${Y(errAt(impact, deploys, from + i)).toFixed(1)}`).join(' ')
   return (
     <div className="chart">
       {[10, 20, 30, 40].map(v => <div key={v} className="grid-line" style={{ top: (Y(v) / 170) * 100 + '%' }}><span>{v}%</span></div>)}
-      <div className="threshold" style={{ top: (Y(ALARM) / 170) * 100 + '%' }} />
+      <div className="threshold" style={{ top: (Y(impact.alarmPercent) / 170) * 100 + '%' }} />
       <div className="chart-clip">
         <div key={m} className="chart-slide" style={{ animationDuration: 60_000 / pace + 'ms' }}>
           <svg viewBox="0 0 600 170" preserveAspectRatio="none">
@@ -42,10 +43,11 @@ export function Monitor() {
   const incident = useSim(s => s.incident)
   const timeline = useSim(s => s.timeline)
   const busy = useSim(s => s.code.busy)
+  const impact = useSim(s => s.impact), alarm = impact.alarmPercent
   const on = live({ incident })
-  const err = errAt(deploys, m), bad = err > ALARM, locked = lockedAt(deploys, m)
+  const err = errAt(impact, deploys, m), bad = err > alarm, locked = lockedAt(impact, deploys, m)
   const tiles = [
-    { label: '401 rate', value: err.toFixed(1) + '%', sub: `threshold ${ALARM}%`, bad },
+    { label: '401 rate', value: err.toFixed(1) + '%', sub: `threshold ${alarm}%`, bad },
     { label: 'Login success', value: Math.max(0, 99.6 - err * 1.05).toFixed(1) + '%', sub: 'password + SSO', bad },
     { label: 'p95 latency', value: Math.round(182 + err * 2.4) + ' ms', sub: 'auth-api', bad: false },
     { label: 'Users locked out', value: locked.toLocaleString('en-US'), sub: on ? 'and climbing' : 'now', bad: locked > 0 },
@@ -68,7 +70,7 @@ export function Monitor() {
         </div>
         <div className="mon-row wide-left">
           <div className="panel" data-guide="error-rate">
-            <div className="panel-head"><b>401 error rate</b><span>Dashed red: {ALARM}% alert threshold</span></div>
+            <div className="panel-head"><b>401 error rate</b><span>Dashed red: {alarm}% alert threshold</span></div>
             <Chart />
             <div className="ticks">{[59, 44, 29, 14, 0].map(i => <span key={i}>{i === 0 ? 'now' : clock(m - i).replace(/ [AP]M/, '')}</span>)}</div>
           </div>
@@ -105,10 +107,10 @@ export function Monitor() {
             {!locked ? <div className="sub">No customers affected.</div> : (
               <div className="customers">
                 <div className="cust head"><span>Account</span><span>ARR</span><span>Users locked out</span></div>
-                {CUSTOMERS.filter(c => lockedFor(deploys, m, c) > 0).map(c => (
-                  <div key={c.name} className="cust"><span><b>{c.name}</b>{c.note && <em>{c.note}</em>}</span><span>{c.arr}</span><span>{lockedFor(deploys, m, c)}</span></div>
+                {impact.customers.named.filter(c => lockedFor(impact, deploys, m, c) > 0).map(c => (
+                  <div key={c.name} className="cust"><span><b>{c.name}</b>{c.note && <em>{c.note}</em>}</span><span>{c.arr}</span><span>{lockedFor(impact, deploys, m, c)}</span></div>
                 ))}
-                <div className="sub small" style={{ paddingTop: 6 }}>+ {OTHER_ACCOUNTS} more accounts using email + password</div>
+                <div className="sub small" style={{ paddingTop: 6 }}>+ {impact.customers.otherAccounts} more accounts using email + password</div>
               </div>
             )}
           </div>

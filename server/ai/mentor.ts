@@ -1,7 +1,7 @@
 // The scenario's mentor, the senior engineer who corrects the player as they go.
 // What went wrong is decided by checks and the event log, never by the model.
 // The model only chooses the words, so his first message never waits on it.
-import { CHECK_LABEL, CUSTOMERS, OTHER_ACCOUNTS, clock, failing, isOutage, lockedAt } from '../../shared/types.ts'
+import { clock, failing, isOutage, lockedAt, passwordUsers } from '../../shared/types.ts'
 import type { CheckId, Coaching, Level, Recap } from '../../shared/types.ts'
 import type { Verdict } from '../sandbox.ts'
 import type { Session } from '../world.ts'
@@ -9,7 +9,8 @@ import { ask, list, oneOf, str } from './llm.ts'
 import type { Tool } from './llm.ts'
 import { facts } from './personas.ts'
 
-const SECURITY: CheckId[] = ['rejects_expired', 'rejects_missing', 'rejects_tampered']
+const security = (s: Session): CheckId[] => s.scenario.checks.filter(c => c.security).map(c => c.id)
+const label = (s: Session, id: CheckId) => s.scenario.checks.find(c => c.id === id)!.label
 /** How much the mentor gives away. Climbs each time a deploy goes wrong. */
 const RUNGS = [
   'a nudge: name the area to look at and nothing more',
@@ -22,15 +23,13 @@ const rung = (s: Session) => RUNGS[Math.min(3, (s.world.level === 'newgrad' ? 2 
 /** A short name for what a commit breaks, e.g. "password_login+dashboard_fallthrough". */
 export const signature = (v: Verdict) => (v.build === 'broken' ? 'build' : failing(v.checks).sort().join('+') || 'ok')
 const has = (v: Verdict, ids: CheckId[]) => v.checks.some(c => !c.ok && ids.includes(c.id))
-const PASSWORD_USERS = CUSTOMERS.reduce((n, c) => n + c.password, 0) + 1191
-const PASSWORD_ACCOUNTS = CUSTOMERS.filter(c => c.password).length + OTHER_ACCOUNTS
 
 /** Who would be hurt, stated without reference to the clock so it can be written before the deploy happens. */
-function blast(v: Verdict): string {
-  const lines: string[] = []
-  if (has(v, ['password_login', 'dashboard_fallthrough'])) lines.push(`Every email + password user is rejected: about ${PASSWORD_USERS.toLocaleString('en-US')} people across ${PASSWORD_ACCOUNTS} accounts, including Northwind Freight's 22 finance contractors ($84k ARR, renewal demo today at 3:00 PM). SSO users are not affected.`)
+function blast(s: Session, v: Verdict): string {
+  const lines: string[] = [], pw = passwordUsers(s.scenario)
+  if (has(v, ['password_login', 'dashboard_fallthrough'])) lines.push(`Every email + password user is rejected: about ${pw.users.toLocaleString('en-US')} people across ${pw.accounts} accounts, including Northwind Freight's 22 finance contractors ($84k ARR, renewal demo today at 3:00 PM). SSO users are not affected.`)
   if (has(v, ['api_key'])) lines.push('Machine integrations using API keys fail, including Osprey’s nightly export and Brightline’s booking sync.')
-  if (has(v, SECURITY)) lines.push('Tokens that should be refused are accepted. Anyone holding an expired, forged or missing token is treated as signed in, so every account’s invoices are exposed. No alarm fires, because nothing is failing.')
+  if (has(v, security(s))) lines.push('Tokens that should be refused are accepted. Anyone holding an expired, forged or missing token is treated as signed in, so every account’s invoices are exposed. No alarm fires, because nothing is failing.')
   if (!lines.length && has(v, ['sso_after_refresh'])) lines.push('Nothing new is broken. SSO users are still bounced to the login page about an hour in, which is the bug in LED-214.')
   return lines.join(' ')
 }
@@ -67,11 +66,11 @@ Rules: never write the fix or paste code. Never grade or score. Only use numbers
 }
 
 /** Scripted coaching, used when the model is unavailable. Deliberately plain. */
-function scripted(v: Verdict): Coaching {
-  if (has(v, SECURITY)) return { blast: blast(v), why: 'The session check now lets a request through without proving who sent it. Dashboards only count failures, so a door left open looks the same as a healthy service.', question: 'What are the three things a token must prove before verifySession returns ok?', next: 'Roll back, then put the checks back before changing anything else.' }
-  if (has(v, ['password_login', 'dashboard_fallthrough'])) return { blast: blast(v), why: 'verifySession now reads the token only from the Authorization header. Password login never sends that header: it sets the ldg_session cookie. So those requests arrive with no token at all. The tests passed because the shared helper sends the token both ways.', question: 'After your change, where does the token come from on each of the three login paths?', next: 'Roll back first. Then open src/auth/passwordLogin.ts and compare what it sends with what verifySession reads.' }
-  if (has(v, ['api_key'])) return { blast: blast(v), why: 'The API-key path changed behaviour. It should accept a known key and refuse an unknown one, without going near the session token.', question: 'What does apiKeyAuth do when a key is present, and what does it do when it is not?', next: 'Roll back, then run the API-key tests on their own.' }
-  return { blast: blast(v), why: 'After a refresh the web app sends the new token as a bearer header, but the session check still looks only at the cookie, which has expired by then.', question: 'What does the browser send after a token refresh, and where does verifySession look?', next: 'Read src/sso/refresh.ts, then decide where the token should be read from, in what order.' }
+function scripted(s: Session, v: Verdict): Coaching {
+  if (has(v, security(s))) return { blast: blast(s, v), why: 'The session check now lets a request through without proving who sent it. Dashboards only count failures, so a door left open looks the same as a healthy service.', question: 'What are the three things a token must prove before verifySession returns ok?', next: 'Roll back, then put the checks back before changing anything else.' }
+  if (has(v, ['password_login', 'dashboard_fallthrough'])) return { blast: blast(s, v), why: 'verifySession now reads the token only from the Authorization header. Password login never sends that header: it sets the ldg_session cookie. So those requests arrive with no token at all. The tests passed because the shared helper sends the token both ways.', question: 'After your change, where does the token come from on each of the three login paths?', next: 'Roll back first. Then open src/auth/passwordLogin.ts and compare what it sends with what verifySession reads.' }
+  if (has(v, ['api_key'])) return { blast: blast(s, v), why: 'The API-key path changed behaviour. It should accept a known key and refuse an unknown one, without going near the session token.', question: 'What does apiKeyAuth do when a key is present, and what does it do when it is not?', next: 'Roll back, then run the API-key tests on their own.' }
+  return { blast: blast(s, v), why: 'After a refresh the web app sends the new token as a bearer header, but the session check still looks only at the cookie, which has expired by then.', question: 'What does the browser send after a token refresh, and where does verifySession look?', next: 'Read src/sso/refresh.ts, then decide where the token should be read from, in what order.' }
 }
 
 const pending = new Map<string, Promise<Coaching>>()
@@ -79,14 +78,14 @@ const pending = new Map<string, Promise<Coaching>>()
 export function prepare(s: Session, sha: string, v: Verdict, diff: string): Promise<Coaching> {
   const key = `${s.world.id}:${sha}:${s.priv.attempts}`
   if (!pending.has(key)) pending.set(key, (async () => {
-    if (s.priv.aiCalls++ >= 80) return scripted(v)
+    if (s.priv.aiCalls++ >= 80) return scripted(s, v)
     const calls = await ask({
       priority: 0, cache: true, system: prompt(s, 'coach'), tools: [COACH],
-      user: `${learner(s)}\n\nWHAT COMMIT ${sha} DOES IN PRODUCTION (from health checks)\n${v.checks.map(c => `- ${c.ok ? 'healthy' : 'FAILS'}: ${CHECK_LABEL[c.id]}${c.ok ? '' : ` (${c.reason})`}`).join('\n')}\n\nWHO THAT AFFECTS\n${blast(v)}\n\nWHAT MAYA DID BEFORE SHIPPING\n${habits(s)}\n\nTHE CHANGE\n${diff.slice(0, 3500)}`,
+      user: `${learner(s)}\n\nWHAT COMMIT ${sha} DOES IN PRODUCTION (from health checks)\n${v.checks.map(c => `- ${c.ok ? 'healthy' : 'FAILS'}: ${label(s, c.id)}${c.ok ? '' : ` (${c.reason})`}`).join('\n')}\n\nWHO THAT AFFECTS\n${blast(s, v)}\n\nWHAT MAYA DID BEFORE SHIPPING\n${habits(s)}\n\nTHE CHANGE\n${diff.slice(0, 3500)}`,
     })
     const a = calls?.find(c => c.name === 'coach')?.args
     const c: Coaching = { blast: str(a?.blast_radius, 500), why: str(a?.explanation, 700), question: str(a?.guiding_question, 400), next: str(a?.next_step, 400) }
-    return c.why && c.next ? c : scripted(v)
+    return c.why && c.next ? c : scripted(s, v)
   })())
   return pending.get(key)!
 }
@@ -116,7 +115,7 @@ export function onBuildBroken(s: Session, error: string) {
 export function onSilentHole(s: Session, sha: string, v: Verdict, diff: string) {
   s.priv.attempts++
   const live = s.world.deploys.at(-1)!
-  intervene(s, `Maya, a word before this goes any further. CloudWatch is green after your ${clock(live.at)} deploy (${sha}), and that is the problem: ${v.checks.find(c => !c.ok && SECURITY.includes(c.id))!.reason}. Nothing will alarm, because nothing is failing. ${byLevel(s, {
+  intervene(s, `Maya, a word before this goes any further. CloudWatch is green after your ${clock(live.at)} deploy (${sha}), and that is the problem: ${v.checks.find(c => !c.ok && security(s).includes(c.id))!.reason}. Nothing will alarm, because nothing is failing. ${byLevel(s, {
     newgrad: 'Put the last release back now with "ldg rollback auth-api", then come and find me.',
     bootcamp: 'What does a dashboard that only counts failures tell you about a door left open?',
     switcher: 'You will know this from your old field: the absence of an alert is not evidence of safety. What should happen first?',
@@ -126,8 +125,8 @@ export function onSilentHole(s: Session, sha: string, v: Verdict, diff: string) 
 export function onIncident(s: Session, sha: string, v: Verdict, diff: string) {
   s.priv.attempts++
   const w = s.world, live = w.deploys.at(-1)!
-  const what = failing(v.checks).filter(c => !SECURITY.includes(c) && c !== 'sso_after_refresh').map(c => CHECK_LABEL[c].toLowerCase()).join(' and ')
-  intervene(s, `Maya, stop what you are doing. Your ${clock(live.at)} deploy (${sha}) is failing: ${what}. ${lockedAt(w.deploys, w.simMin + 3).toLocaleString('en-US')} people are locked out and the number is climbing, Northwind’s 22 finance contractors among them. Their demo is at 3:00. ${byLevel(s, {
+  const what = failing(v.checks).filter(c => !security(s).includes(c) && c !== 'sso_after_refresh').map(c => label(s, c).toLowerCase()).join(' and ')
+  intervene(s, `Maya, stop what you are doing. Your ${clock(live.at)} deploy (${sha}) is failing: ${what}. ${lockedAt(s.scenario, w.deploys, w.simMin + 3).toLocaleString('en-US')} people are locked out and the number is climbing, Northwind’s 22 finance contractors among them. Their demo is at 3:00. ${byLevel(s, {
     newgrad: 'First thing, before anything else: put the last release back with "ldg rollback auth-api". Then tell #incidents you are on it.',
     bootcamp: 'What is the fastest way to make it stop, and who needs to hear from you?',
     switcher: 'Stabilise first, diagnose second. What is the equivalent of that here, and who needs to hear from you?',
@@ -260,4 +259,4 @@ export async function recap(s: Session): Promise<Recap> {
   const note = str(a?.note, 1200), next = list(a?.practise_next, 3, 600)
   return note && next.length ? { ready: true, happened, note, next, corrected: list(a?.corrected, 4, 600) } : fallback
 }
-export { isOutage, SECURITY }
+export { isOutage, security }

@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { LogOut, Sparkles, TriangleAlert, WifiOff } from 'lucide-react'
-import { DEMO, PACES, RATE, clock, dur, lockedAt, money } from '../../shared/types.ts'
+import { PACES, RATE, clock, dur, lockedAt, money } from '../../shared/types.ts'
 import { live, sim, useSim } from '../sim/store.ts'
 import { Brand, SPRING, Segmented, ThemeToggle } from './bits.tsx'
 
@@ -12,7 +12,9 @@ export function SimBar() {
   const ai = useSim(s => s.ai)
   const aiProblem = useSim(s => s.aiProblem)
   const online = useSim(s => s.online)
-  const on = live({ incident }), toDemo = DEMO - m
+  const impact = useSim(s => s.impact)
+  const deadline = useSim(s => s.deadline)
+  const on = live({ incident }), toDemo = deadline === null ? null : deadline - m
   return (
     <header className={'simbar' + (on ? ' compact' : '')}>
       <Brand size={14} />
@@ -31,9 +33,9 @@ export function SimBar() {
         {on && (
           <motion.div key="live" className="live" initial={{ opacity: 0, x: 24, scale: 0.9 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 24, scale: 0.9 }} transition={SPRING}>
             <i />
-            <span>{toDemo > 0 ? 'Demo in ' + dur(toDemo) : 'Demo missed'}</span><em>·</em>
+            {toDemo !== null && <><span>{toDemo > 0 ? 'Demo in ' + dur(toDemo) : 'Demo missed'}</span><em>·</em></>}
             <span>{money((m - incident!.startedAt) * RATE)} at risk</span><em>·</em>
-            <span>{lockedAt(deploys, m).toLocaleString('en-US')} locked out</span>
+            <span>{lockedAt(impact, deploys, m).toLocaleString('en-US')} locked out</span>
           </motion.div>
         )}
       </AnimatePresence>

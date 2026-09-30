@@ -1,6 +1,6 @@
 // Runs the shift: the clock, the things that happen on schedule, and what follows from what the player does.
 // No model calls here. The director decides what is true; personas and the mentor decide how to say it.
-import { ALARM, CHECK_LABEL, COLS, DEMO, SHARE, START, clock, errAt, failing, isOutage, lockedAt, personByName } from '../shared/types.ts'
+import { COLS, clock, errAt, failing, isOutage, minutes, personByName } from '../shared/types.ts'
 import type { Attachment, ChanId, Check, Doc, Email, Folder, PersonId, TermLine, Ticket } from '../shared/types.ts'
 import * as mentor from './ai/mentor.ts'
 import { reply } from './ai/personas.ts'
@@ -10,19 +10,21 @@ import * as triggers from './triggers.ts'
 import type { Beat, Session } from './world.ts'
 
 /** The browser gets the checks customers can feel. Security verdicts stay on the server. */
-const visible = (checks: Check[]) => checks.filter(c => SHARE[c.id] > 0)
+const visible = (s: Session, checks: Check[]) => checks.filter(c => (s.scenario.checks.find(x => x.id === c.id)?.share ?? 0) > 0)
+const label = (s: Session, id: string) => s.scenario.checks.find(c => c.id === id)!.label
+const accept = (s: Session) => s.ws.accept(s.scenario.checks.map(c => c.id))
 const open = (s: Session) => !!s.world.incident && s.world.incident.resolvedAt === null
 const dashboard: Attachment = { kind: 'link', label: 'auth-api · prod dashboard', app: 'monitor' }
 const wait = (s: Session, ms: number) => new Promise(r => setTimeout(r, ms * s.timeScale))
 
 // ---------- start, clock ----------
 export async function start(s: Session) {
-  const [state, base] = [await s.ws.state(), await s.ws.accept()]
+  const [state, base] = [await s.ws.state(), await accept(s)]
   s.priv.verdicts[state.head] = { ...base, diff: '' }
   s.world.term = [{ c: 'dim', t: 'Last login: Tue Sep 29 09:14 on ttys002' }, { c: 'dim', t: 'Type "help" to see what is available here.' }]
-  s.set({ files: await s.ws.tree(), code: state, deploys: [{ sha: state.head, at: START - 300, by: s.scenario.mentor, kind: 'deploy', checks: visible(base.checks) }] })
+  s.set({ files: await s.ws.tree(), code: state, deploys: [{ sha: state.head, at: minutes(s.scenario.clock.start) - 300, by: s.scenario.mentor, kind: 'deploy', checks: visible(s, base.checks) }] })
   triggers.schedule(s, s.scenario.triggers, 'start')
-  s.priv.beats.push({ at: DEMO, kind: 'demo' })
+  if (s.scenario.clock.deadline) s.priv.beats.push({ at: minutes(s.scenario.clock.deadline), kind: 'demo' })
   s.log('start', { level: s.world.level })
 }
 /** The clock only runs while someone is watching. */
@@ -43,8 +45,8 @@ export function tick(s: Session) {
   // Production follows the code. A rollout takes two minutes to show either way.
   const live = s.world.deploys.at(-1)!
   if (m < live.at + 2) return
-  if (!open(s) && isOutage(live.checks) && s.world.incident?.sha !== live.sha) openIncident(s)
-  else if (open(s) && !isOutage(live.checks)) resolveIncident(s)
+  if (!open(s) && isOutage(s.scenario, live.checks) && s.world.incident?.sha !== live.sha) openIncident(s)
+  else if (open(s) && !isOutage(s.scenario, live.checks)) resolveIncident(s)
 }
 
 // ---------- things that happen on schedule ----------
@@ -68,14 +70,14 @@ function demo(s: Session) {
 function openIncident(s: Session) {
   const w = s.world, m = w.simMin, live = w.deploys.at(-1)!, v = s.priv.verdicts[live.sha]
   const id = 'INC-' + (37 + w.tickets.filter(t => t.id.startsWith('INC')).length)
-  const what = failing(live.checks).filter(c => c !== 'sso_after_refresh').map(c => CHECK_LABEL[c]).join(', ')
-  const rate = errAt(w.deploys, m).toFixed(1), reason = live.checks.find(c => !c.ok && c.id !== 'sso_after_refresh')?.reason ?? 'rejected'
-  const t: Ticket = { id, title: `${what} failing on auth-api`, status: 'progress', who: s.world.player, pri: 'Urgent', pts: null, comments: [], activity: [{ time: s.now, text: 'CloudWatch: created the issue' }], desc: `CloudWatch alarm: 401 rate on auth-api above ${ALARM}% since ${clock(m)}. Opened automatically and assigned to the author of the latest deploy, auth-api@${live.sha}.` }
+  const what = failing(live.checks).filter(c => c !== 'sso_after_refresh').map(c => label(s, c)).join(', ')
+  const rate = errAt(s.scenario, w.deploys, m).toFixed(1), alarm = s.scenario.alarmPercent, reason = live.checks.find(c => !c.ok && c.id !== 'sso_after_refresh')?.reason ?? 'rejected'
+  const t: Ticket = { id, title: `${what} failing on auth-api`, status: 'progress', who: s.world.player, pri: 'Urgent', pts: null, comments: [], activity: [{ time: s.now, text: 'CloudWatch: created the issue' }], desc: `CloudWatch alarm: 401 rate on auth-api above ${alarm}% since ${clock(m)}. Opened automatically and assigned to the author of the latest deploy, auth-api@${live.sha}.` }
   s.set({ incident: { id, sha: live.sha, startedAt: m, resolvedAt: null, failing: failing(live.checks) }, tickets: [t, ...w.tickets] })
   s.mail({ who: 'jira', folder: 'alerts', subject: `[JIRA] (${id}) assigned to you: ${t.title}`, body: [`CloudWatch assigned ${id} to you.`, t.desc], files: [{ kind: 'ticket', id }] })
-  s.post('incidents', 'cloudwatch', `[FIRING] auth-api · 401 rate ${rate}% (threshold ${ALARM}%) · top reason: ${reason}`, { alert: 'fire', files: [dashboard] })
-  s.mail({ who: 'cloudwatch', folder: 'alerts', subject: `[FIRING] auth-api: 401 rate ${rate}% (threshold ${ALARM}%)`, body: [`Alarm: auth-api 401 rate above ${ALARM}% for 2 minutes.`, `Current: ${rate}% · Baseline: 0.4%`, `Top reason: ${reason}`, `Most recent deploy: auth-api@${live.sha} by maya.chen at ${clock(live.at)}`], files: [dashboard, { kind: 'doc', doc: 'incident' }] })
-  s.timeline(`Alarm fired: 401 rate > ${ALARM}%`, 'bad')
+  s.post('incidents', 'cloudwatch', `[FIRING] auth-api · 401 rate ${rate}% (threshold ${alarm}%) · top reason: ${reason}`, { alert: 'fire', files: [dashboard] })
+  s.mail({ who: 'cloudwatch', folder: 'alerts', subject: `[FIRING] auth-api: 401 rate ${rate}% (threshold ${alarm}%)`, body: [`Alarm: auth-api 401 rate above ${alarm}% for 2 minutes.`, `Current: ${rate}% · Baseline: 0.4%`, `Top reason: ${reason}`, `Most recent deploy: auth-api@${live.sha} by maya.chen at ${clock(live.at)}`], files: [dashboard, { kind: 'doc', doc: 'incident' }] })
+  s.timeline(`Alarm fired: 401 rate > ${alarm}%`, 'bad')
   s.log('incident', { id, what })
   triggers.schedule(s, s.scenario.triggers, 'incident.opened', id)
   mentor.onIncident(s, live.sha, v, v.diff)
@@ -85,8 +87,8 @@ function resolveIncident(s: Session) {
   const w = s.world, m = w.simMin, inc = w.incident!, live = w.deploys.at(-1)!
   s.set({ incident: { ...inc, resolvedAt: m } })
   s.ticket(inc.id, { status: 'done' }, 'cloudwatch', 'resolved: 401 rate back under threshold')
-  s.post('incidents', 'cloudwatch', `[RESOLVED] auth-api · 401 rate back to ${errAt(w.deploys, m + 2).toFixed(1)}% · duration ${m - inc.startedAt} min`, { alert: 'ok' })
-  s.timeline(`Resolved: 401 rate ${errAt(w.deploys, m + 2).toFixed(1)}%`, 'good')
+  s.post('incidents', 'cloudwatch', `[RESOLVED] auth-api · 401 rate back to ${errAt(s.scenario, w.deploys, m + 2).toFixed(1)}% · duration ${m - inc.startedAt} min`, { alert: 'ok' })
+  s.timeline(`Resolved: 401 rate ${errAt(s.scenario, w.deploys, m + 2).toFixed(1)}%`, 'good')
   s.log('resolved', { id: inc.id, mins: m - inc.startedAt })
   triggers.schedule(s, s.scenario.triggers, 'incident.resolved', inc.id)
   void mentor.onHealthy(s, live.kind === 'rollback' ? 'rollback' : 'fix')
@@ -101,7 +103,7 @@ async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
 
   if (sub === 'status') {
     say(`auth-api  prod  ${live.sha}  ${live.kind === 'rollback' ? 'rolled back' : 'deployed'} ${clock(live.at)} by ${s.world.cast[live.by].name}  6/6 pods`)
-    say(`401 rate  ${errAt(w.deploys, m).toFixed(1)}%  (alarm at ${ALARM}%)`, isOutage(live.checks) ? 'err' : 'ok')
+    say(`401 rate  ${errAt(s.scenario, w.deploys, m).toFixed(1)}%  (alarm at ${s.scenario.alarmPercent}%)`, isOutage(s.scenario, live.checks) ? 'err' : 'ok')
     return 0
   }
   if (sub === 'logs') {
@@ -121,7 +123,7 @@ async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
     if (st.changes.length) { say('error: you have uncommitted changes. Only committed code is deployed.', 'err'); say('  git commit -am "what you changed"', 'dim'); return 1 }
     if (st.head === live.sha) { say(`auth-api@${st.head} is already live in prod. Nothing to deploy.`, 'dim'); return 0 }
     say(`→ building auth-api@${st.head} …`, 'dim')
-    const v = { ...(await s.ws.accept()), diff: (await s.ws.git(['diff', live.sha, 'HEAD', '--', 'src'])).out }
+    const v = { ...(await accept(s)), diff: (await s.ws.git(['diff', live.sha, 'HEAD', '--', 'src'])).out }
     s.priv.verdicts[st.head] = v
     if (v.build === 'broken') {
       say(`✗ build failed: ${v.error}`, 'err'); say('Nothing was deployed. Production is unchanged.', 'dim')
@@ -132,19 +134,19 @@ async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
     await wait(s, 900); say('→ build done (14s)', 'dim')
     await wait(s, 900); say('→ rolling out 6/6 pods … done', 'dim')
     say(`✓ auth-api@${st.head} is live in prod`, 'ok')
-    const first = !shipped(s), bad = failing(v.checks), holes = bad.filter(c => mentor.SECURITY.includes(c))
-    s.set({ deploys: [...w.deploys, { sha: st.head, at: s.world.simMin, by: s.world.player, kind: 'deploy', checks: visible(v.checks) }] })
+    const first = !shipped(s), bad = failing(v.checks), holes = bad.filter(c => mentor.security(s).includes(c))
+    s.set({ deploys: [...w.deploys, { sha: st.head, at: s.world.simMin, by: s.world.player, kind: 'deploy', checks: visible(s, v.checks) }] })
     s.timeline(`Deploy auth-api@${st.head} (Maya)`, 'accent')
     s.post('incidents', 'cloudwatch', `Deploy · auth-api@${st.head} by maya.chen · 6/6 pods healthy`, { alert: 'info' })
-    s.log('deploy', { sha: st.head, tested: f.testedAt !== undefined && (f.editedAt === undefined || f.testedAt >= f.editedAt), broke: bad.filter(c => c !== 'sso_after_refresh').map(c => CHECK_LABEL[c]).join(', ') })
+    s.log('deploy', { sha: st.head, tested: f.testedAt !== undefined && (f.editedAt === undefined || f.testedAt >= f.editedAt), broke: bad.filter(c => c !== 'sso_after_refresh').map(c => label(s, c)).join(', ') })
     if (first) s.later(2500, () => s.say('priya', 'priya', 'Saw LED-214 go out. Thanks Maya. Keep an eye on CloudWatch for a few minutes.'))
 
     if (!bad.length) {
       f.fixedAt = s.world.simMin
       s.ticket('LED-214', { status: 'done', reopened: false }, 'jira', `released in auth-api@${st.head}`)
       if (!open(s)) void mentor.onHealthy(s, s.priv.attempts ? 'fix' : 'first-time')
-    } else if (holes.length && !isOutage(v.checks)) s.later(5000, () => mentor.onSilentHole(s, st.head, v, v.diff))
-    else if (!isOutage(v.checks)) s.later(5000, () => mentor.onNoFix(s, st.head, v, v.diff))
+    } else if (holes.length && !isOutage(s.scenario, v.checks)) s.later(5000, () => mentor.onSilentHole(s, st.head, v, v.diff))
+    else if (!isOutage(s.scenario, v.checks)) s.later(5000, () => mentor.onNoFix(s, st.head, v, v.diff))
     return 0
   }
   if (sub === 'rollback') {
@@ -153,7 +155,7 @@ async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
     say(`→ rolling back 6/6 pods to ${wanted.sha} …`, 'dim')
     await wait(s, 1200)
     say(`✓ auth-api@${wanted.sha} is live in prod (rollback)`, 'ok')
-    const hadHole = failing(s.priv.verdicts[live.sha]?.checks ?? []).some(c => mentor.SECURITY.includes(c))
+    const hadHole = failing(s.priv.verdicts[live.sha]?.checks ?? []).some(c => mentor.security(s).includes(c))
     f.rolledBackAt = s.world.simMin
     s.set({ deploys: [...w.deploys, { sha: wanted.sha, at: s.world.simMin, by: s.world.player, kind: 'rollback', checks: wanted.checks }] })
     s.timeline(`Rollback to auth-api@${wanted.sha} (Maya)`, 'accent')
@@ -175,7 +177,7 @@ export async function refresh(s: Session) {
   s.log('commit', { sha: state.head, subject: state.subject })
   // Get ahead: find out now what this commit would do in production, and start on the coaching if it would do harm.
   const live = s.world.deploys.at(-1)!
-  const v = { ...(await s.ws.accept()), diff: (await s.ws.git(['diff', live.sha, 'HEAD', '--', 'src'])).out }
+  const v = { ...(await accept(s)), diff: (await s.ws.git(['diff', live.sha, 'HEAD', '--', 'src'])).out }
   if (state.changes.length === 0) s.priv.verdicts[state.head] = v
   if (v.build === 'ok' && failing(v.checks).length) void mentor.prepare(s, state.head, v, v.diff)
 }
@@ -313,4 +315,4 @@ export async function end(s: Session) {
   s.set({ stage: 'recap', typing: [], recap: { ready: false, happened: mentor.story(s), corrected: [], next: [], note: '' } })
   s.set({ recap: await mentor.recap(s) })
 }
-export { COLS, lockedAt }
+export { COLS }
