@@ -1,7 +1,7 @@
 // The step list in the top-left corner: what to do next, worked out from the state of the shift.
 // Steps say what to do and where. They never say what the bug is: finding that out is the lesson.
 // The lesson's phases and steps are scenario data, which shared/guide.ts evaluates; this only adds where "Show me" points.
-import { plan } from '../../shared/guide.ts'
+import { plan, preview } from '../../shared/guide.ts'
 import type { Plan, ShowMe } from '../../shared/guide.ts'
 import { APP_IDS } from '../../shared/types.ts'
 import type { AppId, ChanId, Email } from '../../shared/types.ts'
@@ -61,3 +61,6 @@ export function guide(s: State): Guide {
   const p = plan({ ...s, looking }, s.phases, s.level)
   return { ...p, steps: p.steps.map(x => ({ id: x.id, text: x.text, hint: x.hint, done: x.done, side: x.side || undefined, show: target(s, x.showMe) })) }
 }
+
+/** Another phase's steps, for the road map's preview. */
+export const peek = (s: State, id: string) => preview(s, s.phases, s.level, id)

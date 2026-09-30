@@ -1,11 +1,11 @@
 // The step list in the top-left corner of the desktop, and the ring that flashes round whatever "Show me" points at.
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
-import { Check, ChevronDown, ListChecks, LocateFixed } from 'lucide-react'
-import { guide } from '../sim/guide.ts'
-import type { Step } from '../sim/guide.ts'
+import { ArrowLeft, Check, ChevronDown, ListChecks, LocateFixed } from 'lucide-react'
+import { guide, peek } from '../sim/guide.ts'
+import type { Guide as G, Step } from '../sim/guide.ts'
 import { phone, sim, useSim } from '../sim/store.ts'
 import { EASE, SPRING } from './bits.tsx'
 
@@ -24,6 +24,13 @@ export function Guide() {
   const news = g.phase + (g.ready ? ':ready' : ''), phase = useRef(news)
   useEffect(() => { if (phase.current !== news) { phase.current = news; sim.set({ guideOpen: true }) } }, [news])
 
+  // The road map: every phase that did or still may happen. A preview is of the moment it was opened in, so news closes it.
+  const road = g.map.filter(x => x.state !== 'skipped')
+  const [look, setLook] = useState<{ id: string; at: string }>(), [roads, setRoads] = useState(false)
+  const peeked = look?.at === news ? road.find(x => x.id === look.id && x.state !== 'current') : undefined
+  const pick = (id: string) => { setLook(peeked?.id === id ? undefined : { id, at: news }); sim.set({ guideOpen: true }) }
+  const pct = main.length ? (done / main.length) * 100 : 0
+
   return (
     <>
       <motion.aside ref={panel} className="guide" data-folded={!open || undefined} aria-label="Your steps" initial={{ y: -16, scale: 0.96 }} animate={{ y: 0, scale: 1 }} transition={{ ...SPRING, delay: 0.3 }}>
@@ -35,13 +42,20 @@ export function Guide() {
           <span className="guide-count">{done}/{main.length}</span>
           <ChevronDown size={14} strokeWidth={2.4} className={'guide-fold' + (open ? '' : ' shut')} />
         </button>
-        <div className="track guide-track"><i className="accent" style={{ width: (main.length ? (done / main.length) * 100 : 0) + '%' }} /></div>
+        {road.length > 1
+          ? <Road road={road} pct={pct} peeked={peeked?.id} pick={pick} />
+          : <div className="track guide-track"><i className="accent" style={{ width: pct + '%' }} /></div>}
         <AnimatePresence initial={false} mode="popLayout">
           {open ? (
             <motion.div key={'list' + g.phase} className="guide-body" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.24, ease: EASE }}>
-              <p className="guide-sub">{g.sub}</p>
-              <ol className="guide-steps">{main.map(x => <Row key={x.id} x={x} now={x === now} />)}</ol>
-              {side.length > 0 && (
+              {road.length > 1 && <Sections road={road} peeked={peeked?.id} pick={pick} open={roads} toggle={() => setRoads(!roads)} />}
+              {peeked ? <Preview x={peeked} p={peek(s, peeked.id)} back={() => setLook(undefined)} current={g.title} /> : (
+                <>
+                  <p className="guide-sub">{g.sub}</p>
+                  <ol className="guide-steps">{main.map(x => <Row key={x.id} x={x} now={x === now} />)}</ol>
+                </>
+              )}
+              {!peeked && side.length > 0 && (
                 <>
                   <div className="guide-label">WAITING ON YOU</div>
                   <ol className="guide-steps">{side.map(x => <Row key={x.id} x={x} now={false} />)}</ol>
@@ -58,6 +72,70 @@ export function Guide() {
       </motion.aside>
       <Spotlight panel={panel} />
     </>
+  )
+}
+
+type Stop = G['map'][number]
+/** An optional phase that has not happened: it may never. */
+const iffy = (x: Stop) => x.optional && x.state === 'upcoming'
+const mark = (x: Stop) => x.state === 'past' ? '✓' : x.state === 'current' ? '●' : '○'
+const named = (x: Stop) => x.title + (iffy(x) ? ' (if needed)' : '')
+
+/** One segment per phase: done, how far into this one, what is left. Dashed ones only happen if something goes wrong. */
+function Road({ road, pct, peeked, pick }: { road: Stop[]; pct: number; peeked?: string; pick: (id: string) => void }) {
+  return (
+    <div className="guide-road" role="group" aria-label="Road map">
+      {road.map(x => (
+        <button key={x.id} className={'gseg ' + x.state + (iffy(x) ? ' iffy' : '') + (x.id === peeked ? ' peek' : '')} title={named(x)} aria-label={`${named(x)}: ${x.state}`} aria-pressed={x.id === peeked} onClick={() => pick(x.id)}>
+          <span><i style={{ width: (x.state === 'past' ? 100 : x.state === 'current' ? pct : 0) + '%' }} /></span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** "Section 2 of 3 · Next: …", which unfolds into every phase by name. Conditional ones do not count towards the length. */
+function Sections({ road, peeked, pick, open, toggle }: { road: Stop[]; peeked?: string; pick: (id: string) => void; open: boolean; toggle: () => void }) {
+  const counted = road.filter(x => !iffy(x)), at = counted.findIndex(x => x.state === 'current')
+  const next = counted[at + 1]
+  return (
+    <>
+      <button className="guide-where" aria-expanded={open} onClick={toggle}>
+        <span>Section {at + 1} of {counted.length}</span>
+        {next && <span className="ellipsis">· Next: {next.title}</span>}
+        <ChevronDown size={12} strokeWidth={2.6} className={'guide-fold' + (open ? '' : ' shut')} />
+      </button>
+      {open && (
+        <ol className="guide-map">
+          {road.map(x => (
+            <li key={x.id}>
+              <button className={'gsec ' + x.state + (x.id === peeked ? ' peek' : '')} aria-current={x.state === 'current' ? 'step' : undefined} onClick={() => pick(x.id)}>
+                <span className="gsec-mark" aria-hidden>{mark(x)}</span>
+                <span className="ellipsis">{x.title}</span>
+                {iffy(x) && <small>if needed</small>}
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+    </>
+  )
+}
+
+/** Another phase's steps, read-only: nothing to tick or show. */
+function Preview({ x, p, back, current }: { x: Stop; p: ReturnType<typeof peek>; back: () => void; current: string }) {
+  return (
+    <div className="guide-peek">
+      <div className="guide-peek-head">
+        <span className="guide-label">{x.state === 'past' ? 'EARLIER' : iffy(x) ? 'ONLY IF NEEDED' : 'COMING UP'} · PREVIEW</span>
+        <button className="guide-back" title={'Back to ' + current} onClick={back}><ArrowLeft size={13} strokeWidth={2.4} />Back</button>
+      </div>
+      <b>{x.title}</b>
+      {p?.sub && <p className="guide-sub">{p.sub}</p>}
+      <ol className="guide-steps">
+        {p?.steps.map(y => <li key={y.id} className="gstep ghost"><span className="gmark" /><div className="gtext"><span>{y.text}</span></div></li>)}
+      </ol>
+    </div>
   )
 }
 
