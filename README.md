@@ -47,14 +47,21 @@ On Railway, `railway.json` runs `db:migrate` and `db:seed-scenarios` before each
 
 #### Accounts
 
-Only with a database. Without `DATABASE_URL` there are no accounts and the old gate applies (this machine only, `APP_PASSWORD` or `PUBLIC_ACCESS=1`). With it, [Better Auth](https://www.better-auth.com) (`server/auth.ts`, mounted at `/api/auth`) replaces that gate: players sign in, as a guest for now, and each shift belongs to whoever started it. Someone else's shift answers 404.
+Only with a database. Without `DATABASE_URL` there are no accounts and the old gate applies (this machine only, `APP_PASSWORD` or `PUBLIC_ACCESS=1`). With it, [Better Auth](https://www.better-auth.com) (`server/auth.ts`, mounted at `/api/auth`) replaces that gate: players sign in with email and password, with Google, or as a guest, and each shift belongs to whoever started it. Someone else's shift answers 404.
+
+Email accounts confirm their address before they can sign in; the link signs them in. A guest who registers or signs in with Google keeps their shifts: they move to the account on its first sign-in, even when the confirmation link is opened in another browser. Password reset links work for an hour and sign the account out everywhere.
 
 | Variable | |
 |---|---|
 | `BETTER_AUTH_SECRET` | Signs sessions and encrypts the JWT signing keys. Required in production (`openssl rand -base64 32`). Changing it breaks the stored keys: clear the `jwks` table when you do |
-| `BETTER_AUTH_URL` | The address players use, e.g. `https://larp.owsome.org` |
+| `BETTER_AUTH_URL` | The address players use, e.g. `https://larp.owsome.org`. Links in emails point here, and only this origin may sign in |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Sends email through [Resend](https://resend.com), from e.g. `LARP <no-reply@larp.owsome.org>` (a domain verified in Resend) |
+| `MAILPIT_URL` | Without Resend, sends email to [Mailpit](https://mailpit.axllent.org) instead. `docker compose up` runs one; read the mail at http://localhost:8025. Running the server outside Docker, set `MAILPIT_URL=http://localhost:8025` |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Offers "Continue with Google" when both are set. The OAuth client (web application) needs the redirect URI `<BETTER_AUTH_URL>/api/auth/callback/google` |
 
-Other services can check a player with a JWT from `GET /api/auth/token` against the keys at `GET /api/auth/jwks`. Admins are promoted by hand: `update users set role = 'admin' where email = '...'`. `npm run check:auth` checks sign-in and ownership against a running database.
+With neither Resend nor Mailpit, the server prints each email, link included, to its console. In production (`NODE_ENV=production`) it refuses instead and hides email sign-up, so links never end up in logs. In production Better Auth rate-limits sign-in, sign-up and email requests per client IP, read from Cloudflare's `cf-connecting-ip`, else `x-forwarded-for`.
+
+Other services can check a player with a JWT from `GET /api/auth/token` against the keys at `GET /api/auth/jwks`. Admins are promoted by hand: `update users set role = 'admin' where email = '...'`. `npm run check:auth` checks sign-in, ownership, email confirmation, guest upgrades and password reset against a running database.
 
 ### What you can do in a shift
 

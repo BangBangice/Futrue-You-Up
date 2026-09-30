@@ -16,11 +16,19 @@ services:
       timeout: 5s
       retries: 20
 
+  # Catches the app's email. Read it at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+
   app:
     build: .
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-larp}:${POSTGRES_PASSWORD:-larp}@db:5432/${POSTGRES_DB:-larp}
       LLM: ${LLM:-stub}
@@ -29,6 +37,7 @@ services:
       # With a database, sign-in is on. This secret is for local use only.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-development-secret-not-for-production}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:5183}
+      MAILPIT_URL: http://mailpit:8025
       PORT: "5183"
     ports:
       - "127.0.0.1:5183:5183"

@@ -23,6 +23,7 @@ export function Onboarding() {
       <header className="topbar">
         <Brand />
         <div className="topbar-right">
+          {account?.isAnonymous && account.save && <button className="btn sm btn-soft" onClick={account.save}>Save your progress</button>}
           {account && <><span>{account.name}</span><button className="btn sm btn-chip" onClick={() => void account.signOut()}>Sign out</button></>}
           <ThemeToggle />{me && <><span>{me.name}</span><Avatar who={player} size={28} /></>}</div>
       </header>

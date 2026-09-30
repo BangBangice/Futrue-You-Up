@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { mode } from './ai/llm.ts'
 import { closeDb, dbEnabled, migrateDb } from './db/index.ts'
 import { auth, authEnabled } from './auth.ts'
+import { mailScope } from './mail.ts'
 import { api, errors } from './routes.ts'
 import { all } from './world.ts'
 
@@ -46,7 +47,10 @@ const jsonOnly = (req: Request, res: Response, next: NextFunction) => {
 // Nothing under /api may be cached, even by a CDN told to cache everything: it is all per-shift state.
 app.use('/api', (_req: Request, res: Response, next: NextFunction) => { res.set('Cache-Control', 'no-store'); next() })
 // Better Auth reads its own request bodies, so it goes before express.json.
-if (authEnabled()) app.all('/api/auth/{*path}', toNodeHandler(auth()))
+if (authEnabled()) {
+  const handler = toNodeHandler(auth())
+  app.all('/api/auth/{*path}', (req: Request, res: Response) => mailScope.run({}, () => handler(req, res)))
+}
 app.use('/api', jsonOnly, express.json({ limit: '300kb' }), api)
 app.use('/api', errors)
 
