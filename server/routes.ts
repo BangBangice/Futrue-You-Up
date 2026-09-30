@@ -1,5 +1,5 @@
 // The API. Every request body is checked here before it reaches the director.
-import { Router } from 'express'
+import { Router, raw } from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import { APP_IDS, COLS, FOLDERS, PACES, PRIORITIES } from '../shared/types.ts'
 import type { Attachment, Level } from '../shared/types.ts'
@@ -15,6 +15,7 @@ import { adminApi, removed, reportRoute } from './moderation.ts'
 import { lessonTags, listLessons } from './lessons.ts'
 import { listRuns } from './runs.ts'
 import { DEFAULT_SCENARIO, catalog, scenarioFile } from './scenarios.ts'
+import { MAX_UPLOAD, disposition, filename, get as uploaded, isId, limitLabel, newId, put as storeUpload } from './uploads.ts'
 import { create, find, roster, valid } from './world.ts'
 
 class Bad extends Error { status = 400 }
@@ -38,10 +39,21 @@ function attachments(v: unknown): Attachment[] {
     if (a?.kind === 'code' && typeof a.path === 'string') return [{ kind: 'code', path: a.path.slice(0, 200) }]
     if (a?.kind === 'doc' && typeof a.doc === 'string') return [{ kind: 'doc', doc: a.doc.slice(0, 40) }]
     if (a?.kind === 'ticket' && typeof a.id === 'string') return [{ kind: 'ticket', id: a.id.slice(0, 20) }]
-    if (a?.kind === 'upload' && typeof a.name === 'string') return [{ kind: 'upload', name: a.name.slice(0, 120), size: Number(a.size) || 0, url: maybe(a.url, 300) }]
+    // An upload carries only the id the server handed back when it stored the file: the bytes are looked up under
+    // this shift, so an id from another one, made up or reused, resolves to nothing.
+    if (a?.kind === 'upload' && isId(a.id) && typeof a.name === 'string') {
+      return [{ kind: 'upload', id: a.id, name: filename(a.name) || 'file', size: Math.min(Math.max(0, Number(a.size) || 0), MAX_UPLOAD) }]
+    }
     if (a?.kind === 'link' && APP_IDS.includes(a.app)) return [{ kind: 'link', label: maybe(a.label, 80), app: a.app }]
     return []
   })
+}
+/** An upload's bytes are not JSON, so this one request is let past the JSON-only gate below. */
+export const isUpload = (req: Request) => req.method === 'POST' && /^\/sessions\/[^/]+\/files$/.test(req.path) && !!req.is('application/octet-stream')
+/** Every other request body under /api is JSON. Mounted ahead of express.json and the routes (index.ts). */
+export function jsonOnly(req: Request, res: Response, next: NextFunction) {
+  if (['POST', 'PUT'].includes(req.method) && !isUpload(req) && !req.is('application/json')) return void res.status(415).json({ error: 'Send JSON.' })
+  next()
 }
 // Someone else's shift is missing, not forbidden, so its id is not confirmed to exist.
 async function session(req: Request, res: Response) {
@@ -140,6 +152,35 @@ api.put('/sessions/:id/file', async (req, res) => {
   res.json({ ok: true })
 })
 
+// A file the player picked from their own computer. `raw` reads the bytes; the name rides in the query string, where
+// Express has already decoded it. What the world keeps afterwards is the id, the name and the size, never the bytes.
+api.post('/sessions/:id/files', raw({ type: () => true, limit: MAX_UPLOAD }), async (req, res) => {
+  const s = await session(req, res)
+  if (s.world.stage !== 'sim') throw new Bad('This shift has ended.')
+  const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0)
+  const name = filename(req.query.name)
+  if (!name) throw new Bad('That file needs a name.')
+  if (!body.length) throw new Bad('That file is empty.')
+  const id = newId()
+  await storeUpload(s.world.id, id, body, name)
+  res.status(201).json({ kind: 'upload', id, name, size: body.length })
+})
+
+// The same file, back again. The shift's own route is the whole permission check: `session` refuses anyone else's.
+api.get('/sessions/:id/files/:file', async (req, res) => {
+  const s = await session(req, res)
+  const blob = isId(req.params.file) ? await uploaded(s.world.id, req.params.file) : null
+  if (!blob) throw new Missing('That file is no longer here.')
+  res.set({
+    'Content-Type': blob.type,
+    'Content-Disposition': disposition(blob.name, blob.type),
+    // Served from our own origin, so whatever was uploaded must never be sniffed into running here, or run at all.
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; sandbox",
+  })
+  res.send(blob.body)
+})
+
 api.post('/sessions/:id/act', async (req, res) => {
   const s = await session(req, res), a = req.body ?? {}
   if (s.world.stage !== 'sim') throw new Bad('This shift has ended.')
@@ -186,10 +227,14 @@ api.post('/sessions/:id/act', async (req, res) => {
 export const notFound = (_req: Request, res: Response) => { res.status(404).json({ error: 'Not found.' }) }
 api.use(notFound)
 
-// Express recognises error handlers by their four arguments, so _req and _next must stay in the signature.
-export function errors(err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) {
+// Express recognises error handlers by their four arguments, so _next must stay in the signature.
+export function errors(err: Error & { status?: number; type?: string }, req: Request, res: Response, _next: NextFunction) {
   const status = err instanceof Refusal ? 400 : err.status ?? 500
   if (status >= 500) console.error('[api]', err)
   if (res.headersSent) return res.end()
-  res.status(status).json({ error: status >= 500 ? 'Something went wrong on the server.' : err.message })
+  // body-parser's own words for an oversized body are no use to a player who just attached a big screenshot.
+  const error = err.type === 'entity.too.large'
+    ? (isUpload(req) ? `That file is too big (limit ${limitLabel}).` : 'That request is too big.')
+    : status >= 500 ? 'Something went wrong on the server.' : err.message
+  res.status(status).json({ error })
 }

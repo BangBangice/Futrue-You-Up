@@ -8,8 +8,9 @@ import { mode } from './ai/llm.ts'
 import { closeDb, dbEnabled, migrateDb } from './db/index.ts'
 import { auth, authEnabled } from './auth.ts'
 import { checkMail, mailScope, mailStatus } from './mail.ts'
-import { api, errors } from './routes.ts'
+import { api, errors, jsonOnly } from './routes.ts'
 import { useE2B } from './sandbox.ts'
+import { storageStatus } from './uploads.ts'
 import { all } from './world.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -43,10 +44,6 @@ if (authEnabled()) {
     else res.status(403).end()
   })
 }
-const jsonOnly = (req: Request, res: Response, next: NextFunction) => {
-  if (['POST', 'PUT'].includes(req.method) && !req.is('application/json')) res.status(415).json({ error: 'Send JSON.' })
-  else next()
-}
 // Nothing under /api may be cached, even by a CDN told to cache everything: it is all per-shift state.
 app.use('/api', (_req: Request, res: Response, next: NextFunction) => { res.set('Cache-Control', 'no-store'); next() })
 // Better Auth reads its own request bodies, so it goes before express.json.
@@ -75,7 +72,11 @@ if (dbEnabled()) {
   await migrateDb()
   console.log('Database migrated.')
 }
-app.listen(PORT, '0.0.0.0', () => console.log(`LARP is running on port ${PORT}  (colleagues: ${mode() === 'live' ? 'AI' : 'scripted, no network needed'}; player code: ${useE2B() ? 'E2B sandboxes' : 'local processes'})`))
+app.listen(PORT, '0.0.0.0', async () => {
+  console.log(`LARP is running on port ${PORT}  (colleagues: ${mode() === 'live' ? 'AI' : 'scripted, no network needed'}; player code: ${useE2B() ? 'E2B sandboxes' : 'local processes'})`)
+  // Where attached files go, and whether that place answers, before a player finds out with a screenshot.
+  console.log(await storageStatus())
+})
 // Hosts stop the server with SIGTERM on every deploy. Saves still waiting on their debounce go out first.
 process.once('SIGTERM', async () => {
   await Promise.all(all().map(s => s.stop()))

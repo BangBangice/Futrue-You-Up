@@ -42,7 +42,8 @@ export type Attachment =
   | { kind: 'doc'; doc: string }
   | { kind: 'ticket'; id: string }
   | { kind: 'link'; label: string; app: AppId; chan?: ChanId }
-  | { kind: 'upload'; name: string; size: number; url: string }
+  /** A file from the player's computer. Only the id is kept here; the bytes live in storage (server/uploads.ts). */
+  | { kind: 'upload'; id: string; name: string; size: number }
 
 export interface Reply { time: string; text: string; files: Attachment[] }
 export interface Email {

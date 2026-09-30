@@ -12,7 +12,8 @@
     "build": "tsc --noEmit && vite build",
     "lint": "oxlint --max-warnings=0",
     "start": "NODE_ENV=production node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/index.ts",
-    "check": "node --no-warnings --experimental-strip-types server/check.ts",
+    "check": "node --no-warnings --experimental-strip-types server/check.ts && node --no-warnings --experimental-strip-types server/check-uploads.ts",
+    "check:uploads": "node --no-warnings --experimental-strip-types server/check-uploads.ts",
     "check:auth": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/check-auth.ts",
     "check:e2b": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/check-e2b.ts",
     "check:db": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/check-db.ts && node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/check-authoring.ts && node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/check-moderation.ts",
@@ -23,6 +24,7 @@
     "llm:smoke": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/ai/llm.ts"
   },
   "dependencies": {
+    "aws4fetch": "^1.0.20",
     "better-auth": "^1.7.6",
     "drizzle-orm": "^0.45.3",
     "e2b": "^2.51.0",

@@ -96,6 +96,17 @@ export class Store {
   private act(a: Record<string, unknown>) {
     return this.call('/act', { method: 'POST', body: JSON.stringify(a) }).catch(e => { this.toast({ app: this.state.focus ?? 'mail', title: 'That did not go through', body: e.message, go: () => {} }); throw e })
   }
+  /** Sends a file from the player's computer to the server, which keeps the bytes and answers with what to attach. */
+  upload = async (f: File): Promise<Attachment> => {
+    const res = await fetch(`/api/sessions/${this.state.id}/files?name=${encodeURIComponent(f.name)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: f,
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(body.error ?? 'The server did not accept that file.')
+    return body as Attachment
+  }
   start = async () => {
     const { level, background, pace, scenario } = this.state
     this.set({ starting: true, error: '' })
@@ -267,7 +278,8 @@ export class Store {
     else if (a.kind === 'doc') this.openDoc(a.doc)
     else if (a.kind === 'ticket') this.openTicket(a.id)
     else if (a.kind === 'link') a.chan ? this.openChat(a.chan) : this.open(a.app)
-    else if (a.url) window.open(a.url, '_blank', 'noopener')
+    // Back through the shift's own route, which is what decides whether this player may have the file at all.
+    else if (a.id && this.state.id) window.open(`/api/sessions/${this.state.id}/files/${a.id}`, '_blank', 'noopener')
   }
 
   // ---------- Outlook ----------

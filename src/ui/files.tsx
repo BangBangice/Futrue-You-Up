@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { File, FileCode2, FileText, Image, MonitorUp, Paperclip, X } from 'lucide-react'
+import { File, FileCode2, FileText, Image, LoaderCircle, MonitorUp, Paperclip, X } from 'lucide-react'
 import { APP_NAMES, firstName } from '../../shared/types.ts'
 import type { Attachment } from '../../shared/types.ts'
 import { sim, useSim } from '../sim/store.ts'
@@ -43,6 +43,7 @@ export function AttachButton({ onPick }: { onPick: (a: Attachment) => void }) {
   const docs = useSim(s => s.docs)
   const repo = useSim(s => s.workspace.repo)
   const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -54,10 +55,24 @@ export function AttachButton({ onPick }: { onPick: (a: Attachment) => void }) {
     return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escapeKey) }
   }, [open])
   const pick = (a: Attachment) => { onPick(a); setOpen(false) }
+  // Files are sent as they are chosen, not when the message is: the draft keeps the id the server answered with, so
+  // the bytes are already there and closing the tab or reloading cannot leave the recipient an empty card.
+  const browse = async (chosen: File[]) => {
+    setBusy(true)
+    try {
+      for (const f of chosen) onPick(await sim.upload(f))
+    } catch (err) {
+      sim.toast({ app: sim.state.focus ?? 'mail', title: 'That file did not upload', body: (err as Error).message, go: () => {} })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="attach" ref={root}>
-      <button type="button" className="icon-btn ghost" title="Attach" aria-label="Attach a file" aria-expanded={open} onClick={() => setOpen(o => !o)}><Paperclip size={16} strokeWidth={2} /></button>
+      <button type="button" className="icon-btn ghost" title={busy ? 'Uploading…' : 'Attach'} aria-label="Attach a file" aria-expanded={open} disabled={busy} onClick={() => setOpen(o => !o)}>
+        {busy ? <LoaderCircle size={16} strokeWidth={2} className="spin" /> : <Paperclip size={16} strokeWidth={2} />}
+      </button>
       <AnimatePresence>
         {open && (
           <motion.div className="menu" role="menu" initial={{ opacity: 0, y: 8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.97 }} transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}>
@@ -70,9 +85,10 @@ export function AttachButton({ onPick }: { onPick: (a: Attachment) => void }) {
         )}
       </AnimatePresence>
       <input ref={picker} type="file" multiple hidden onChange={e => {
-        for (const f of e.target.files ?? []) onPick({ kind: 'upload', name: f.name, size: f.size, url: URL.createObjectURL(f) })
+        const chosen = [...(e.target.files ?? [])]
         e.target.value = ''
         setOpen(false)
+        void browse(chosen)
       }} />
     </div>
   )
