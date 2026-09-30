@@ -40,13 +40,27 @@
   ],
   "customers": {
     "named": [
-      { "name": "Northwind Freight", "arr": "$84k", "password": 22, "sso": 38, "note": "Renewal demo 3:00 PM" },
-      { "name": "Osprey Logistics", "arr": "$31k", "password": 67, "sso": 0 },
-      { "name": "Brightline Dental", "arr": "$18k", "password": 41, "sso": 12 },
-      { "name": "Juniper & Co.", "arr": "$9k", "password": 19, "sso": 0 }
+      { "name": "Northwind Freight", "short": "Northwind", "arr": "$84k", "password": 22, "sso": 38, "note": "Renewal demo 3:00 PM" },
+      { "name": "Osprey Logistics", "short": "Osprey", "arr": "$31k", "password": 67, "sso": 0 },
+      { "name": "Brightline Dental", "short": "Brightline", "arr": "$18k", "password": 41, "sso": 12 },
+      { "name": "Juniper & Co.", "short": "Juniper", "arr": "$9k", "password": 19, "sso": 0 }
     ],
     "otherAccounts": 214,
     "otherPasswordUsers": 1191
+  },
+  "workspace": { "repo": "ledgerly-api", "host": "ledgerly-ws-02" },
+  "story": {
+    "client": "marta",
+    "customer": "Northwind Freight",
+    "staff": "finance contractors",
+    "deadline": "renewal demo",
+    "movedTo": "Thursday",
+    "integrations": ["Osprey’s nightly export", "Brightline’s booking sync"],
+    "postponed": {
+      "who": "sam",
+      "subject": "Northwind demo postponed",
+      "body": ["I called Marta and moved the demo to Thursday. She was polite about it, but she asked for a written explanation for their CFO.", "Sam"]
+    }
   },
   "cast": {
     "maya": {

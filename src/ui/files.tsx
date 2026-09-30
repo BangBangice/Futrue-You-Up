@@ -41,6 +41,7 @@ export function FileCard({ a, onRemove }: { a: Attachment; onRemove?: () => void
 export function AttachButton({ onPick }: { onPick: (a: Attachment) => void }) {
   const files = useSim(s => s.files)
   const docs = useSim(s => s.docs)
+  const repo = useSim(s => s.workspace.repo)
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const picker = useRef<HTMLInputElement>(null)
@@ -61,7 +62,7 @@ export function AttachButton({ onPick }: { onPick: (a: Attachment) => void }) {
         {open && (
           <motion.div className="menu" role="menu" initial={{ opacity: 0, y: 8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.97 }} transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}>
             <button type="button" role="menuitem" onClick={() => picker.current?.click()}><MonitorUp size={16} strokeWidth={1.9} className="sub" /><b>Browse this computer…</b></button>
-            <div className="menu-label">ledgerly-api</div>
+            <div className="menu-label">{repo}</div>
             {files.filter(f => f.startsWith('src/')).map(f => <button type="button" role="menuitem" key={f} onClick={() => pick({ kind: 'code', path: f })}><FileCode2 size={16} strokeWidth={1.8} className="ic-ts" /><span className="ellipsis">{f.slice(4)}</span></button>)}
             <div className="menu-label">Confluence</div>
             {docs.map(d => <button type="button" role="menuitem" key={d.id} onClick={() => pick({ kind: 'doc', doc: d.id })}><img src={LOGOS.docs} alt="" /><span className="ellipsis">{d.title}</span></button>)}

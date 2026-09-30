@@ -9,7 +9,8 @@ import express from 'express'
 import { done, stepsFor } from '../shared/guide.ts'
 import { Scenario, personalize } from '../shared/scenario.ts'
 import { normalizeTags } from '../shared/tags.ts'
-import { errAt, isOutage } from '../shared/types.ts'
+import { errAt, isOutage, minutes as minutesOf } from '../shared/types.ts'
+import { heard } from './ai/llm.ts'
 import * as director from './director.ts'
 import { lessonTags, listLessons } from './lessons.ts'
 import { api, errors } from './routes.ts'
@@ -288,6 +289,63 @@ if (!process.env.DATABASE_URL) {
   assert.ok((await lessonTags()).some(t => t.tag === 'communication' && t.count === 1))
 }
 
+// ---- a lesson that renames everyone: the engine's own lines follow, so no old name reaches the browser or the model.
+// Ids stay (the engine and the schema refer to them); every other string gets the new names, as a generated lesson would.
 s.stop()
+const OLD = ['northwindfreight', 'ledgerly', 'daniel', 'okafor', 'priya', 'raman', 'marta', 'lindqvist', 'leo', 'martins', 'maya', 'chen', 'sam', 'whitfield', 'northwind', 'osprey', 'brightline']
+const NEW_ = ['kestrelhaul', 'quillstone', 'rosa', 'albescu', 'nadia', 'osei', 'ines', 'barros', 'theo', 'lund', 'kai', 'moreno', 'june', 'park', 'kestrel', 'pelican', 'clearwater']
+const oldName = new RegExp(`(?<![a-z])(${OLD.join('|')})(?![a-z])`, 'gi')
+const keep = new Set([...Object.keys(good.cast), ...Object.keys(good.channels)])
+const rename = (v: unknown): unknown => typeof v === 'string' ? (keep.has(v) ? v : v.replace(oldName, m => { const n = NEW_[OLD.indexOf(m.toLowerCase())]; return m[0] === m[0].toUpperCase() ? n[0].toUpperCase() + n.slice(1) : n }))
+  : Array.isArray(v) ? v.map(rename) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, rename(x)])) : v
+const renamed = Scenario.parse({ ...(rename(good) as object), workspace: { repo: 'books-api', host: 'quill-mbp-7' } })
+assert.equal(renamed.cast.daniel.name, 'Rosa Albescu')
+assert.equal(renamed.company.name, 'Quillstone')
+const asked: string[] = []
+heard.add(a => asked.push(`${a.system}\n${a.user}\n${JSON.stringify(a.tools)}`))
+const r = await create('newgrad', 'Six years as a hospital pharmacist', 4, 'stub', null, undefined, { spec: renamed, version: 'renamed' })
+r.timeScale = 0.001
+await director.start(r)
+const rt = (n: number) => { for (let i = 0; i < n; i++) director.tick(r) }
+const rsh = (cmd: string) => director.command(r, cmd)
+const rvs = await r.ws.read(vs)
+rt(3)
+director.seen(r, 'chan:team')
+director.mail(r, { mode: 'reply', ref: 'e1', text: 'On it.', files: [] })
+director.chat(r, 'leo', 'npm test -- src/auth runs just the auth suite', [])
+director.chat(r, 'team', 'Rosa, where does the token come from?', [])
+for (const cmd of ['pwd', 'npm test -- src/auth', 'git log', 'ldg status']) await rsh(cmd)
+await director.saveFile(r, vs, rvs.replace('  const token = req.cookies[SESSION_COOKIE]\n', NAIVE))
+await rsh('git commit -am "naive"')
+await rsh('ldg deploy auth-api --env prod')
+rt(2)
+await rsh('ldg logs')
+director.chat(r, 'incidents', 'Investigating, likely my deploy. Update in 10 min.', [])
+rt(9)
+director.mail(r, { mode: 'new', to: 'ines barros', subject: 'Sign-in issue', text: 'Sorry, we are rolling back. Update in 15 minutes.', files: [] })
+while (r.world.simMin < minutesOf(renamed.clock.deadline!) + 1) rt(1)
+assert.equal(r.world.demo, 'postponed', 'the deadline passes during the outage')
+await rsh('ldg rollback auth-api')
+rt(4)
+director.saveDoc(r, undefined, { title: 'Postmortem: INC-37', group: 'Incidents', body: 'summary impact cause fix' })
+await director.saveFile(r, vs, rvs.replace('  const token = req.cookies[SESSION_COOKIE]\n', CORRECT))
+await rsh('git commit -am "fix"')
+await rsh('ldg deploy auth-api --env prod')
+rt(3)
+await settle(200)
+await director.end(r)
+await settle(120)
+const rterm = r.world.term.map(l => l.t).join('\n')
+for (const want of ['/Users/kai/books-api', 'books-api@4.18.2 test', 'Author: Rosa Albescu <rosa@quillstone.io>', 'org=org_kestrel']) assert.ok(rterm.includes(want), `the terminal says ${want}`)
+assert.ok(r.world.timeline.some(t => t.text === 'Kestrel demo postponed') && r.world.emails.some(e => e.subject === 'Kestrel demo postponed'))
+// Every string the browser holds, terminal included, except the ids themselves.
+const texts: string[] = []
+const walk = (v: unknown) => { if (typeof v === 'string') { if (!keep.has(v)) texts.push(v) } else if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') Object.values(v).forEach(walk) }
+walk(r.world)
+const leaks = (where: string, all: string[]) => all.flatMap(t => [...t.replaceAll(/"(\w+)"/g, (q, id) => (keep.has(id) ? '' : q)).matchAll(oldName)].map(m => `${where}: …${t.slice(Math.max(0, m.index - 40), m.index + 40)}…`))
+assert.ok(asked.length >= 8, 'the stub model was asked')
+assert.deepEqual([...leaks('world', texts), ...leaks('prompt', asked)], [], 'no old name reaches the browser or the model')
+r.stop()
+
 console.log(`server check passed · ${s.priv.events.length} events · ${events.length} stream messages`)
 process.exit(0)

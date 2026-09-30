@@ -1,6 +1,7 @@
 // Runs the shift: the clock, the things that happen on schedule, and what follows from what the player does.
 // No model calls here. The director decides what is true; personas and the mentor decide how to say it.
-import { COLS, clock, errAt, failing, firstName, isOutage, minutes, personByName } from '../shared/types.ts'
+import { clientOf } from '../shared/scenario.ts'
+import { COLS, clock, errAt, failing, firstName, isOutage, minutes, personByName, shortName } from '../shared/types.ts'
 import type { Attachment, ChanId, Check, Doc, Email, Folder, PersonId, TermLine, Ticket } from '../shared/types.ts'
 import * as mentor from './ai/mentor.ts'
 import { reply } from './ai/personas.ts'
@@ -14,6 +15,8 @@ const visible = (s: Session, checks: Check[]) => checks.filter(c => (s.scenario.
 const label = (s: Session, id: string) => s.scenario.checks.find(c => c.id === id)!.label
 const accept = (s: Session) => s.ws.accept(s.scenario.checks.map(c => c.id))
 const player = (s: Session) => firstName(s.world.cast[s.world.player])
+/** A colleague's first name, by cast id, so a renamed cast reads right. */
+const call = (s: Session, who: PersonId) => firstName(s.world.cast[who])
 const open = (s: Session) => !!s.world.incident && s.world.incident.resolvedAt === null
 const dashboard: Attachment = { kind: 'link', label: 'auth-api · prod dashboard', app: 'monitor' }
 const wait = (s: Session, ms: number) => new Promise(r => setTimeout(r, ms * s.timeScale))
@@ -63,8 +66,9 @@ function demo(s: Session) {
   s.set({ demo: held ? 'held' : 'postponed' })
   s.log('demo', { held })
   if (held) return
-  s.timeline('Northwind demo postponed', 'bad')
-  s.mail({ who: 'sam', subject: 'Northwind demo postponed', body: ['I called Marta and moved the demo to Thursday. She was polite about it, but she asked for a written explanation for their CFO.', 'Sam'] })
+  const { who, subject, body } = s.scenario.story.postponed, v = triggers.vars(s)
+  s.timeline(`${shortName(clientOf(s.scenario))} demo postponed`, 'bad')
+  s.mail({ who, subject: triggers.render(subject, v), body: body.map(b => triggers.render(b, v)) })
 }
 
 // ---------- production ----------
@@ -111,11 +115,14 @@ async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
     const bad = failing(live.checks)
     const line = (path: string, how: string, ok: boolean, reason = '') => say(`${clock(m)}  auth-api  ${ok ? '200' : '401 ' + reason}  ${path}  auth=${how}`, ok ? 'out' : 'err')
     const why = (id: Check['id']) => live.checks.find(c => c.id === id)?.reason ?? ''
-    line('GET /invoices org=org_northwind', 'cookie (password login)', !bad.includes('password_login'), why('password_login'))
-    line('GET /invoices org=org_osprey', 'cookie (password login)', !bad.includes('password_login'), why('password_login'))
-    line('GET /invoices org=org_northwind', 'bearer (sso, first hour)', true)
-    line('GET /invoices org=org_brightline', 'bearer after refresh + expired cookie (sso)', !bad.includes('sso_after_refresh'), why('sso_after_refresh'))
-    line('GET /invoices org=org_osprey', 'x-api-key', !bad.includes('api_key'), why('api_key'))
+    // Requests from the scenario's own customers, the first three in turn.
+    const named = s.scenario.customers.named
+    const org = (i: number) => 'GET /invoices org=org_' + (named.length ? shortName(named[i % named.length]).toLowerCase().replace(/[^a-z0-9]/g, '') : 'default')
+    line(org(0), 'cookie (password login)', !bad.includes('password_login'), why('password_login'))
+    line(org(1), 'cookie (password login)', !bad.includes('password_login'), why('password_login'))
+    line(org(0), 'bearer (sso, first hour)', true)
+    line(org(2), 'bearer after refresh + expired cookie (sso)', !bad.includes('sso_after_refresh'), why('sso_after_refresh'))
+    line(org(1), 'x-api-key', !bad.includes('api_key'), why('api_key'))
     return 0
   }
   if (sub === 'deploy') {
@@ -273,10 +280,11 @@ export function mail(s: Session, a: { mode: 'reply' | 'new' | 'forward'; ref?: s
 
   const kind = answers?.kind
   if (kind === 'assign') f.assignAckAt ??= m
-  if (kind === 'client' && f.clientAt === undefined) { f.clientAt = m; f.clientText = a.text; s.timeline(`Client update sent to Northwind (${player(s)})`, 'accent'); void mentor.review(s, 'client', a.text) }
+  if (kind === 'client' && f.clientAt === undefined) { f.clientAt = m; f.clientText = a.text; s.timeline(`Client update sent to ${shortName(clientOf(s.scenario))} (${player(s)})`, 'accent'); void mentor.review(s, 'client', a.text) }
   if (kind === 'pm' && f.pmAt === undefined) { f.pmAt = m; f.pmText = a.text; void mentor.review(s, 'pm', a.text) }
-  const line = kind === 'assign' ? `Thanks ${player(s)}. Shout if you get stuck, and loop Daniel in early on anything auth.`
-    : kind === 'client' ? (open(s) ? `Thank you, ${player(s)}. Please let me know as soon as they can get in.\nMarta` : 'Confirmed, the team is back in. Thank you for writing to me directly.\nMarta')
+  const sign = call(s, s.scenario.story.client)
+  const line = kind === 'assign' ? `Thanks ${player(s)}. Shout if you get stuck, and loop ${call(s, s.scenario.mentor)} in early on anything auth.`
+    : kind === 'client' ? (open(s) ? `Thank you, ${player(s)}. Please let me know as soon as they can get in.\n${sign}` : `Confirmed, the team is back in. Thank you for writing to me directly.\n${sign}`)
     : kind === 'pm' ? 'Got it, thank you. We’ll go through the action items at standup tomorrow.'
     : null
   const context = answers ? s.world.emails.find(e => e.id === answers.id)! : { ...sent, who: to, body: [`(${player(s)} wrote to ${s.world.cast[to].name})`], thread: [{ time: s.now, text: a.text, files: [] }] }

@@ -63,6 +63,7 @@ export function Desktop() {
 function MenuBar() {
   const focus = useSim(s => s.focus)
   const m = useSim(s => s.simMin)
+  const host = useSim(s => s.workspace.host)
   return (
     <motion.div className="menubar" initial={{ y: -28 }} animate={{ y: 0 }} transition={{ ...SPRING, delay: 0.15 }}>
       <Company size={15} />
@@ -71,7 +72,7 @@ function MenuBar() {
       </AnimatePresence>
       <span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span>
       <div className="grow" />
-      <span className="dim">ledgerly-ws-02</span>
+      <span className="dim">{host}</span>
       <Wifi size={14} strokeWidth={2.3} />
       <BatteryFull size={18} strokeWidth={1.9} />
       <Search size={13} strokeWidth={2.4} />

@@ -16,8 +16,10 @@ export const MAX_PROMPT = 2000
 // ---------- what stays tied to the code ----------
 const LEDGERLY = scenarioFile(DEFAULT_SCENARIO)!
 /** Copied from Ledgerly over whatever the model writes. The checks are what server/acceptance.ts runs against the workspace; the
- * customers, alarm and clock are how a failing check turns into the incident; the player and mentor are ids the engine names. */
+ * customers' figures, alarm and clock are how a failing check turns into the incident; the player and mentor are ids the engine names. */
 const FIXED = ['checks', 'customers', 'alarmPercent', 'clock', 'player', 'mentor'] as const
+/** What the model may change about a customer: what they are called. Their figures stay Ledgerly's, in the same order. */
+const RENAMEABLE = ['name', 'short', 'note'] as const
 /** The ticket for the bug in the workspace's code. The engine closes and reopens it by this id. */
 const CODE_TICKET = 'LED-214'
 /** Ids the engine refers to (director.ts, ai/personas.ts, src/sim/guide.ts). They may be renamed and re-voiced, not removed. */
@@ -27,7 +29,12 @@ const KEEP_CAST = Object.keys(LEDGERLY.cast), KEEP_CHANNELS = Object.keys(LEDGER
 function anchor(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw
   const out: Record<string, unknown> = { ...raw }
+  const theirs = (raw as { customers?: { named?: unknown } }).customers?.named
   for (const k of FIXED) out[k] = structuredClone(LEDGERLY[k])
+  if (Array.isArray(theirs)) (out.customers as Scenario['customers']).named.forEach((c, i) => {
+    const t = theirs[i] as Record<string, unknown> | undefined
+    for (const k of RENAMEABLE) if (typeof t?.[k] === 'string') c[k] = t[k] as string
+  })
   const seed = out.seed as { tickets?: unknown } | undefined
   if (seed && typeof seed === 'object' && Array.isArray(seed.tickets)) {
     const ticket = structuredClone(LEDGERLY.seed.tickets.find(t => t.id === CODE_TICKET)!)
@@ -64,11 +71,12 @@ const SYSTEM = `You write lessons for LARP, a workplace simulator. A lesson is a
 
 Answer with the whole lesson as ONE JSON object matching the JSON Schema below, by calling save_lesson. No prose.
 
-The code is fixed. Every lesson runs on the same codebase: the Ledgerly auth-api, whose bug is ticket ${CODE_TICKET} (SSO users logged out after a token refresh, in src/auth/verifySession.ts). So:
+The code is fixed. Every lesson runs on the same codebase: an invoicing service's auth-api (the example calls it ledgerly-api), whose bug is ticket ${CODE_TICKET} (SSO users logged out after a token refresh, in src/auth/verifySession.ts). The repository's files, and the ids and paths inside them, stay as they are whatever the lesson calls things. So:
 - You may change: title, summary, tags, company, playerBrief, levels, the cast's names, titles, colours, emails and personas, channels' labels and topics, seed emails, chats, unread counts, tickets other than ${CODE_TICKET}, docs, triggers and guide. You may add cast members, channels, emails, tickets, docs, triggers and guide steps.
-- Do not change: ${FIXED.join(', ')}, or ticket ${CODE_TICKET}. The server copies them from the example, so leave them out or copy them unchanged.
-- Keep these cast ids: ${KEEP_CAST.join(', ')}. Keep these channel ids: ${KEEP_CHANNELS.join(', ')}. The engine refers to them.
-- Engine lines still name Priya (priya), Daniel (daniel), Leo (leo), Marta and Northwind Freight, and talk about the auth service, logins and a 3:00 PM demo. Keep the story consistent with that.
+- You may also change the labels around the code and the incident: workspace.repo (the repository's name) and workspace.host (the work laptop's name); customers' ${RENAMEABLE.join(', ')} (keep their order, figures come from the example); and story, which is how the engine's own lines tell the outage: story.client (the cast id of the client contact who escalates), story.customer (their company, one of the customers' names), story.staff (who there signs in with a password), story.deadline (what happens at the clock's deadline, e.g. "renewal demo"), story.movedTo, story.integrations (what breaks for API-key customers) and story.postponed (the email sent when production is down at the deadline).
+- Do not change: ${FIXED.join(', ')} (apart from the customers' names above), or ticket ${CODE_TICKET}. The server copies them from the example, so leave them out or copy them unchanged.
+- Keep these cast ids: ${KEEP_CAST.join(', ')}. Keep these channel ids: ${KEEP_CHANNELS.join(', ')}. The engine refers to them by id and reads their names from the cast, so rename them freely: priya is the manager who assigns ${CODE_TICKET} and gets the postmortem, the mentor is the senior engineer, leo is a peer who asks for help, and the engine posts as cloudwatch and jira.
+- Engine lines still talk about the auth service (auth-api, deployed with the ldg command), logins, invoices, Jira, Confluence, CloudWatch and a demo at the clock's deadline. Keep the story consistent with that.
 
 Rules the schema can't show:
 - Every person a message, email, ticket, doc or trigger names is a cast id; every channel is a channels id. seed.chats and seed.unread have an entry for every channel, and only for channels.

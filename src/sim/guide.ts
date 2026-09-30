@@ -3,7 +3,8 @@
 // The opening steps are scenario data (shared/guide.ts evaluates them); the phases after the first deploy are still here.
 import { NEW, done, stepsFor } from '../../shared/guide.ts'
 import type { ShowMe } from '../../shared/guide.ts'
-import type { AppId, ChanId, Email } from '../../shared/types.ts'
+import { clock, firstName } from '../../shared/types.ts'
+import type { AppId, ChanId, Email, PersonId } from '../../shared/types.ts'
 import { live, sim } from './store.ts'
 import type { State } from './store.ts'
 
@@ -63,6 +64,7 @@ export function guide(s: State): Guide {
   const pm = s.emails.find(e => e.kind === 'pm')
   const pmDone = !!pm?.thread.length || s.docs.some(d => d.owner === s.player && /post-?mortem/i.test(d.title))
 
+  const call = (id: PersonId) => (s.cast[id] ? firstName(s.cast[id]) : id)
   const watch = (text: string): Step => ({ id: 'watch', text, done: watched, hint: 'A deploy takes about two minutes to show up.', show: inApp('monitor', 'error-rate') })
   const mid = s.mentor, mentorName = s.cast[mid]?.name.split(' ')[0]
   const mentor = (after: number, side = false): Step[] => s.chats[mid]?.some(m => m.who === mid && m.id > after)
@@ -98,7 +100,7 @@ export function guide(s: State): Guide {
       steps: [
         { id: 'update', text: 'Tell #incidents that service is restored', done: saidIn('incidents', lastAlert('ok')), show: inChat('incidents') },
         ...mentor(lastAlert('fire')),
-        ...(pm ? [{ id: 'pm', text: 'Send Priya a short postmortem', done: pmDone, hint: 'Reply to her email, or write it as a page in Confluence. The template is there too.', show: inMail(pm, true) }] : []),
+        ...(pm ? [{ id: 'pm', text: `Send ${call(pm.who)} a short postmortem`, done: pmDone, hint: 'Reply to her email, or write it as a page in Confluence. The template is there too.', show: inMail(pm, true) }] : []),
         ...(fixed ? [] : ship(true)),
         ...replies().filter(x => !x.done),
       ],
@@ -112,7 +114,7 @@ export function guide(s: State): Guide {
       phase: 'done', title: 'LED-214 is shipped', sub: 'SSO users stay signed in. Finish the way a good engineer would.',
       steps: [
         watch('Watch the 401 rate in CloudWatch for a few minutes'),
-        { id: 'tell', text: 'Tell Priya it is out', done: saidIn('priya', out), show: inChat('priya') },
+        { id: 'tell', text: `Tell ${call('priya')} it is out`, done: saidIn('priya', out), show: inChat('priya') },
         { id: 'end', text: 'End your shift when you’re ready', done: false, hint: `You get a recap of the day and a note from ${mentorName}.`, show: () => sim.spotlight(['end-shift']) },
       ],
     }
@@ -130,11 +132,11 @@ export function guide(s: State): Guide {
   const leo = s.chats.leo.find(m => m.who === 'leo' && m.id > NEW && m.text.includes('auth tests'))
   const priya = s.chats.priya.findLast(m => m.who === 'priya' && m.id > NEW && /^(How’s|Any update on) LED-214/.test(m.text))
   return {
-    phase: 'ticket', title: 'Fix LED-214', sub: 'SSO users get logged out after about an hour. Priya wants it fixed before the 3:00 PM demo.',
+    phase: 'ticket', title: 'Fix LED-214', sub: `SSO users get logged out after about an hour. ${call('priya')} wants it fixed${s.deadline === null ? '' : ` before the ${clock(s.deadline)} demo`}.`,
     steps: [
       ...stepsFor(s.guide, s.level).map(x => ({ id: x.id, text: x.text, hint: x.hint, done: done(s, x.doneWhen), show: target(s, x.showMe) })),
-      ...(leo ? [{ id: 'leo', text: 'Leo asked you something in Teams', done: saidIn('leo', leo.id), side: true, show: inChat('leo') }] : []),
-      ...(priya ? [{ id: 'priya', text: 'Priya wants an update in Teams', done: saidIn('priya', priya.id), side: true, show: inChat('priya') }] : []),
+      ...(leo ? [{ id: 'leo', text: `${call('leo')} asked you something in Teams`, done: saidIn('leo', leo.id), side: true, show: inChat('leo') }] : []),
+      ...(priya ? [{ id: 'priya', text: `${call('priya')} wants an update in Teams`, done: saidIn('priya', priya.id), side: true, show: inChat('priya') }] : []),
     ],
   }
 }

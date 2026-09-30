@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Blocks, Bug, ChevronDown, ChevronRight, CircleStop, FileCode2, FileJson, FilePlus2, FileText, Files, FlaskConical, GitBranch, GitCompare, LoaderCircle, Play, Rocket, Search, Undo2, X } from 'lucide-react'
-import { clock, login } from '../../../shared/types.ts'
+import { clock, login, shortHost } from '../../../shared/types.ts'
 import { live, phone, sim, useSim } from '../../sim/store.ts'
 import { EASE, LOGOS } from '../bits.tsx'
 import { DragBar, Lights } from '../Window.tsx'
@@ -16,6 +16,7 @@ const name = (path: string) => path.split('/').at(-1)!
 
 function Explorer() {
   const files = useSim(s => s.files)
+  const repo = useSim(s => s.workspace.repo)
   const changes = useSim(s => s.code.changes)
   const current = useSim(s => s.codeFile)
   const [closed, setClosed] = useState<string[]>([])
@@ -40,7 +41,7 @@ function Explorer() {
   return (
     <>
       <div className="explorer-head">EXPLORER<button title="New file" aria-label="New file" onClick={() => setAdding(true)}><FilePlus2 size={14} strokeWidth={1.9} /></button></div>
-      <div className="explorer-root"><ChevronDown size={13} strokeWidth={2.6} />LEDGERLY-API</div>
+      <div className="explorer-root"><ChevronDown size={13} strokeWidth={2.6} />{repo.toUpperCase()}</div>
       <div className="explorer-scroll">
         {adding && <form onSubmit={add} className="tree-new"><input name="path" autoFocus placeholder="src/auth/new-file.ts" aria-label="New file path" onBlur={() => setAdding(false)} /></form>}
         {rows.filter(r => !hidden(r.path)).map(r => {
@@ -94,7 +95,7 @@ function SourceControl() {
 function Terminal() {
   const term = useSim(s => s.term)
   const busy = useSim(s => s.code.busy)
-  const prompt = useSim(s => `${s.cast[s.player] ? login(s.cast[s.player]) : 'dev'}@ws-02 ledgerly-api % `)
+  const prompt = useSim(s => `${s.cast[s.player] ? login(s.cast[s.player]) : 'dev'}@${shortHost(s.workspace.host)} ${s.workspace.repo} % `)
   const shown = useSim(s => s.wins.code.open && !s.wins.code.min && (s.deep.code || !phone()))
   const [line, setLine] = useState('')
   const history = useRef<string[]>([]), at = useRef(0)
@@ -142,6 +143,7 @@ export function Code() {
   const deploys = useSim(s => s.deploys)
   const outage = useSim(s => live(s))
   const player = useSim(s => s.player)
+  const repo = useSim(s => s.workspace.repo)
   const prod = deploys.at(-1)
   const dirty = (p: string) => !!buffers[p] && buffers[p].text !== buffers[p].saved
   const banner = !prod || prod.by !== player ? '' : prod.kind === 'rollback' ? `Production was rolled back to ${prod.sha} at ${clock(prod.at)}. Your change is no longer live.` : `auth-api@${prod.sha} has been live in production since ${clock(prod.at)}.`
@@ -150,7 +152,7 @@ export function Code() {
     <div className="app code">
       <DragBar className="code-title">
         <Lights />
-        <div className="code-title-text"><img src={LOGOS.code} alt="" />{file ? name(file) + ' — ' : ''}ledgerly-api</div>
+        <div className="code-title-text"><img src={LOGOS.code} alt="" />{file ? name(file) + ' — ' : ''}{repo}</div>
       </DragBar>
       <div className="app-body">
         <div className="activity">

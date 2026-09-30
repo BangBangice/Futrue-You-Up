@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import type { Response } from 'express'
 import { personalize } from '../shared/scenario.ts'
 import type { Scenario } from '../shared/scenario.ts'
-import { clock, minutes } from '../shared/types.ts'
+import { clock, firstName, minutes } from '../shared/types.ts'
 import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, PersonId, TermLine, Ticket, Tone, World } from '../shared/types.ts'
 import { aiProblem, onAiProblem } from './ai/llm.ts'
 import { Workspace } from './sandbox.ts'
@@ -147,8 +147,8 @@ const sessions = new Map<string, Session>()
 const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
 // Persona cards and mentor guidance are prompts, so they stay on the server. So do security checks: the browser must not learn they exist.
-export const roster = (sc: Scenario): Pick<World, 'company' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
-  company: sc.company.name,
+export const roster = (sc: Scenario): Pick<World, 'company' | 'workspace' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
+  company: sc.company.name, workspace: sc.workspace,
   cast: Object.fromEntries(Object.entries(sc.cast).map(([id, { persona: _, ...p }]) => [id, p])), channels: sc.channels, player: sc.player, mentor: sc.mentor,
   levels: Object.fromEntries(Object.entries(sc.levels).map(([k, { mentorGuidance: _, ...l }]) => [k, l])),
   deadline: sc.clock.deadline ? minutes(sc.clock.deadline) : null,
@@ -179,12 +179,12 @@ export async function create(level: Level, background: string, pace: number, ai:
     ...roster(spec), ...structuredClone(spec.seed), typing: [],
     files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
     deploys: [], incident: null, demo: 'pending',
-    timeline: [{ time: '12:02 PM', text: 'Deploy billing-api@e0c3a18 (Daniel)', tone: 'dim' }], recap: null,
+    timeline: [{ time: '12:02 PM', text: `Deploy billing-api@e0c3a18 (${firstName(spec.cast[spec.mentor])})`, tone: 'dim' }], recap: null,
   }
   const s = new Session(world, { uid: 100, beats: [], verdicts: {}, attempts: 0, aiCalls: 0, events: [], f: { seen: [], praised: [], reviewed: [] } }, spec)
   s.userId = userId
   await mkdir(s.dir, { recursive: true })
-  s.ws = await Workspace.open(s.dir, world.cast[world.player])
+  s.ws = await Workspace.open(s.dir, world.cast[world.player], { repo: spec.workspace.repo, author: spec.cast[spec.mentor] })
   await store().createRun(s, version)
   sessions.set(id, s)
   return s
@@ -205,7 +205,7 @@ async function load(id: string) {
   s.rev = saved.rev
   s.userId = saved.userId
   await mkdir(s.dir, { recursive: true })
-  s.ws = await Workspace.open(s.dir, s.world.cast[s.world.player])
+  s.ws = await Workspace.open(s.dir, s.world.cast[s.world.player], { repo: s.scenario.workspace.repo, author: s.scenario.cast[s.scenario.mentor] })
   sessions.set(id, s)
   return s
 }

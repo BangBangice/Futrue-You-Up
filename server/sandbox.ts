@@ -35,8 +35,6 @@ const getBuiltin = process.getBuiltinModule
 Object.defineProperty(process, 'getBuiltinModule', { value: id => blocked(id) ? refuse(id) : getBuiltin(id), writable: false, configurable: false })
 registerHooks({ resolve: (specifier, context, next) => blocked(specifier) ? refuse(specifier) : next(specifier, context) })
 `)}`
-/** Where the player's clone appears to live on their laptop. */
-const fakeHome = (user: string) => `/Users/${user}/ledgerly-api`
 
 /** Thrown for anything the player may not do. The message is shown to them, so it should help. */
 export class Refusal extends Error {}
@@ -89,18 +87,21 @@ export class Workspace {
   private readonly home: string
   /** The player, as git and the shell know them. */
   private readonly me: { name: string; email: string; user: string }
-  private constructor(root: string, home: string, me: Workspace['me']) { this.root = root; this.home = home; this.me = me }
+  /** What the repository is called. Its contents are the template's whatever the label. */
+  private readonly repo: string
+  private constructor(root: string, home: string, me: Workspace['me'], repo: string) { this.root = root; this.home = home; this.me = me; this.repo = repo }
 
-  static async open(dir: string, player: Person) {
+  /** `author` wrote the commit the player's branch starts from. */
+  static async open(dir: string, player: Person, { repo, author }: { repo: string; author: Person }) {
     const root = join(dir, 'workspace')
     const fresh = !existsSync(join(root, '.git'))
     if (fresh) {
       await rm(root, { recursive: true, force: true })
       await cp(TEMPLATE, root, { recursive: true })
     }
-    const ws = new Workspace(await realpath(root), await realpath(dir), { name: player.name, email: player.email, user: login(player) })
+    const ws = new Workspace(await realpath(root), await realpath(dir), { name: player.name, email: player.email, user: login(player) }, repo)
     if (fresh) {
-      const past = { GIT_AUTHOR_NAME: 'Daniel Okafor', GIT_AUTHOR_EMAIL: 'daniel@ledgerly.io', GIT_COMMITTER_NAME: 'Daniel Okafor', GIT_COMMITTER_EMAIL: 'daniel@ledgerly.io', GIT_AUTHOR_DATE: '2026-09-22T16:40:00', GIT_COMMITTER_DATE: '2026-09-22T16:40:00' }
+      const past = { GIT_AUTHOR_NAME: author.name, GIT_AUTHOR_EMAIL: author.email, GIT_COMMITTER_NAME: author.name, GIT_COMMITTER_EMAIL: author.email, GIT_AUTHOR_DATE: '2026-09-22T16:40:00', GIT_COMMITTER_DATE: '2026-09-22T16:40:00' }
       await ws.git(['init', '-q', '-b', 'main'])
       await ws.git(['add', '-A'])
       await ws.git(['commit', '-q', '-m', 'chore(session): move session store to Redis 7 (LED-205)'], past)
@@ -246,7 +247,7 @@ export class Workspace {
 
     switch (cmd) {
       case 'help': HELP.forEach(l => say(l, 'dim')); return 0
-      case 'pwd': say(fakeHome(this.me.user) + (this.cwd ? '/' + this.cwd : '')); return 0
+      case 'pwd': say(`/Users/${this.me.user}/${this.repo}` + (this.cwd ? '/' + this.cwd : '')); return 0
       case 'cd': {
         const { p, info } = args[0] && args[0] !== '~' ? await at(args[0]) : { p: this.root, info: await stat(this.root) }
         if (!info?.isDirectory()) throw new Refusal(`cd: ${args[0]}: not a folder`)
@@ -301,7 +302,7 @@ export class Workspace {
         if (!test) throw new Refusal(`npm ${args[0] ?? ''}: only "npm test" is available here. This project has no dependencies to install.`)
         const dash = args.indexOf('--')
         say('')
-        say('> ledgerly-api@4.18.2 test', 'dim')
+        say(`> ${this.repo}@4.18.2 test`, 'dim')
         say('> node --test ' + (dash >= 0 ? args.slice(dash + 1).join(' ') : ''), 'dim')
         say('')
         return this.test(dash >= 0 ? args.slice(dash + 1) : [], emit)
