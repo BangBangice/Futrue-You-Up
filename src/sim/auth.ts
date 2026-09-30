@@ -4,7 +4,7 @@ import { createAuthClient } from 'better-auth/react'
 import { anonymousClient } from 'better-auth/client/plugins'
 
 export interface AuthConfig { enabled: boolean; guest: boolean; email: boolean; google: boolean }
-export interface Account { name: string; isAnonymous: boolean; role: string; signOut: () => Promise<void>; save?: () => void }
+export interface Account { name: string; isAnonymous: boolean; role: string; verified: boolean; signOut: () => Promise<void>; save?: () => void }
 
 export const authClient = createAuthClient({ basePath: '/api/auth', plugins: [anonymousClient()] })
 
