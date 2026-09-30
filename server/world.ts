@@ -1,6 +1,6 @@
 // One running shift: the world the browser sees, the private facts it does not, and the stream that keeps them in step.
 import { mkdir, rm } from 'node:fs/promises'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Response } from 'express'
@@ -9,7 +9,7 @@ import type { Scenario } from '../shared/scenario.ts'
 import { clock, firstName, minutes } from '../shared/types.ts'
 import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, PersonId, TermLine, Ticket, Tone, World } from '../shared/types.ts'
 import { aiProblem, onAiProblem } from './ai/llm.ts'
-import { Workspace } from './sandbox.ts'
+import { MAX_SNAPSHOT, Workspace } from './sandbox.ts'
 import type { Verdict } from './sandbox.ts'
 import { deleteRuns, moveRuns, store } from './runs.ts'
 import { DEFAULT_SCENARIO, scenarioFile } from './scenarios.ts'
@@ -53,6 +53,10 @@ export class Session {
   userId: string | null = null
   private saving: ReturnType<typeof setTimeout> | undefined
   private writing = Promise.resolve(true)
+  private snapping: ReturnType<typeof setTimeout> | undefined
+  private packing = Promise.resolve()
+  /** The hash of the last snapshot written, so an unchanged workspace is not written again. */
+  private packed = ''
   readonly dir: string
   readonly scenario: Scenario
 
@@ -99,10 +103,33 @@ export class Session {
     this.saving = undefined
     return (this.writing = this.writing.then(() => store().saveRun(this)))
   }
+  /** Snapshots the workspace to the store soon, after anything that may have changed it. Nothing to do with the file store. */
+  snap() {
+    if (!store().workspaces) return
+    clearTimeout(this.snapping)
+    this.snapping = setTimeout(() => void this.flushWorkspace(), 2000)
+  }
+  /** Snapshots now, queued behind any snapshot still being written. Unchanged snapshots are not written again. */
+  flushWorkspace() {
+    clearTimeout(this.snapping)
+    this.snapping = undefined
+    const keep = store().workspaces
+    if (!keep || !this.ws) return this.packing
+    return (this.packing = this.packing.then(async () => {
+      try {
+        const snapshot = await this.ws.pack()
+        if (snapshot.length > MAX_SNAPSHOT) return console.error(`[workspace] ${this.world.id}: snapshot is ${snapshot.length} bytes, over the ${MAX_SNAPSHOT}-byte limit; not saved, so a restore will bring back an older one`)
+        const hash = createHash('sha256').update(snapshot).digest('hex')
+        if (hash === this.packed) return
+        await keep.save(this.world.id, snapshot)
+        this.packed = hash
+      } catch (err) { console.warn(`[workspace] ${this.world.id}: snapshot not saved`, err) }
+    }))
+  }
   stop() {
     clearInterval(this.clock); this.clock = undefined; this.timers.forEach(clearTimeout); this.timers.clear()
     // The shift's sandbox goes too, if it has one: nothing is kept there, and the next run makes a new one.
-    return Promise.all([this.saving ? this.flush() : this.writing, this.ws?.close()]).then(([saved]) => saved)
+    return Promise.all([this.saving ? this.flush() : this.writing, this.snapping ? this.flushWorkspace() : this.packing, this.ws?.close()]).then(([saved]) => saved)
   }
 
   // ---------- things that happen ----------
@@ -207,7 +234,9 @@ async function load(id: string) {
   s.rev = saved.rev
   s.userId = saved.userId
   await mkdir(s.dir, { recursive: true })
-  s.ws = await Workspace.open(s.dir, s.world.cast[s.world.player], { repo: s.scenario.workspace.repo, author: s.scenario.cast[s.scenario.mentor] })
+  // A redeploy or another instance has no copy on disk: the store's snapshot brings back the player's commits and unsaved work.
+  const snapshot = async () => (await store().workspaces?.load(id)) ?? null
+  s.ws = await Workspace.open(s.dir, s.world.cast[s.world.player], { repo: s.scenario.workspace.repo, author: s.scenario.cast[s.scenario.mentor], saved: snapshot })
   sessions.set(id, s)
   return s
 }

@@ -36,6 +36,13 @@
       "when": 1790771035878,
       "tag": "0004_lesson_generations",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790773179680,
+      "tag": "0005_workspaces",
+      "breakpoints": true
     }
   ]
 }

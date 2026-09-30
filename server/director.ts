@@ -182,6 +182,8 @@ export async function refresh(s: Session) {
   const [state, files] = [await s.ws.state(), await s.ws.tree()]
   const before = s.world.code.head
   s.set({ code: state, files })
+  // Saves, commits, branch changes and every command end up here, so this is where the workspace is snapshotted (debounced).
+  s.snap()
   if (!before || state.head === before || s.priv.verdicts[state.head]) return
   s.log('commit', { sha: state.head, subject: state.subject })
   // Get ahead: find out now what this commit would do in production, and start on the coaching if it would do harm.
