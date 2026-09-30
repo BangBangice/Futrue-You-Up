@@ -14,7 +14,7 @@ export function Post() {
   return (
     <>
       <header className="topbar">
-        <Brand size={14} />
+        <Brand size={14} home />
         <div className="grow" />
         <ThemeToggle />
         <button className="btn btn-ink" onClick={sim.replay}>Start another shift<ArrowRight size={14} strokeWidth={2.4} /></button>

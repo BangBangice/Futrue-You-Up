@@ -24,6 +24,8 @@ export interface View {
   seen: string[]; spot: Spot | null; guideOpen: boolean
   /** On a phone an app shows one pane at a time: its list, or (true) what was opened from it. Wider screens show both and ignore this. */
   deep: Record<AppId, boolean>
+  /** The lesson picked in the library, or '' for the server's default. Kept across shifts, like the level. */
+  scenario: string
 }
 export type State = Omit<World, 'stage'> & View
 
@@ -32,6 +34,8 @@ const LAYOUT: Record<AppId, [number, number, number, number]> = { mail: [0.04, 4
 const NO_DRAFT = { compose: null, mailDraft: '', mailFiles: [] as Attachment[] }
 const KEY = 'larp.session'
 const SEEN = 'larp.seen'
+/** A lesson picked but not started yet, so a reload stays on its start page instead of resuming an older shift. */
+const LESSON = 'larp.lesson'
 const TEST = /^\s*(npm (test|t|run test)\b|node --test)/
 /** Matches the media query in mobile.css. */
 export const phone = () => matchMedia('(max-width: 720px), (pointer: coarse) and (max-height: 540px)').matches
@@ -46,6 +50,7 @@ const view = (): View => ({
   tabs: [], codeFile: '', buffers: {}, side: 'files', diff: null,
   seen: [], spot: null, guideOpen: true,
   deep: { mail: false, chat: false, code: true, tracker: false, docs: true, monitor: false },
+  scenario: '',
 })
 const nowhere = (): Omit<World, 'stage'> => ({
   id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: 0, company: '', cast: {}, channels: {}, player: '', mentor: '', levels: {}, deadline: null, guide: [],
@@ -64,7 +69,7 @@ export function winRect(w: Win, D: { W: number; H: number }) {
 export const live = (s: Pick<World, 'incident'>) => !!s.incident && s.incident.resolvedAt === null
 
 class Store {
-  state: State = { ...nowhere(), ...view() }
+  state: State = { ...nowhere(), ...view(), scenario: sessionStorage.getItem(LESSON) ?? '' }
   private subs = new Set<() => void>()
   private stream: EventSource | null = null
   private seq = 0
@@ -92,11 +97,12 @@ class Store {
     return this.call('/act', { method: 'POST', body: JSON.stringify(a) }).catch(e => { this.toast({ app: this.state.focus ?? 'mail', title: 'That did not go through', body: e.message, go: () => {} }); throw e })
   }
   start = async () => {
-    const { level, background, pace } = this.state
+    const { level, background, pace, scenario } = this.state
     this.set({ starting: true, error: '' })
     try {
-      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ level, background, pace }) })
+      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ level, background, pace, scenario: scenario || undefined }) })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'The server could not start a shift.')
+      sessionStorage.removeItem(LESSON)
       this.connect((await res.json()).id)
     } catch (e) { this.set({ starting: false, error: (e as Error).message.includes('fetch') ? 'Cannot reach the LARP server. Is "npm run dev" running?' : (e as Error).message }) }
   }
@@ -113,18 +119,29 @@ class Store {
   /** Who the player will be, for the start page. The shift's own snapshot replaces it. */
   loadCast = async () => {
     try {
-      const res = await fetch('/api/scenario')
+      const { scenario } = this.state
+      const res = await fetch('/api/scenario' + (scenario ? '?id=' + encodeURIComponent(scenario) : ''))
       if (!res.ok) return
       const cast = await res.json() as Pick<World, 'company' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact'>
-      this.set(s => (s.stage === 'onboard' ? cast : null))
+      this.set(s => (s.stage === 'onboard' && s.scenario === scenario ? cast : null))
     } catch { /* the server is down; starting a shift will say so */ }
   }
+  /** Picks a lesson from the library: a fresh start page for it. A shift left unfinished can still be resumed from the library. */
+  choose = (scenario: string) => {
+    this.replay()
+    this.set({ scenario })
+    sessionStorage.setItem(LESSON, scenario)
+  }
+  /** The shift this tab last played, if any. */
+  saved = () => sessionStorage.getItem(KEY)
+  /** Goes back to a shift from the library, rather than to a lesson picked but not started. */
+  pickUp = (id: string) => { sessionStorage.removeItem(LESSON); sessionStorage.setItem(KEY, id) }
   leave() { this.stream?.close(); this.stream = null }
   /** Picks up a shift that was already running: this tab's, or with an account the newest one still going. */
   resume = async (accounts: boolean) => {
     const id = sessionStorage.getItem(KEY)
     if (id) return this.connect(id)
-    if (!accounts) return
+    if (!accounts || sessionStorage.getItem(LESSON)) return
     const runs = await fetch('/api/me/runs').then(r => (r.ok ? r.json() as Promise<{ id: string; status: string }[]> : []), () => [])
     const run = runs.find(r => r.status === 'active')
     if (run && !this.state.id) this.connect(run.id)
@@ -144,7 +161,7 @@ class Store {
       const { world } = read(e) as { world: World }
       const fresh = this.state.id !== world.id
       this.remember(world)
-      this.set({ ...(fresh ? { ...view(), seen: this.recall(world.id) } : {}), theme: this.state.theme, desk: this.state.desk, ...world, online: true, starting: false })
+      this.set({ ...(fresh ? { ...view(), seen: this.recall(world.id) } : {}), theme: this.state.theme, desk: this.state.desk, scenario: this.state.scenario, ...world, online: true, starting: false })
       if (fresh) this.fit(this.state.desk.W, this.state.desk.H)
       // Only on a touch device: a narrow laptop window gets the phone layout too, but it is still a laptop.
       if (fresh && phone() && matchMedia('(pointer: coarse)').matches) this.toast({ title: 'Best on a laptop', body: 'LARP is built for a bigger screen. It works on your phone too, with less room.', go: () => {} })
@@ -192,7 +209,7 @@ class Store {
   // ---------- shift ----------
   setPace = (pace: number) => (this.state.id ? void this.act({ type: 'pace', pace }) : this.set({ pace }))
   endShift = () => void this.act({ type: 'end' })
-  replay = () => { this.stream?.close(); this.stream = null; sessionStorage.removeItem(KEY); sessionStorage.removeItem(SEEN); this.known.clear(); const { theme, level, background } = this.state; this.set({ ...nowhere(), ...view(), theme, level, background }) }
+  replay = () => { this.stream?.close(); this.stream = null; sessionStorage.removeItem(KEY); sessionStorage.removeItem(SEEN); this.known.clear(); const { theme, level, background, scenario } = this.state; this.set({ ...nowhere(), ...view(), theme, level, background, scenario }) }
 
   // ---------- notifications ----------
   toast(t: Omit<Toast, 'id'>) {

@@ -21,7 +21,7 @@ export function Onboarding() {
   return (
     <div className="page">
       <header className="topbar">
-        <Brand />
+        <Brand home />
         <div className="topbar-right">
           {account?.isAnonymous && account.save && <button className="btn sm btn-soft" onClick={account.save}><span>Save<span className="wide"> your progress</span></span></button>}
           <ThemeToggle />

@@ -43,6 +43,11 @@
   .tile { padding: 10px; }
   .seg-grow button { padding: 9px 4px; white-space: normal; line-height: 1.2; }
   .recap { padding: 22px 16px 44px; gap: 16px; }
+  .library { padding: 24px 16px 44px; gap: 18px; }
+  .library-head h1 { font-size: 28px; }
+  .library-search { max-width: none; }
+  .lesson-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .lesson-card { padding: 16px; }
   .post-head h1 { font-size: 28px; }
   .recap .panel { padding: 16px; }
   .recap-grid { gap: 16px; }

@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react'
 import { animate, motion } from 'motion/react'
 import { Moon, Sun } from 'lucide-react'
+import { Link } from 'react-router'
 import type { AppId, PersonId } from '../../shared/types.ts'
 import { setTheme, useSim } from '../sim/store.ts'
 import outlook from '../assets/logos/outlook.png'
@@ -24,14 +25,14 @@ export const rise = {
 }
 export const stagger = (gap = 0.06, delay = 0) => ({ hidden: {}, show: { transition: { staggerChildren: gap, delayChildren: delay } } })
 
-export function Brand({ size = 15 }: { size?: number }) {
+/** With `home`, the mark links back to the library. */
+export function Brand({ size = 15, home }: { size?: number; home?: boolean }) {
   const theme = useSim(s => s.theme)
-  return (
-    <div className="brand">
-      <img className="brand-logo" src={theme === 'dark' ? larpWhite : larpBlack} alt="" draggable={false} />
-      <span style={{ fontSize: size }}>LARP</span>
-    </div>
-  )
+  const mark = <>
+    <img className="brand-logo" src={theme === 'dark' ? larpWhite : larpBlack} alt="" draggable={false} />
+    <span style={{ fontSize: size }}>LARP</span>
+  </>
+  return home ? <Link to="/" className="brand" title="Lesson library">{mark}</Link> : <div className="brand">{mark}</div>
 }
 
 export function Avatar({ who, size = 32 }: { who: PersonId; size?: number }) {

@@ -16,27 +16,26 @@ const LINK_ERRORS: Record<string, string> = {
 }
 const say = (e: Problem) => (e.status === 429 ? 'Too many tries. Wait a minute, then try again.' : e.message || 'Something went wrong. Try again.')
 
-// Links from emails and Google land on the app with a reset token or an error. Read once, then tidied from the URL so a reload doesn't replay them.
+// Links from emails and Google can land on the app with an error. Read once, then tidied from the URL so a reload doesn't replay it.
+// (A reset link has its own route, /reset-password, in App.tsx.)
 function fromUrl() {
-  const q = new URLSearchParams(location.search)
-  const token = location.pathname === '/reset-password' ? q.get('token') ?? '' : ''
-  const code = q.get('error')
-  if (token || code) history.replaceState(null, '', '/')
-  const error = code ? LINK_ERRORS[code] ?? `Sign-in didn't work (${code.replace(/_/g, ' ')}). Try again or use another way in.` : ''
-  return { token, error }
+  const code = new URLSearchParams(location.search).get('error')
+  if (code) history.replaceState(null, '', '/')
+  return code ? LINK_ERRORS[code] ?? `Sign-in didn't work (${code.replace(/_/g, ' ')}). Try again or use another way in.` : ''
 }
 let arrival = fromUrl()
-export const arrivedByLink = !!(arrival.token || arrival.error)
+export const arrivedByLink = !!arrival
 
-export function SignIn({ config, start, guest: asGuest, onDone, onBack }: { config: AuthConfig; start?: Mode; guest?: boolean; onDone: () => void; onBack?: () => void }) {
+/** `token` comes from a password reset link and opens the reset form. */
+export function SignIn({ config, start, guest: asGuest, token = '', onDone, onBack }: { config: AuthConfig; start?: Mode; guest?: boolean; token?: string; onDone: () => void; onBack?: () => void }) {
   const [landed] = useState(arrival)
-  useEffect(() => { arrival = { token: '', error: '' } }, [])
-  const [mode, setMode] = useState<Mode>(landed.token ? 'reset' : start ?? (config.email ? 'signin' : 'register'))
+  useEffect(() => { arrival = '' }, [])
+  const [mode, setMode] = useState<Mode>(token ? 'reset' : start ?? (config.email ? 'signin' : 'register'))
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(landed.error)
+  const [error, setError] = useState(landed)
   const [note, setNote] = useState('')
   const go = (m: Mode) => { setMode(m); setError(''); setNote('') }
   const saving = !!onBack && start === 'register'
@@ -56,7 +55,7 @@ export function SignIn({ config, start, guest: asGuest, onDone, onBack }: { conf
   const register = (e: FormEvent) => run(e, () => authClient.signUp.email({ name: name.trim(), email, password, callbackURL: '/' }), () => setMode('inbox'))
   const resend = () => run(null, () => authClient.sendVerificationEmail({ email, callbackURL: '/' }), () => setNote('Sent again. It can take a minute to arrive.'))
   const forgot = (e: FormEvent) => run(e, () => authClient.requestPasswordReset({ email, redirectTo: '/reset-password' }), () => setMode('sent'))
-  const reset = (e: FormEvent) => run(e, () => authClient.resetPassword({ newPassword: password, token: landed.token }), () => {
+  const reset = (e: FormEvent) => run(e, () => authClient.resetPassword({ newPassword: password, token }), () => {
     setPassword('')
     go('signin')
     setNote('Password changed. Sign in with your new password.')
@@ -87,7 +86,7 @@ export function SignIn({ config, start, guest: asGuest, onDone, onBack }: { conf
   return (
     <div className="page">
       <header className="topbar">
-        <Brand />
+        <Brand home={!onBack} />
         <div className="topbar-right"><ThemeToggle /></div>
       </header>
       <motion.main className="onboard" variants={stagger(0.07, 0.05)} initial="hidden" animate="show">
