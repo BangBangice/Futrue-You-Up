@@ -1,6 +1,7 @@
 // The shape of a scenario file. Pure: the server validates with it, and a scenario editor can reuse it.
 // Data: the company, the cast with each AI colleague's persona card, the mentor and how they pitch to each level, the channels, the starting content and the scripted triggers.
 // Also data: the clock, the production checks' labels and what each costs, and the customers.
+// Also data: what the code workspace is called, and the words the engine uses for the client, the deadline and the outage (story).
 // Still code: what the checks test (server/acceptance.ts), the facts each persona is told, the mentor's rules and scripted fallback lines.
 import { z } from 'zod'
 import { DONE_KEYS, NEW, SHOW_KEYS } from './guide.ts'
@@ -113,7 +114,12 @@ const check = z.strictObject({
   security: z.boolean().optional(),
   locks: z.enum(['password', 'sso']).optional(),
 })
-const customer = z.strictObject({ name: line, arr: line, password: z.number().int().min(0), sso: z.number().int().min(0), note: z.string().default('') })
+const customer = z.strictObject({
+  name: line,
+  /** What the story and the production logs call them, like "Northwind". Their name's first word if not given. */
+  short: line.optional(),
+  arr: line, password: z.number().int().min(0), sso: z.number().int().min(0), note: z.string().default(''),
+})
 const done: z.ZodType<Done> = z.lazy(() => z.strictObject({
   all: z.array(done).min(1).optional(), any: z.array(done).min(1).optional(), not: done.optional(),
   mailRead: line.optional(), mailReplied: line.optional(),
@@ -131,6 +137,15 @@ const guideStep: z.ZodType<GuideStep> = z.strictObject({
   levels: z.array(z.enum(LEVELS, { error: i => `no level "${String(i.input)}"` })).min(1).optional(),
   doneWhen: done, showMe: showMe.optional(),
 })
+
+/** The one code workspace's labels, as Ledgerly has them. Its contents are fixed (workspace-template/ledgerly-api); only these change. */
+export const WORKSPACE = { repo: 'ledgerly-api', host: 'ledgerly-ws-02' }
+/** How the engine's own lines tell the story around an outage, as Ledgerly has it. Specs saved before this was data get these. */
+export const STORY = {
+  client: 'marta', customer: 'Northwind Freight', staff: 'finance contractors', deadline: 'renewal demo', movedTo: 'Thursday',
+  integrations: ['Osprey’s nightly export', 'Brightline’s booking sync'],
+  postponed: { who: 'sam', subject: 'Northwind demo postponed', body: ['I called Marta and moved the demo to Thursday. She was polite about it, but she asked for a written explanation for their CFO.', 'Sam'] },
+}
 
 const level = z.strictObject({ label: line, blurb: line, mentorGuidance: line })
 
@@ -156,6 +171,28 @@ export const Scenario = z.object({
   /** Must match the ids server/acceptance.ts reports, in any order. */
   checks: z.array(check).min(1),
   customers: z.strictObject({ named: z.array(customer), otherAccounts: z.number().int().min(0), otherPasswordUsers: z.number().int().min(0) }),
+  workspace: z.strictObject({
+    /** The repository's name: VS Code's title, the terminal prompt and pwd, npm test's banner. */
+    repo: key,
+    /** The work laptop's name, in the menu bar. The terminal prompt drops its first word. */
+    host: key,
+  }).default(() => ({ ...WORKSPACE })),
+  story: z.strictObject({
+    /** Cast id of the client contact, who escalates when their people are locked out. */
+    client: person,
+    /** The client's company: the name of one of customers.named. */
+    customer: line,
+    /** Who there signs in with a password, as in "Northwind’s 22 finance contractors". */
+    staff: line,
+    /** What happens at the clock's deadline, as in "Northwind Freight renewal demo". */
+    deadline: line,
+    /** When it moves to if production is down at the deadline. */
+    movedTo: line,
+    /** What breaks for API-key customers, as in "Osprey’s nightly export". */
+    integrations: z.array(line),
+    /** The email sent when production is down at the deadline. */
+    postponed: z.strictObject({ who: person, subject: text.min(1), body: z.array(text).min(1) }),
+  }).default(() => structuredClone(STORY)),
   /** Only a member with a persona answers the player. */
   cast: z.record(key, z.object({ name: line, short: line.optional(), init: line, color: z.string().regex(/^#[0-9a-f]{6}$/i, 'a #rrggbb colour'), email: line, title: line, persona: persona.optional() })),
   /** A DM channel's id is the id of the person on the other end. */
@@ -180,6 +217,9 @@ export const Scenario = z.object({
   const who = (id: string | null, path: (string | number)[]) => { if (id !== null && !Object.hasOwn(s.cast, id)) bad(path, `no cast member with id "${id}"`) }
   who(s.player, ['player'])
   who(s.mentor, ['mentor'])
+  who(s.story.client, ['story', 'client'])
+  who(s.story.postponed.who, ['story', 'postponed', 'who'])
+  if (!s.customers.named.some(c => c.name === s.story.customer)) bad(['story', 'customer'], `no customer named "${s.story.customer}"`)
   if (Object.hasOwn(s.cast, s.mentor) && !s.channels[s.mentor]?.dm) bad(['mentor'], `the mentor needs a DM channel with id "${s.mentor}"`)
   if (Object.hasOwn(s.cast, s.mentor) && !s.cast[s.mentor].persona) bad(['mentor'], 'the mentor needs a persona')
   for (const [id, { persona: p }] of Object.entries(s.cast)) {
@@ -248,6 +288,8 @@ export const Scenario = z.object({
   docs.forEach((d, i) => { for (const [, id] of d.body.matchAll(/\]\(doc:([^)\s]+)\)/g)) if (!docIds.has(id)) bad(['seed', 'docs', i, 'body'], `links to missing doc "${id}"`) })
 })
 export type Scenario = z.infer<typeof Scenario>
+/** The customer the client contact works at. The schema makes sure there is one. */
+export const clientOf = (s: Scenario) => s.customers.named.find(c => c.name === s.story.customer)!
 
 /**
  * Casts the person playing as the scenario's player: their name on the player's cast card, and in place of {{player}}

@@ -106,7 +106,10 @@ async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
   return calls.length ? calls : null
 }
 
+/** Sees every question as it is asked, stub mode included. For the checks. */
+export const heard = new Set<(a: Ask) => void>()
 export function ask(a: Ask): Promise<Call[] | null> {
+  heard.forEach(f => f(a))
   if (mode() === 'stub') return Promise.resolve(null)
   const key = createHash('sha256').update(MODEL + '\0' + a.system + '\0' + a.user + '\0' + a.tools.map(t => t.name).join()).digest('hex')
   if (a.cache && cache[key]) return Promise.resolve(cache[key])

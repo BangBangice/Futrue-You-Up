@@ -5,7 +5,7 @@ import type { Session } from './world.ts'
 
 export type EngineEvent = typeof EVENTS[number]
 
-const vars = (s: Session): Record<typeof VARS[number], string> => {
+export const vars = (s: Session): Record<typeof VARS[number], string> => {
   const live = s.world.deploys.at(-1)!, due = s.scenario.clock.deadline
   // The schema refuses {{timeToDemo}} without a deadline.
   return { now: s.now, deployTime: clock(live.at), deployTimePlus1: clock(live.at + 1), timeToDemo: due ? dur(Math.max(0, minutes(due) - s.world.simMin)) : '', player: firstName(s.world.cast[s.world.player]) }

@@ -1,7 +1,8 @@
 // The scenario's mentor, the senior engineer who corrects the player as they go.
 // What went wrong is decided by checks and the event log, never by the model.
 // The model only chooses the words, so his first message never waits on it.
-import { clock, failing, firstName, isOutage, lockedAt, passwordUsers } from '../../shared/types.ts'
+import { clientOf } from '../../shared/scenario.ts'
+import { clock, failing, firstName, isOutage, lockedAt, passwordUsers, shortName } from '../../shared/types.ts'
 import type { CheckId, Coaching, Level, Recap } from '../../shared/types.ts'
 import type { Verdict } from '../sandbox.ts'
 import type { Session } from '../world.ts'
@@ -26,14 +27,16 @@ const has = (v: Verdict, ids: CheckId[]) => v.checks.some(c => !c.ok && ids.incl
 
 /** Who would be hurt, stated without reference to the clock so it can be written before the deploy happens. */
 function blast(s: Session, v: Verdict): string {
-  const lines: string[] = [], pw = passwordUsers(s.scenario)
-  if (has(v, ['password_login', 'dashboard_fallthrough'])) lines.push(`Every email + password user is rejected: about ${pw.users.toLocaleString('en-US')} people across ${pw.accounts} accounts, including Northwind Freight's 22 finance contractors ($84k ARR, renewal demo today at 3:00 PM). SSO users are not affected.`)
-  if (has(v, ['api_key'])) lines.push('Machine integrations using API keys fail, including Osprey’s nightly export and Brightline’s booking sync.')
+  const lines: string[] = [], pw = passwordUsers(s.scenario), { story, clock: { deadline } } = s.scenario, client = clientOf(s.scenario)
+  if (has(v, ['password_login', 'dashboard_fallthrough'])) lines.push(`Every email + password user is rejected: about ${pw.users.toLocaleString('en-US')} people across ${pw.accounts} accounts, including ${client.name}'s ${client.password} ${story.staff} (${client.arr} ARR${deadline ? `, ${story.deadline} today at ${deadline}` : ''}). SSO users are not affected.`)
+  if (has(v, ['api_key'])) lines.push(`Machine integrations using API keys fail${story.integrations.length ? ', including ' + and(story.integrations) : ''}.`)
   if (has(v, security(s))) lines.push('Tokens that should be refused are accepted. Anyone holding an expired, forged or missing token is treated as signed in, so every account’s invoices are exposed. No alarm fires, because nothing is failing.')
   if (!lines.length && has(v, ['sso_after_refresh'])) lines.push('Nothing new is broken. SSO users are still bounced to the login page about an hour in, which is the bug in LED-214.')
   return lines.join(' ')
 }
 
+/** "a", "a and b", "a, b and c". */
+const and = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}` : xs.join(''))
 const first = (s: Session, who: string) => firstName(s.world.cast[who])
 const mentorName = (s: Session) => first(s, s.scenario.mentor)
 
@@ -124,9 +127,9 @@ export function onSilentHole(s: Session, sha: string, v: Verdict, diff: string) 
 
 export function onIncident(s: Session, sha: string, v: Verdict, diff: string) {
   s.priv.attempts++
-  const w = s.world, live = w.deploys.at(-1)!
+  const w = s.world, live = w.deploys.at(-1)!, client = clientOf(s.scenario), due = s.scenario.clock.deadline
   const what = failing(v.checks).filter(c => !security(s).includes(c) && c !== 'sso_after_refresh').map(c => label(s, c).toLowerCase()).join(' and ')
-  intervene(s, `${first(s, s.world.player)}, stop what you are doing. Your ${clock(live.at)} deploy (${sha}) is failing: ${what}. ${lockedAt(s.scenario, w.deploys, w.simMin + 3).toLocaleString('en-US')} people are locked out and the number is climbing, Northwind’s 22 finance contractors among them. Their demo is at 3:00. ${byLevel(s, {
+  intervene(s, `${first(s, s.world.player)}, stop what you are doing. Your ${clock(live.at)} deploy (${sha}) is failing: ${what}. ${lockedAt(s.scenario, w.deploys, w.simMin + 3).toLocaleString('en-US')} people are locked out and the number is climbing, ${shortName(client)}’s ${client.password} ${s.scenario.story.staff} among them.${due ? ` Their demo is at ${due.replace(/ [AP]M$/, '')}.` : ''} ${byLevel(s, {
     newgrad: 'First thing, before anything else: put the last release back with "ldg rollback auth-api". Then tell #incidents you are on it.',
     bootcamp: 'What is the fastest way to make it stop, and who needs to hear from you?',
     switcher: 'Stabilise first, diagnose second. What is the equivalent of that here, and who needs to hear from you?',
@@ -203,7 +206,7 @@ export async function review(s: Session, kind: keyof typeof RUBRIC, text: string
   if (s.world.stage !== 'sim') return
   const a = calls?.find(c => c.name === 'review_message')?.args ?? scriptedReview(kind, text)
   const good = oneOf(a.verdict, ['good', 'needs_work'] as const) !== 'needs_work'
-  const label = { ack: 'your note in #incidents', client: 'your email to Marta', pm: 'your postmortem' }[kind]
+  const label = { ack: 'your note in #incidents', client: `your email to ${first(s, s.scenario.story.client)}`, pm: 'your postmortem' }[kind]
   const m = s.scenario.mentor
   if (good) s.say(m, m, `I read ${label}. ${str(a.what_worked, 400) || 'That was clear.'}`)
   else s.say(m, m, `I read ${label}. ${str(a.what_worked, 400)}`, { coach: { blast: '', why: str(a.what_to_fix, 500), question: str(a.guiding_question, 400), next: kind === 'pm' ? 'Add what is missing and send it again.' : 'Send a short follow-up that covers it. A second message is normal.' } })
@@ -216,8 +219,9 @@ export function story(s: Session): string[] {
   const out: [number, string][] = [], f = s.priv.f
   const add = (t: number | undefined, text: string) => { if (t !== undefined) out.push([t, text]) }
   add(f.readWarningAt, `Read ${mentorName(s)}’s warning that every login path shares verifySession`)
-  add(f.assignAckAt, 'Replied to Priya about LED-214')
-  if (f.leoAskedAt !== undefined) add(f.leoAskedAt, f.leo === 'helped' ? 'Leo asked for help, and got it' : f.leo === 'deferred' ? 'Leo asked for help and was asked to wait' : 'Leo asked for help and heard nothing back')
+  add(f.assignAckAt, `Replied to ${first(s, 'priya')} about LED-214`)
+  const leo = first(s, 'leo'), client = shortName(clientOf(s.scenario))
+  if (f.leoAskedAt !== undefined) add(f.leoAskedAt, f.leo === 'helped' ? `${leo} asked for help, and got it` : f.leo === 'deferred' ? `${leo} asked for help and was asked to wait` : `${leo} asked for help and heard nothing back`)
   for (const e of s.priv.events) {
     if (e.type === 'test') add(e.t, `Ran the tests: ${e.passed ? 'all passed' : 'some failed'}`)
     if (e.type === 'commit') add(e.t, `Committed ${e.sha}: ${e.subject}`)
@@ -226,7 +230,7 @@ export function story(s: Session): string[] {
     if (e.type === 'rollback') add(e.t, `Rolled production back to ${e.sha}`)
     if (e.type === 'incident') add(e.t, `${e.id} opened: ${e.what}`)
     if (e.type === 'resolved') add(e.t, `${e.id} resolved after ${e.mins} min`)
-    if (e.type === 'demo') add(e.t, e.held ? 'The Northwind demo went ahead' : 'The Northwind demo was postponed')
+    if (e.type === 'demo') add(e.t, e.held ? `The ${client} demo went ahead` : `The ${client} demo was postponed`)
     if (e.type === 'doc' && e.who === s.world.player) add(e.t, `Wrote the wiki page "${e.title}"`)
   }
   add(f.ackAt, 'Acknowledged the incident')

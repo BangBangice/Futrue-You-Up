@@ -82,6 +82,8 @@ export interface World {
   cast: Cast; channels: Channels; player: PersonId; mentor: PersonId
   /** The company the player works at in this scenario. */
   company: string
+  /** What the code workspace and the work laptop are called. */
+  workspace: { repo: string; host: string }
   /** When the demo is, in sim minutes, or null when the scenario has none. */
   deadline: number | null
   /** What failing checks cost. Only the checks customers can feel. */
@@ -139,7 +141,7 @@ export interface CheckInfo {
   locks?: 'password' | 'sso'
 }
 /** An account, by how its people sign in. `password` and `sso` are user counts. */
-export interface Customer { name: string; arr: string; password: number; sso: number; note: string }
+export interface Customer { name: string; short?: string; arr: string; password: number; sso: number; note: string }
 /** The scenario's figures for what a broken deploy costs. The scenario itself fits, and so does the World's browser-safe copy. */
 export interface Impact {
   /** 401 rate (%) that fires the alarm. */
@@ -147,6 +149,10 @@ export interface Impact {
   checks: CheckInfo[]
   customers: { named: Customer[]; otherAccounts: number; otherPasswordUsers: number }
 }
+/** The laptop's name as a terminal prompt shows it: "ledgerly-ws-02" is "ws-02". */
+export const shortHost = (host: string) => host.replace(/^[a-z0-9]+-(?=[a-z0-9])/, '')
+/** What the story and the production logs call a customer, like "Northwind". */
+export const shortName = (c: Pick<Customer, 'name' | 'short'>) => c.short ?? c.name.split(' ')[0]
 export const failing = (checks: Check[]) => checks.filter(c => !c.ok).map(c => c.id)
 export const failRate = (imp: Impact, checks: Check[]) => failing(checks).reduce((n, id) => n + (imp.checks.find(c => c.id === id)?.share ?? 0), 0)
 /** True when customers can feel it (as opposed to a silent security hole). */

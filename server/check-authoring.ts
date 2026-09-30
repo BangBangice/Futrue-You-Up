@@ -173,11 +173,17 @@ try {
   const drifted = structuredClone(ledgerly)
   drifted.checks = [{ id: 'made_up', label: 'Made up', share: 1 }]
   drifted.seed.tickets = drifted.seed.tickets.map(t => t.id === 'LED-214' ? { ...t, title: 'Something else entirely' } : t)
+  // Labels may change: a customer's name (not its figures), the story's client company and the repo.
+  drifted.customers.named[0] = { ...drifted.customers.named[0], name: 'Kestrel Haulage', short: 'Kestrel', password: 999 }
+  drifted.story = { ...drifted.story, customer: 'Kestrel Haulage' }
+  drifted.workspace = { repo: 'books-api', host: 'quill-mbp-7' }
   answers(drifted)
   const anchored = await generate(carol, { prompt: 'Change the bug', lessonId: lid })
   assert.equal(anchored.status, 200)
   assert.deepEqual(anchored.body.lesson.spec.checks, ledgerly.checks)
   assert.equal(anchored.body.lesson.spec.seed.tickets.find((t: { id: string }) => t.id === 'LED-214').title, ledgerly.seed.tickets[0].title)
+  assert.deepEqual(anchored.body.lesson.spec.customers.named[0], { ...ledgerly.customers.named[0], name: 'Kestrel Haulage', short: 'Kestrel' })
+  assert.deepEqual([anchored.body.lesson.spec.story.customer, anchored.body.lesson.spec.workspace.repo], ['Kestrel Haulage', 'books-api'])
   assert.match(seen[0].system, /Keep these cast ids/)
   assert.match(seen[0].user, /current lesson/)
 
