@@ -415,5 +415,16 @@ await again.exec(['git', 'status'], l => said.push(l.t))
 assert.match(said.join('\n'), /up to date with 'origin\/sam\/readme'/)
 g.stop()
 
+// ---- what kind of lesson a description asks for, and what a half-written one already says
+const { kindOf, peek } = await import('./generate.ts')
+assert.equal(kindOf('build a git usage 101 lessons, about how to commit, add, push, diff, branch, checkout'), 'practice')
+assert.equal(kindOf('Writing a clear bug report for a teammate'), 'practice')
+assert.equal(kindOf('An outage after a bad deploy, and the on-call engineer has to roll back'), 'incident')
+assert.equal(kindOf('Retitle it', loadScenario('git-101')), 'practice', 'a revision keeps its kind')
+const half = JSON.stringify(loadScenario('git-101'))
+const cut = half.slice(0, half.indexOf('"id":"branch"') + 30)
+assert.deepEqual(peek(cut), { title: 'Git 101: your first commit, start to finish', goal: 'Your first commit, start to finish', people: ['Maya Chen', 'Daniel Okafor'], emails: ['Your first change, start to finish'], steps: ['Read Daniel’s email with today’s plan', 'See where you are: run git status'] })
+assert.deepEqual(peek(''), { title: undefined, goal: undefined, people: [], emails: [], steps: [] })
+
 console.log(`server check passed · ${s.priv.events.length} events · ${events.length} stream messages`)
 process.exit(0)

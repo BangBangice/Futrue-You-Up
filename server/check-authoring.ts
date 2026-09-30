@@ -164,6 +164,11 @@ try {
   const promptOf = async () => (await db().select({ p: scenarioVersions.sourcePrompt }).from(scenarioVersions).where(eq(scenarioVersions.scenarioId, lid)))[0].p
   assert.equal(await promptOf(), prompt, 'the prompt is stored with the version')
 
+  // A practice lesson: anything that isn't about production. It has a goal and none of the incident's cast or checks.
+  const practice = await generate(bob, { prompt: 'Git basics: branch, commit and push a small change' })
+  assert.equal(practice.status, 201)
+  assert.deepEqual([practice.body.lesson.spec.goal?.title, practice.body.lesson.spec.checks, Object.keys(practice.body.lesson.spec.cast)], ['Your first commit, start to finish', [], ['maya', 'daniel']])
+
   // Revision: the draft follows the new prompt, in place while unplayed.
   const rev = await generate(carol, { prompt: 'Make Leo more anxious', lessonId: lid })
   assert.deepEqual([rev.status, rev.body.lesson.version, rev.body.lesson.summary, rev.body.lesson.title], [200, 1, 'Revised: Make Leo more anxious', prompt])
@@ -196,6 +201,26 @@ try {
   const repaired = await generate(carol, { prompt: 'Retitle it', lessonId: lid })
   assert.deepEqual([repaired.status, repaired.body.lesson.title, seen.length], [200, 'Repaired', 2])
   assert.match(seen[1].user, /refused for these problems/)
+  // A practice lesson without its goal is sent back to have one, and nothing of the incident's is forced on it.
+  const pid: string = practice.body.lesson.id
+  const { goal: _, ...goalless } = scenarioFile('git-101')!
+  answers({ ...goalless, checks: ledgerly.checks }, scenarioFile('git-101')!)
+  const regoaled = await generate(bob, { prompt: 'Make it shorter', lessonId: pid })
+  assert.deepEqual([regoaled.status, seen.length, regoaled.body.lesson.spec.checks], [200, 2, []])
+  assert.match(seen[0].system, /practice lesson/)
+  assert.match(seen[1].user, /goal: a practice lesson needs a goal/)
+  // Streamed: progress lines as it is written, then the lesson.
+  model.write = async (_b, onText) => { const text = JSON.stringify(scenarioFile('git-101')); for (let i = 1000; i < text.length; i += 1000) { onText!(text.slice(0, i)); await new Promise(r => setTimeout(r, 120)) } return text }
+  const streamed = await fetch(`${base}/generate`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/x-ndjson', 'x-user': bob }, body: JSON.stringify({ prompt: 'Stream it', lessonId: pid }) })
+  const lines = (await streamed.text()).trim().split('\n').map(l => JSON.parse(l))
+  const phases = lines.filter(l => l.progress).map(l => l.progress.phase)
+  assert.deepEqual([phases[0], phases.includes('writing'), phases.at(-2), phases.at(-1)], ['queued', true, 'checking', 'saving'])
+  assert.ok(lines.some(l => l.progress?.peek.steps.length), 'the steps show as they are written')
+  assert.equal(lines.at(-1).lesson.id, pid)
+  answers(null)
+  const failed = (await (await fetch(`${base}/generate`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/x-ndjson', 'x-user': bob }, body: JSON.stringify({ prompt: 'Down', lessonId: pid }) })).text()).trim().split('\n').map(l => JSON.parse(l))
+  assert.deepEqual([failed.at(-1).status, typeof failed.at(-1).error], [503, 'string'], 'a failure is the last line')
+
   // Still invalid after the repair: a clear 422, and the draft is untouched.
   answers({ nonsense: true })
   const bad = await generate(carol, { prompt: 'Break it', lessonId: lid })

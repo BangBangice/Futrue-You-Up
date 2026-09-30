@@ -143,6 +143,54 @@ export function ask(a: Ask): Promise<Call[] | null> {
   return job
 }
 
+export interface Stream { system: string; user: string; priority?: 0 | 1 | 2; timeoutMs?: number; maxTokens?: number }
+/**
+ * Asks for plain text and passes it on as it is written: the whole answer so far, each time more arrives. For long answers someone
+ * is waiting on, like a whole lesson, so they can watch it being written. Tool calls arrive only once complete, so this uses none.
+ * Resolves to the whole text, or null when there is none. Never throws. Not cached.
+ */
+export function stream(a: Stream, onText: (text: string) => void): Promise<string | null> {
+  heard.forEach(f => f({ ...a, tools: [] }))
+  if (mode() === 'stub') return Promise.resolve(null)
+  return (async () => {
+    await turn(a.priority ?? 1)
+    let text = ''
+    try {
+      const res = await fetch(BASE + '/agent', {
+        method: 'POST',
+        signal: AbortSignal.timeout(a.timeoutMs ?? 180_000),
+        headers: { authorization: 'Bearer ' + KEY, 'content-type': 'application/json', accept: 'text/event-stream' },
+        body: JSON.stringify({ model: MODEL, stream: true, max_output_tokens: a.maxTokens ?? 16_000, reasoning: { effort: 'low' }, instructions: a.system, input: a.user }),
+      })
+      if (!res.ok || !res.body) {
+        console.warn('[llm] stream: http', res.status, (await res.text().catch(() => '')).slice(0, 500))
+        return report(explain(res.status))
+      }
+      report(null)
+      const decoder = new TextDecoder()
+      let buffer = '', status = ''
+      for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+        buffer += decoder.decode(chunk, { stream: true })
+        for (let end = buffer.indexOf('\n\n'); end >= 0; end = buffer.indexOf('\n\n')) {
+          const data = buffer.slice(0, end).split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5)).join('')
+          buffer = buffer.slice(end + 2)
+          let event: { type?: string; delta?: string; response?: { status?: string; incomplete_details?: unknown } }
+          try { event = JSON.parse(data) } catch { continue }
+          if (event.type === 'response.output_text.delta' && event.delta) { text += event.delta; onText(text) }
+          if (event.response?.status) status = event.response.status
+          if (event.type === 'response.incomplete') console.warn('[llm] stream: cut off', JSON.stringify(event.response?.incomplete_details ?? {}), `after ${text.length} chars`)
+        }
+      }
+      if (!text) console.warn(`[llm] stream: answered with nothing usable (status ${status})`)
+      return text || null
+    } catch (e) {
+      const name = (e as Error).name
+      console.warn(`[llm] stream: no answer after ${text.length} chars:`, name)
+      return report(name === 'TimeoutError' ? 'the AI service timed out' : `could not reach the AI service (${name})`)
+    } finally { release() }
+  })()
+}
+
 let probing: Promise<string | null> | null = null, probedAt = 0
 /** A one-token call that checks the key, URL and model before anyone is waiting on a reply. Resolves to the problem, or null. */
 export function probe(): Promise<string | null> {
