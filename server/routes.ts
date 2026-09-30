@@ -227,7 +227,7 @@ api.post('/sessions/:id/act', async (req, res) => {
 export const notFound = (_req: Request, res: Response) => { res.status(404).json({ error: 'Not found.' }) }
 api.use(notFound)
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- Express recognises error handlers by their four arguments
+// Express recognises error handlers by their four arguments, so _next must stay in the signature.
 export function errors(err: Error & { status?: number; type?: string }, req: Request, res: Response, _next: NextFunction) {
   const status = err instanceof Refusal ? 400 : err.status ?? 500
   if (status >= 500) console.error('[api]', err)

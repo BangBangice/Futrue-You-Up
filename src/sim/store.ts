@@ -68,7 +68,7 @@ export function winRect(w: Win, D: { W: number; H: number }) {
 }
 export const live = (s: Pick<World, 'incident'>) => !!s.incident && s.incident.resolvedAt === null
 
-class Store {
+export class Store {
   state: State = { ...nowhere(), ...view(), scenario: sessionStorage.getItem(LESSON) ?? '' }
   private subs = new Set<() => void>()
   private stream: EventSource | null = null

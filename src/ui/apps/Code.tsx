@@ -11,7 +11,7 @@ const Editor = lazy(() => import('./Monaco.tsx').then(m => ({ default: m.Code })
 const Compare = lazy(() => import('./Monaco.tsx').then(m => ({ default: m.Diff })))
 const STATUS: Record<string, string> = { M: 'Modified', A: 'Added', D: 'Deleted', '??': 'Untracked', R: 'Renamed' }
 
-const icon = (path: string) => (/\.test\.ts$/.test(path) ? <FlaskConical size={13} className="ic-test" /> : /\.json$/.test(path) ? <FileJson size={13} className="ic-json" /> : /\.md$/.test(path) ? <FileText size={13} className="sub" /> : <FileCode2 size={13} className="ic-ts" />)
+const icon = (path: string) => (path.endsWith('.test.ts') ? <FlaskConical size={13} className="ic-test" /> : path.endsWith('.json') ? <FileJson size={13} className="ic-json" /> : path.endsWith('.md') ? <FileText size={13} className="sub" /> : <FileCode2 size={13} className="ic-ts" />)
 const name = (path: string) => path.split('/').at(-1)!
 
 function Explorer() {

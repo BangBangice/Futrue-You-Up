@@ -26,6 +26,8 @@ export const isId = (v: unknown): v is string => typeof v === 'string' && ID.tes
 /** The player's name for the file, minus anything that could escape a header, a path or a download prompt. */
 export function filename(raw: unknown): string {
   if (typeof raw !== 'string') return ''
+  // Stripping control characters is the point here: they could escape a header, a path or a download prompt.
+  // oxlint-disable-next-line no-control-regex
   return raw.replace(/[\u0000-\u001f\u007f/\\]/g, '').replace(/^\.+/, '').trim().slice(0, 120)
 }
 

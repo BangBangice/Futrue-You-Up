@@ -7,8 +7,10 @@
     "node": ">=22.15.0"
   },
   "scripts": {
+    "test": "vitest run",
     "dev": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/index.ts",
     "build": "tsc --noEmit && vite build",
+    "lint": "oxlint --max-warnings=0",
     "start": "NODE_ENV=production node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/index.ts",
     "check": "node --no-warnings --experimental-strip-types server/check.ts && node --no-warnings --experimental-strip-types server/check-uploads.ts",
     "check:uploads": "node --no-warnings --experimental-strip-types server/check-uploads.ts",
@@ -40,15 +42,18 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "drizzle-kit": "^0.31.11",
+    "happy-dom": "^20.14.5",
     "lucide-react": "^1.48.0",
     "monaco-editor": "^0.57.0",
     "motion": "^13.4.5",
+    "oxlint": "^1.86.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
     "react-router": "^7.18.4",
     "remark-gfm": "^4.0.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.1"
+    "vite": "^8.3.1",
+    "vitest": "^5.0.3"
   }
 }
