@@ -56,6 +56,11 @@ async function turn(priority: number) {
 }
 const release = () => { running--; waiting.shift()?.go() }
 
+const explain = (status: number) =>
+  status === 401 || status === 403 ? `the AI service rejected the API key (HTTP ${status})`
+  : status === 404 ? `the AI service does not know the model ${MODEL} (HTTP 404)`
+  : status === 429 ? 'the AI service is rate-limiting requests (HTTP 429)' : `the AI service returned HTTP ${status}`
+
 async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
   let res: Response
   try {
@@ -82,8 +87,7 @@ async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
   if (!res.ok) {
     console.warn('[llm] http', res.status)
     if (res.status >= 500 && attempt < 1) return request(a, attempt + 1)
-    return report(res.status === 401 || res.status === 403 ? `the AI service rejected the API key (HTTP ${res.status})`
-      : res.status === 429 ? 'the AI service is rate-limiting requests (HTTP 429)' : `the AI service returned HTTP ${res.status}`)
+    return report(explain(res.status))
   }
   report(null)
   const message = (await res.json().catch(() => null))?.choices?.[0]?.message
@@ -115,6 +119,32 @@ export function ask(a: Ask): Promise<Call[] | null> {
   })()
   inflight.set(key, job)
   return job
+}
+
+let probing: Promise<string | null> | null = null, probedAt = 0
+/** A one-token call that checks the key, URL and model before anyone is waiting on a reply. Resolves to the problem, or null. */
+export function probe(): Promise<string | null> {
+  if (mode() === 'stub') return Promise.resolve(problem)
+  if (probing && Date.now() - probedAt < 60_000) return probing
+  probedAt = Date.now()
+  return probing = (async () => {
+    await turn(0)
+    try {
+      const res = await fetch(BASE + '/chat/completions', {
+        method: 'POST',
+        signal: AbortSignal.timeout(20_000),
+        headers: { authorization: 'Bearer ' + KEY, 'content-type': 'application/json' },
+        body: JSON.stringify({ model: MODEL, max_tokens: 1, chat_template_kwargs: { thinking: false }, messages: [{ role: 'user', content: 'ping' }] }),
+      })
+      if (!res.ok) console.warn('[llm] health check: http', res.status)
+      report(res.ok ? null : explain(res.status))
+    } catch (e) {
+      const name = (e as Error).name
+      console.warn('[llm] health check: no answer:', name)
+      report(name === 'TimeoutError' ? 'the AI service timed out' : `could not reach the AI service (${name})`)
+    } finally { release() }
+    return problem
+  })()
 }
 
 // ---------- guards for whatever the model hands back ----------
