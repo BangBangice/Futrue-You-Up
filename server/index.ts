@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from 'express'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mode } from './ai/llm.ts'
+import { dbEnabled, migrateDb } from './db/index.ts'
 import { api, errors } from './routes.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -55,4 +56,8 @@ if (process.env.NODE_ENV === 'production') {
   app.use((await createServer({ root: ROOT, server: { middlewareMode: true, watch }, appType: 'spa' })).middlewares)
 }
 
+if (dbEnabled()) {
+  await migrateDb()
+  console.log('Database migrated.')
+}
 app.listen(PORT, '0.0.0.0', () => console.log(`LARP is running on port ${PORT}  (colleagues: ${mode() === 'live' ? 'AI' : 'scripted, no network needed'})`))
