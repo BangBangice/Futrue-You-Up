@@ -93,6 +93,7 @@ try {
   assert.equal(t.scenario.title, 'Rotate the keys v2')
   await director.start(t)
   await director.end(t)
+  assert.deepEqual([t.world.lesson.mine, t.world.recap?.finished], [true, false], 'the author sees that this test did not count')
   assert.equal(await t.flush(), true)
   await drop(t.world.id)
   // Ended from the End shift button before the work was done: not a test.
@@ -109,6 +110,7 @@ try {
   assert.ok(u.priv.f.fixedAt !== undefined, 'the fix shipped')
   await director.end(u)
   assert.equal(u.priv.finished, true)
+  assert.deepEqual([u.world.lesson.title, u.world.recap?.finished], ['Rotate the keys v2', true], 'and that this one did')
   assert.equal(await u.flush(), true)
   await drop(u.world.id)
   assert.equal((await call(alice, 'GET', `/${id}`)).body.tested, true, 'a finished shift is a test')
@@ -121,6 +123,7 @@ try {
   assert.deepEqual((await listLessons({ tag })).map(l => [l.id, l.author?.name]), [[id, 'Alice Author']])
   const other = (await play(bob, id))!
   assert.equal(other.scenario.title, 'Rotate the keys v2')
+  assert.equal(other.world.lesson.mine, undefined, 'only its author is testing it')
   await drop(other.world.id)
   assert.ok(await playable(id, null), 'a public lesson is playable (and its roster served) before sign-in')
 

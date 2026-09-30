@@ -168,7 +168,7 @@ export async function setVisibility(userId: string, id: string, to: unknown) {
 
 /** What a player may play of a lesson in the database: its author gets the latest version, draft or not, which is how a draft is
  * tested; anyone else the latest published version of a public or unlisted lesson. Null when there is nothing they may play. */
-export async function playable(id: string, userId: string | null): Promise<{ spec: Scenario; version: string } | null> {
+export async function playable(id: string, userId: string | null): Promise<{ spec: Scenario; version: string; mine: boolean } | null> {
   if (!dbEnabled() || await removed(id)) return null
   const [row] = await db().select({ authorId: scenarios.authorId, visibility: scenarios.visibility }).from(scenarios).where(eq(scenarios.id, id))
   if (!row) return null
@@ -176,7 +176,7 @@ export async function playable(id: string, userId: string | null): Promise<{ spe
   if (!mine && row.visibility === 'private') return null
   const v = await latest(id, !mine)
   const spec = v && Scenario.safeParse(v.spec)
-  return spec?.success ? { spec: spec.data, version: v!.id } : null
+  return spec?.success ? { spec: spec.data, version: v!.id, mine } : null
 }
 
 // ---------- routes: /api/my/lessons, mounted after sign-in ----------

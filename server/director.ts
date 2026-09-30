@@ -332,7 +332,8 @@ export async function end(s: Session) {
   const live = s.priv.verdicts[s.world.deploys.at(-1)!.sha]
   s.priv.finished = s.priv.f.fixedAt !== undefined && !!live && !failing(live.checks).length
   s.log('end', { finished: s.priv.finished })
-  s.set({ stage: 'recap', typing: [], recap: { ready: false, happened: mentor.story(s), corrected: [], next: [], note: '' } })
-  s.set({ recap: await mentor.recap(s) })
+  const { finished } = s.priv
+  s.set({ stage: 'recap', typing: [], recap: { ready: false, happened: mentor.story(s), corrected: [], next: [], note: '', finished } })
+  s.set({ recap: { ...await mentor.recap(s), finished } })
 }
 export { COLS }

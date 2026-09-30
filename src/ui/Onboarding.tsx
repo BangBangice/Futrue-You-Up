@@ -1,13 +1,10 @@
 import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowRight, Bug, ChartColumn, Check, ClipboardList, Cloud, LayoutDashboard, LoaderCircle, Server, TriangleAlert } from 'lucide-react'
+import { ArrowRight, LoaderCircle, TriangleAlert } from 'lucide-react'
 import { LEVELS, initials } from '../../shared/types.ts'
 import { useAccount } from '../sim/auth.ts'
 import { sim, useSim } from '../sim/store.ts'
-import { Avatar, Brand, EASE, Segmented, ThemeToggle, rise, stagger } from './bits.tsx'
-
-const ROLES = [['Backend developer', Server], ['Frontend developer', LayoutDashboard], ['Data analyst', ChartColumn], ['DevOps / SRE', Cloud], ['Product manager', ClipboardList], ['QA engineer', Bug]] as const
-const DAYS = ['Setup', 'First ticket', 'Code review', 'On-call', 'Handoff']
+import { Avatar, Brand, Segmented, ThemeToggle, rise, stagger } from './bits.tsx'
 
 export function Onboarding() {
   const level = useSim(s => s.level), levels = useSim(s => s.levels)
@@ -15,7 +12,7 @@ export function Onboarding() {
   const starting = useSim(s => s.starting)
   const error = useSim(s => s.error)
   const aiProblem = useSim(s => s.aiProblem)
-  const day = useSim(s => s.calendar.day)
+  const lesson = useSim(s => s.lesson), company = useSim(s => s.company)
   const player = useSim(s => s.player), me = useSim(s => s.cast[s.player])
   const account = useAccount()
   useEffect(() => { void sim.checkAi(); void sim.loadCast() }, [])
@@ -33,37 +30,20 @@ export function Onboarding() {
         </div>
       </header>
       <motion.main className="onboard" variants={stagger(0.07, 0.05)} initial="hidden" animate="show">
+        {/* The lesson decides who you are and where. Blank for a moment, until the lesson has loaded. */}
         <section className="hero">
           <motion.div variants={rise} className="eyebrow">WORKPLACE SIMULATOR</motion.div>
-          <motion.h1 variants={rise}>Get it wrong here, with someone to correct you.</motion.h1>
-          <motion.p variants={rise} className="lede">You get a work computer, a real codebase and a real ticket. Colleagues message you, clients escalate, and what you ship decides what happens next. When it goes wrong, a senior engineer steps in, shows you who it affected, and helps you put it right.</motion.p>
-          <motion.div variants={rise} className="days">
-            <div className="label">Your {DAYS.length}-day placement</div>
-            <div className="days-row">
-              {DAYS.map((name, i) => [i + 1 < day ? name + ' · done' : name, i + 1 < day ? 'done' : i + 1 === day ? 'now' : ''] as const).map(([sub, state], i) => (
-                <div key={i} className={'day ' + state}>
-                  <div className="day-bar"><motion.i initial={{ scaleX: 0 }} animate={{ scaleX: state ? 1 : 0 }} transition={{ delay: 0.55 + i * 0.14, duration: 0.7, ease: EASE }} /></div>
-                  <b>Day {i + 1}</b>
-                  <span>{sub}</span>
-                </div>
-              ))}
-            </div>
-          </motion.div>
+          <motion.h1 variants={rise}>{lesson.title || '\u00a0'}</motion.h1>
+          <motion.p variants={rise} className="lede">{lesson.summary ?? 'You get a work computer, a real codebase and a real ticket. Colleagues message you, and what you ship decides what happens next. When it goes wrong, someone steps in and helps you put it right.'}</motion.p>
+          {me && (
+            <motion.div variants={rise} className="role-line">
+              <div className="label">Your role</div>
+              <div><b>{me.title}</b> at {company}</div>
+            </motion.div>
+          )}
         </section>
 
         <motion.section variants={rise} className="card setup">
-          <div className="field">
-            <div className="field-label">Role</div>
-            <div className="roles">
-              {ROLES.map(([name, Icon], i) => (
-                <div key={name} className={'tile' + (i === 0 ? ' on' : ' soon')}>
-                  <div className="tile-top"><Icon size={16} strokeWidth={2} />{i === 0 && <span className="tick"><Check size={11} strokeWidth={3.2} /></span>}</div>
-                  <b>{name}</b>
-                  <span>{i === 0 ? 'Available' : 'Soon'}</span>
-                </div>
-              ))}
-            </div>
-          </div>
           <div className="field">
             <div className="field-label">Where you are starting from</div>
             <Segmented id="level" grow value={level} options={LEVELS.map(k => [k, levels[k]?.label ?? ''])} onChange={v => sim.set({ level: v })} />
@@ -87,7 +67,7 @@ export function Onboarding() {
             </div>
           )}
           <button className="cta" disabled={starting} onClick={sim.start}>
-            {starting ? <><LoaderCircle size={17} className="spin" />Setting up your workstation</> : <>{day ? `Start Day ${day}` : 'Start'} <ArrowRight size={17} strokeWidth={2.4} /></>}
+            {starting ? <><LoaderCircle size={17} className="spin" />Setting up your workstation</> : <>Start <ArrowRight size={17} strokeWidth={2.4} /></>}
           </button>
           {error ? <div className="cta-note bad">{error}</div> : <div className="cta-note">About 25 minutes · No score at the end</div>}
         </motion.section>

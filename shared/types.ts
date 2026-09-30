@@ -81,7 +81,13 @@ export interface CodeState {
   /** What the terminal is busy with, if anything. */
   busy: string | null
 }
-export interface Recap { ready: boolean; happened: string[]; corrected: string[]; next: string[]; note: string }
+export interface Recap {
+  ready: boolean; happened: string[]; corrected: string[]; next: string[]; note: string
+  /** Whether the lesson's work was done when the shift ended, which is what testing a draft needs (see director.end). */
+  finished?: boolean
+}
+/** The lesson being played. `mine` is set when its author is playing it, which is how a draft is tested. */
+export interface Lesson { id: string; title: string; summary: string | null; mine?: boolean }
 
 export interface Calendar { weekday: string; date: string; day: number; start: number }
 const WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -94,6 +100,8 @@ export interface World {
   id: string; stage: 'sim' | 'recap'; level: Level; background: string; ai: 'live' | 'stub'
   /** Who is in this scenario and which cast member the player is. Fixed for the shift. */
   cast: Cast; channels: Channels; player: PersonId; mentor: PersonId
+  /** Which lesson this is. */
+  lesson: Lesson
   /** The company the player works at in this scenario. */
   company: string
   /** What the code workspace and the work laptop are called. */
