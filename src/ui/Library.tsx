@@ -1,7 +1,7 @@
 // The lesson library: every public lesson, readable without signing in, and a page for each with a Start button.
 import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
-import { ArrowLeft, ArrowRight, Play, Search } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Flag, Play, Search, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { LEVELS } from '../../shared/types.ts'
 import type { World } from '../../shared/types.ts'
@@ -13,17 +13,25 @@ interface Lesson { id: string; title: string; summary: string | null; tags: stri
 interface Tag { tag: string; count: number }
 type Roster = Pick<World, 'company' | 'cast' | 'player' | 'mentor' | 'levels'>
 
-const get = <T,>(url: string, signal?: AbortSignal): Promise<T> =>
+export const get = <T,>(url: string, signal?: AbortSignal): Promise<T> =>
   fetch(url, { signal }).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() as Promise<T> })
+/** A POST whose failure carries the server's own message. */
+export const post = <T,>(url: string, body: unknown = {}): Promise<T> =>
+  fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(async r => {
+    const json = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(json.error ?? `The server answered ${r.status}.`)
+    return json as T
+  }, () => { throw new Error('Cannot reach the LARP server.') })
 const byline = (l: Lesson) => (l.author ? `By ${l.author.name}` : 'LARP original')
 
-function Top() {
+export function Top() {
   const account = useAccount()
   return (
     <header className="topbar">
       <Brand home />
       <div className="topbar-right">
         {account?.isAnonymous && account.save && <button className="btn sm btn-soft" onClick={account.save}><span>Save<span className="wide"> your progress</span></span></button>}
+        {account?.role === 'admin' && <Link className="btn sm btn-chip" to="/admin" aria-label="Moderation"><ShieldCheck size={14} /><span className="wide">Moderation</span></Link>}
         <ThemeToggle />
         {account && <><span>{account.name}</span><button className="btn sm btn-chip" onClick={() => void account.signOut()}>Sign out</button></>}
       </div>
@@ -189,9 +197,45 @@ export function LessonPage() {
               )}
               <button className="cta" onClick={start}>Start <ArrowRight size={17} strokeWidth={2.4} /></button>
               <div className="cta-note">{config.enabled && !userId ? 'Sign in or continue as a guest to start' : 'About 25 minutes · No score at the end'}</div>
+              {config.enabled && userId && <Report id={id} />}
             </motion.section>
           </motion.main>
         )}
+      </div>
+    </div>
+  )
+}
+
+const REASONS = [['broken', "It's broken"], ['offensive', 'Offensive or harmful'], ['spam', 'Spam or advertising'], ['other', 'Something else']] as const
+
+/** Tells the moderators about a lesson. Built-ins too: they can break like any other. */
+function Report({ id }: { id: string }) {
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState<typeof REASONS[number][0]>('broken')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+  useEffect(() => { setOpen(false); setResult(null); setNote('') }, [id])
+
+  const send = () => {
+    setBusy(true)
+    post(`/api/lessons/${encodeURIComponent(id)}/report`, { reason, note: note.trim() || undefined })
+      .then(() => { setResult({ ok: true, text: 'Thanks. The moderators will take a look.' }); setOpen(false) }, (e: Error) => setResult({ ok: false, text: e.message }))
+      .finally(() => setBusy(false))
+  }
+  if (result?.ok) return <div className="report-done sub" role="status">{result.text}</div>
+  if (!open) return <button className="link report-open" onClick={() => setOpen(true)}><Flag size={12} /> Report this lesson</button>
+  return (
+    <div className="report">
+      <div className="field-label">What's wrong with it?</div>
+      <select className="select" aria-label="Reason" value={reason} onChange={e => setReason(e.target.value as typeof reason)}>
+        {REASONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+      </select>
+      <textarea className="input" rows={3} maxLength={500} placeholder="Anything the moderators should know (optional)" aria-label="Note" value={note} onChange={e => setNote(e.target.value)} />
+      {result && <div className="cta-note bad" role="alert">{result.text}</div>}
+      <div className="report-actions">
+        <button className="btn sm btn-chip" onClick={() => { setOpen(false); setResult(null) }}>Cancel</button>
+        <button className="btn sm btn-ink" disabled={busy} onClick={send}>{busy ? 'Sending...' : 'Send report'}</button>
       </div>
     </div>
   )

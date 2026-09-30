@@ -11,6 +11,7 @@ import { Desktop } from './ui/Desktop.tsx'
 import { Post } from './ui/Post.tsx'
 import { SignIn, arrivedByLink } from './ui/SignIn.tsx'
 import { LessonPage, Library } from './ui/Library.tsx'
+import { Admin } from './ui/Admin.tsx'
 
 export default function App() {
   const theme = useSim(s => s.theme)
@@ -31,6 +32,7 @@ function Pages() {
       <Route path="/" element={<Library />} />
       <Route path="/lessons/:id" element={<LessonPage />} />
       <Route path="/play" element={<Play />} />
+      <Route path="/admin" element={<Admin />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -45,6 +47,7 @@ function Accounts({ config, children }: { config: AuthConfig; children: ReactNod
   const account = useMemo(() => user && {
     name: user.name,
     isAnonymous: !!user.isAnonymous,
+    role: (user as { role?: string }).role ?? 'learner',
     signOut: async () => { await authClient.signOut(); sim.replay() },
     save: config.email || config.google ? () => setSigning('save') : undefined,
   }, [user, config])

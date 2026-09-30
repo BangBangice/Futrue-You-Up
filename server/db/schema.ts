@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { bigserial, boolean, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { bigserial, boolean, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core'
 
 const at = (name: string) => timestamp(name, { withTimezone: true }).notNull().defaultNow()
 
@@ -11,6 +11,9 @@ export const scenarios = pgTable('scenarios', {
   visibility: text('visibility', { enum: ['private', 'unlisted', 'public'] }).notNull().default('private'),
   tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
   summary: text('summary'),
+  /** Set when moderators take the lesson down: it leaves the library and can't be started, but the author keeps it. */
+  hiddenAt: timestamp('hidden_at', { withTimezone: true }),
+  hiddenReason: text('hidden_reason'),
   createdAt: at('created_at'),
   updatedAt: at('updated_at'),
 }, t => [index().using('gin', t.tags)])
@@ -52,6 +55,24 @@ export const runEvents = pgTable('run_events', {
   createdAt: at('created_at'),
 }, t => [unique().on(t.runId, t.seq)])
 
+export const REPORT_REASONS = ['spam', 'offensive', 'broken', 'other'] as const
+export const lessonReports = pgTable('lesson_reports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  scenarioId: text('scenario_id').notNull().references(() => scenarios.id, { onDelete: 'cascade' }),
+  reporterId: text('reporter_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  reason: text('reason', { enum: REPORT_REASONS }).notNull(),
+  note: varchar('note', { length: 500 }),
+  status: text('status', { enum: ['open', 'resolved', 'dismissed'] }).notNull().default('open'),
+  createdAt: at('created_at'),
+  resolvedBy: text('resolved_by').references(() => users.id, { onDelete: 'set null' }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+}, t => [
+  // One open report per reporter per lesson; once it is closed they may report again.
+  uniqueIndex('lesson_reports_one_open').on(t.scenarioId, t.reporterId).where(sql`${t.status} = 'open'`),
+  index().on(t.reporterId, t.createdAt),
+  index().on(t.status),
+])
+
 // Better Auth's tables, matching its schema for better-auth 1.7 with the anonymous and jwt plugins and our `role` field.
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
@@ -61,6 +82,8 @@ export const users = pgTable('users', {
   image: text('image'),
   isAnonymous: boolean('is_anonymous').default(false),
   role: text('role').notNull().default('learner'),
+  /** Set by a moderator. A banned user can't sign in, and their lessons leave the library. */
+  bannedAt: timestamp('banned_at', { withTimezone: true }),
   createdAt: at('created_at'),
   updatedAt: at('updated_at'),
 })

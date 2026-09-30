@@ -1,5 +1,6 @@
 // Accounts, through Better Auth. On only with a database: without one the server keeps its old gate (see index.ts).
 import { betterAuth } from 'better-auth'
+import { eq } from 'drizzle-orm'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { fromNodeHeaders } from 'better-auth/node'
@@ -85,6 +86,11 @@ const build = () => betterAuth({
     },
     session: {
       create: {
+        // A banned user can't sign in at all, as a guest or otherwise (moderation.ts ends their sessions when they're banned).
+        before: async session => {
+          const [u] = await db().select({ at: users.bannedAt }).from(users).where(eq(users.id, session.userId))
+          if (u?.at) throw new APIError('FORBIDDEN', { message: 'This account has been suspended by the moderators.' })
+        },
         after: async session => {
           const found = await (await auth().$context).internalAdapter.consumeVerificationValue(upgrade(session.userId))
           if (found) await adopt(found.value, session.userId)

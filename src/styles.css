@@ -716,7 +716,7 @@ code { font: 12.5px var(--mono); }
 
 /* ───────── Lesson library ───────── */
 a.brand { color: inherit; text-decoration: none; border-radius: 6px; }
-a.link { text-decoration: none; }
+a.link, a.btn { text-decoration: none; }
 .library { max-width: 1120px; margin: 0 auto; padding: 48px 32px 64px; display: flex; flex-direction: column; gap: 22px; }
 .library-head { display: flex; flex-direction: column; gap: 14px; max-width: 620px; }
 .library-head h1 { font-size: 36px; line-height: 1.1; letter-spacing: -0.025em; font-weight: 700; text-wrap: balance; }
@@ -744,3 +744,18 @@ button.chip.tag:hover, a.chip.tag:hover { background: var(--track); }
 .lesson-facts dt { color: var(--sub); }
 .lesson-levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .lesson-levels .tile span { line-height: 1.45; }
+
+/* ───────── Reporting and moderation ───────── */
+.report-open { align-self: center; display: inline-flex; align-items: center; gap: 5px; margin-top: -8px; font-size: 12px; color: var(--sub); font-weight: 500; }
+.report-done { align-self: center; margin-top: -8px; font-size: 12px; }
+.report { display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.report .select { align-self: flex-start; }
+.report .cta-note { margin-top: 0; text-align: left; }
+.report-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.mod-list { display: flex; flex-direction: column; gap: 14px; max-width: 760px; }
+.mod-card, .mod-card:hover { transform: none; }
+.mod-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.mod-head .lesson-title { min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
+.mod-reports { list-style: none; display: flex; flex-direction: column; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.mod-reports li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12.5px; }
+.mod-reports p { flex: 1 0 100%; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }

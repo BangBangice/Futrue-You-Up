@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { Scenario } from '../shared/scenario.ts'
 import { db, dbEnabled } from './db/index.ts'
 import { runs, scenarioVersions, scenarios, users } from './db/schema.ts'
+import { removed } from './moderation.ts'
 
 export const MAX_SPEC_BYTES = 200_000
 export const MAX_LESSONS = 20
@@ -22,7 +23,8 @@ type Version = typeof scenarioVersions.$inferSelect
 
 /** Guests and unconfirmed addresses can play but not write. */
 async function author(userId: string) {
-  const [u] = await db().select({ anon: users.isAnonymous, verified: users.emailVerified }).from(users).where(eq(users.id, userId))
+  const [u] = await db().select({ anon: users.isAnonymous, verified: users.emailVerified, banned: users.bannedAt }).from(users).where(eq(users.id, userId))
+  if (u?.banned) throw new Refused(403, 'This account is suspended.')
   if (!u || u.anon) throw new Refused(403, 'Create an account and confirm your email to write lessons.')
   if (!u.verified) throw new Refused(403, 'Confirm your email address to write lessons.')
 }
@@ -68,6 +70,8 @@ const meta = (spec: Scenario) => ({ title: spec.title, summary: spec.summary ?? 
 export interface MyLesson {
   id: string; title: string; summary: string | null; tags: string[]; visibility: Visibility; updatedAt: string
   version: number; status: 'draft' | 'published'; tested: boolean; published: boolean
+  /** Set when moderators took the lesson down ("Removed by moderators"), with their reason. */
+  removed: { reason: string } | null
 }
 
 export async function myLessons(userId: string): Promise<MyLesson[]> {
@@ -83,6 +87,7 @@ export async function myLessons(userId: string): Promise<MyLesson[]> {
     return {
       id: r.id, title: r.title, summary: r.summary, tags: r.tags, visibility: r.visibility, updatedAt: r.updatedAt.toISOString(),
       version: v.version, status: v.status, tested: done.has(v.id), published: versions.some(x => x.scenarioId === r.id && x.status === 'published'),
+      removed: r.hiddenAt ? { reason: r.hiddenReason ?? '' } : null,
     }
   })
 }
@@ -154,7 +159,7 @@ export async function setVisibility(userId: string, id: string, to: unknown) {
 /** What a player may play of a lesson in the database: its author gets the latest version, draft or not, which is how a draft is
  * tested; anyone else the latest published version of a public or unlisted lesson. Null when there is nothing they may play. */
 export async function playable(id: string, userId: string | null): Promise<{ spec: Scenario; version: string } | null> {
-  if (!dbEnabled()) return null
+  if (!dbEnabled() || await removed(id)) return null
   const [row] = await db().select({ authorId: scenarios.authorId, visibility: scenarios.visibility }).from(scenarios).where(eq(scenarios.id, id))
   if (!row) return null
   const mine = row.authorId !== null && row.authorId === userId
