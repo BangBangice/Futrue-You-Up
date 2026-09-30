@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import { APP_NAMES } from '../../shared/types.ts'
+import { stale } from './build.ts'
 import type { AppId, Attachment, ChanId, Doc, Folder, Level, Patch, Priority, TermLine, Theme, Ticket, World } from '../../shared/types.ts'
 
 export interface Win { open: boolean; min: boolean; max: boolean; x: number; y: number; w: number; h: number; z: number }
@@ -115,14 +116,17 @@ export class Store {
       const res = await fetch('/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ level, background, pace, scenario: scenario || undefined }) })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'The server could not start a shift.')
       sessionStorage.removeItem(LESSON)
-      this.connect((await res.json()).id)
+      const { id } = await res.json()
+      // A newer build plays it: the reload picks the shift up from here (resume).
+      if (stale(res)) return sessionStorage.setItem(KEY, id)
+      this.connect(id)
     } catch (e) { this.set({ starting: false, error: (e as Error).message.includes('fetch') ? 'Cannot reach the LARP server. Is "npm run dev" running?' : (e as Error).message }) }
   }
   /** Asks the server whether the AI model answers, so the start page can warn before a colleague goes quiet. */
   checkAi = async () => {
     try {
       const res = await fetch('/api/health')
-      if (!res.ok) return
+      if (stale(res) || !res.ok) return
       const { ai, problem } = await res.json() as { ai: World['ai']; problem: string | null }
       if (problem) console.error(`[LARP] AI health check failed: ${problem}. Colleagues will use scripted lines until it recovers.`)
       this.set(s => (s.stage === 'onboard' ? { ai, aiProblem: problem } : null))
@@ -133,7 +137,7 @@ export class Store {
     try {
       const { scenario } = this.state
       const res = await fetch('/api/scenario' + (scenario ? '?id=' + encodeURIComponent(scenario) : ''))
-      if (!res.ok) return
+      if (stale(res) || !res.ok) return
       const cast = await res.json() as Pick<World, 'lesson' | 'company' | 'workspace' | 'calendar' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact'>
       this.set(s => (s.stage === 'onboard' && s.scenario === scenario ? cast : null))
     } catch { /* the server is down; starting a shift will say so */ }

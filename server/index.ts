@@ -2,6 +2,7 @@
 import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import { toNodeHandler } from 'better-auth/node'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mode } from './ai/llm.ts'
@@ -44,8 +45,10 @@ if (authEnabled()) {
     else res.status(403).end()
   })
 }
+// The build dist/ holds (vite.config.ts). Every API response names it, so a tab still on an older one reloads (src/sim/build.ts).
+const BUILD = process.env.NODE_ENV === 'production' ? readFileSync(join(ROOT, 'dist', 'build.txt'), 'utf8').trim() : ''
 // Nothing under /api may be cached, even by a CDN told to cache everything: it is all per-shift state.
-app.use('/api', (_req: Request, res: Response, next: NextFunction) => { res.set('Cache-Control', 'no-store'); next() })
+app.use('/api', (_req: Request, res: Response, next: NextFunction) => { res.set('Cache-Control', 'no-store'); if (BUILD) res.set('X-Build', BUILD); next() })
 // Better Auth reads its own request bodies, so it goes before express.json.
 if (authEnabled()) {
   const handler = toNodeHandler(auth())

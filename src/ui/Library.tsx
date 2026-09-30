@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { LEVELS } from '../../shared/types.ts'
 import type { World } from '../../shared/types.ts'
 import { useAccount, useWho } from '../sim/auth.ts'
+import { stale } from '../sim/build.ts'
 import { sim } from '../sim/store.ts'
 import { Brand, ThemeToggle, rise, stagger } from './bits.tsx'
 
@@ -14,7 +15,7 @@ interface Tag { tag: string; count: number }
 type Roster = Pick<World, 'company' | 'cast' | 'player' | 'mentor' | 'levels'>
 
 export const get = <T,>(url: string, signal?: AbortSignal): Promise<T> =>
-  fetch(url, { signal }).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() as Promise<T> })
+  fetch(url, { signal }).then(r => { stale(r); if (!r.ok) throw new Error(String(r.status)); return r.json() as Promise<T> })
 /** A POST whose failure carries the server's own message. */
 export const post = <T,>(url: string, body: unknown = {}): Promise<T> =>
   fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(async r => {
