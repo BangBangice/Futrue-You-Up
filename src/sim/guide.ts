@@ -1,6 +1,8 @@
 // The step list in the top-left corner: what to do next, worked out from the state of the shift.
 // Steps say what to do and where. They never say what the bug is: finding that out is the lesson.
-// New grads also get the checks a senior would make first.
+// The opening steps are scenario data (shared/guide.ts evaluates them); the phases after the first deploy are still here.
+import { NEW, done, stepsFor } from '../../shared/guide.ts'
+import type { ShowMe } from '../../shared/guide.ts'
 import type { AppId, ChanId, Email } from '../../shared/types.ts'
 import { live, sim } from './store.ts'
 import type { State } from './store.ts'
@@ -16,8 +18,7 @@ export interface Step {
 }
 export interface Guide { phase: string; title: string; sub: string; steps: Step[] }
 
-const NEW = 100 // messages posted during the shift have ids above this; the seed uses 1–7
-const VERIFY = 'src/auth/verifySession.ts', PASSWORD = 'src/auth/passwordLogin.ts'
+const VERIFY = 'src/auth/verifySession.ts'
 
 // ---------- where "Show me" points ----------
 const inApp = (app: AppId, ...keys: string[]) => () => { sim.open(app); sim.spotlight(keys, 'dock:' + app) }
@@ -33,6 +34,20 @@ const inMail = (e: Email, reply = false) => () => {
   sim.set({ mailFolder: e.folder })
   sim.open('mail')
   sim.spotlight(reply && reading ? ['mail-reply'] : ['mail:' + e.id], 'dock:mail')
+}
+const inEditor = (path: string) => () => { void sim.openCode(path); sim.spotlight(['editor'], 'dock:code') }
+/** Where a scenario step's "Show me" goes. */
+function target(s: State, m: ShowMe = {}): () => void {
+  const mail = s.emails.find(e => e.id === m.mail)
+  if (mail) return inMail(mail)
+  if (m.reply) return () => { sim.openMail(m.reply!); sim.spotlight(['mail-reply'], 'dock:mail') }
+  if (m.ticket) return () => { sim.openTicket(m.ticket!); sim.spotlight(['ticket-status', 'ticket:' + m.ticket], 'dock:tracker') }
+  if (m.chat) return inChat(m.chat)
+  if (m.doc) return inApp('docs', 'doc:' + m.doc)
+  if (m.file) return inCode('files', 'file:' + m.file)
+  if (m.edit) return inEditor(m.edit)
+  if (m.vscode) return inCode(m.vscode === 'commit' ? 'git' : 'files', m.vscode)
+  return () => {}
 }
 
 export function guide(s: State): Guide {
@@ -52,7 +67,7 @@ export function guide(s: State): Guide {
   const replies = (): Step[] => s.emails.filter(e => e.kind === 'client' || e.kind === 'support' || e.kind === 'sam')
     .map(e => ({ id: e.id, text: `Reply to ${s.cast[e.who].name}`, done: e.thread.length > 0, side: true, show: inMail(e, true) }))
   const ship = (again: boolean): Step[] => [
-    { id: 'edit', text: again ? 'Change the code and save (⌘S)' : 'Make your change and save it (⌘S)', done: s.code.changes.length > 0 || committed, show: () => { void sim.openCode(VERIFY); sim.spotlight(['editor'], 'dock:code') } },
+    { id: 'edit', text: again ? 'Change the code and save (⌘S)' : 'Make your change and save it (⌘S)', done: s.code.changes.length > 0 || committed, show: inEditor(VERIFY) },
     { id: 'test', text: 'Run the tests', done: s.seen.includes('tested@' + n), hint: 'Run tests at the top of VS Code, or type npm test in the terminal.', show: inCode('files', 'run-tests') },
     { id: 'commit', text: 'Commit your change', done: committed && !s.code.changes.length, hint: 'Source control, on the left of VS Code. Write what you changed and why.', show: inCode('git', 'commit') },
     { id: 'deploy', text: again ? 'Deploy the new version' : 'Deploy to production', done: false, hint: 'Deploy at the top of VS Code, or ldg deploy auth-api --env prod.', show: inCode('files', 'deploy') },
@@ -108,27 +123,13 @@ export function guide(s: State): Guide {
     }
   }
 
-  // ---------- the ticket ----------
-  const e1 = s.emails.find(e => e.id === 'e1')
-  const warning = s.chats.team.find(m => m.who === mid && m.id > NEW)
+  // ---------- the scenario's opening steps ----------
   const leo = s.chats.leo.find(m => m.who === 'leo' && m.id > NEW && m.text.includes('auth tests'))
   const priya = s.chats.priya.findLast(m => m.who === 'priya' && m.id > NEW && /^(How’s|Any update on) LED-214/.test(m.text))
-  const status = s.tickets.find(t => t.id === 'LED-214')?.status
   return {
     phase: 'ticket', title: 'Fix LED-214', sub: 'SSO users get logged out after about an hour. Priya wants it fixed before the 3:00 PM demo.',
     steps: [
-      ...(e1 ? [
-        { id: 'read', text: 'Read Priya’s email about LED-214', done: e1.read, show: inMail(e1) },
-        { id: 'ack', text: 'Reply to Priya so she knows you’ve picked it up', done: e1.thread.length > 0, show: () => { sim.openMail(e1.id); sim.spotlight(['mail-reply'], 'dock:mail') } },
-      ] : []),
-      { id: 'ticket', text: 'Move LED-214 to In progress in Jira', done: !!status && status !== 'todo', hint: 'Change Status on the ticket, or drag the card.', show: () => { sim.openTicket('LED-214'); sim.spotlight(['ticket-status', 'ticket:LED-214'], 'dock:tracker') } },
-      { id: 'team', text: `Read ${mentorName}’s heads-up in #team`, done: !!warning && !s.unread.team, show: inChat('team') },
-      ...(s.level === 'newgrad' ? [
-        { id: 'wiki', text: 'Read “Auth service: login paths” in Confluence', done: s.seen.includes('doc:auth'), show: inApp('docs', 'doc:auth') },
-        { id: 'password', text: 'Open passwordLogin.ts and see what it sends', done: s.seen.includes('file:' + PASSWORD), show: inCode('files', 'file:' + PASSWORD) },
-      ] : []),
-      { id: 'open', text: 'Open verifySession.ts in VS Code', done: s.seen.includes('file:' + VERIFY) || s.code.changes.length > 0, show: inCode('files', 'file:' + VERIFY) },
-      ...ship(false),
+      ...stepsFor(s.guide, s.level).map(x => ({ id: x.id, text: x.text, hint: x.hint, done: done(s, x.doneWhen), show: target(s, x.showMe) })),
       ...(leo ? [{ id: 'leo', text: 'Leo asked you something in Teams', done: saidIn('leo', leo.id), side: true, show: inChat('leo') }] : []),
       ...(priya ? [{ id: 'priya', text: 'Priya wants an update in Teams', done: saidIn('priya', priya.id), side: true, show: inChat('priya') }] : []),
     ],

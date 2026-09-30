@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { done, stepsFor } from '../shared/guide.ts'
 import { Scenario } from '../shared/scenario.ts'
 import { errAt, isOutage } from '../shared/types.ts'
 import * as director from './director.ts'
@@ -204,6 +205,22 @@ assert.deepEqual(broken(c => { c.checks[4].share = 2 }), ['a security check fail
 assert.deepEqual(broken(c => { c.clock.deadline = '1:00 PM' }), ['the deadline must be after the start'])
 assert.deepEqual(broken(c => { c.clock.start = '13:10' }), ['a time like "1:10 PM"'])
 assert.deepEqual(broken(c => { delete c.clock.deadline }), ['uses the demo, so the clock needs a deadline', 'uses the demo, so the clock needs a deadline'])
+const step = (c: any, id: string) => c.guide.find((g: any) => g.id === id)
+assert.deepEqual(broken(c => { step(c, 'read').doneWhen = { mailOpened: 'e1' } }), ['Unrecognized key: "mailOpened"', 'a step condition needs exactly one of all, any, not, mailRead, mailReplied, ticket, posted, channelRead, openedDoc, openedFile, code, deployed'])
+assert.deepEqual(broken(c => { step(c, 'team').doneWhen.all[1] = { channelRead: 'random' } }), ['no channel with id "random"'])
+assert.deepEqual(broken(c => { step(c, 'wiki').doneWhen = { not: { openedDoc: 'nope' } } }), ['no doc with id "nope"'])
+assert.deepEqual(broken(c => { step(c, 'ticket').showMe = { ticket: 'LED-999' } }), ['no ticket with id "LED-999"'])
+assert.deepEqual(broken(c => { step(c, 'wiki').levels = ['intern'] }), ['no level "intern"'])
+assert.deepEqual(broken(c => { step(c, 'read').showMe = { mail: 'e1', doc: 'auth' } }), ['a show-me target needs exactly one of mail, reply, ticket, chat, doc, file, edit, vscode'])
+assert.deepEqual(broken(c => { c.seed.chats.team[0].id = 100 }), ['seed message ids must be below 100'])
+// The opening steps tick off from browser-side facts alone.
+const facts = { ...structuredClone(good.seed), player: good.player, code: { branch: '', head: '', subject: '', changes: [], busy: null }, deploys: [], seen: ['doc:auth'] }
+const ticked = () => stepsFor(good.guide, 'newgrad').filter(g => done(facts, g.doneWhen)).map(g => g.id)
+assert.deepEqual(ticked(), ['wiki'])
+facts.emails[0].read = true
+facts.tickets.find(t => t.id === 'LED-214')!.status = 'progress'
+assert.deepEqual(ticked(), ['read', 'ticket', 'wiki'])
+assert.deepEqual(stepsFor(good.guide, 'bootcamp').map(g => g.id).filter(id => id === 'wiki' || id === 'password'), [], 'only new grads get the extra steps')
 // The hidden harness is code: if it and the scenario disagree about which checks exist, the build counts as broken.
 const ids = good.checks.map(c => c.id), verdict = { build: 'ok' as const, checks: ids.map(id => ({ id, ok: true, reason: '' })) }
 assert.equal(conform(verdict, ids), verdict)

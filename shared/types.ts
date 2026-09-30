@@ -1,4 +1,5 @@
 // Types, constants and pure helpers used by both the server and the browser. No I/O here.
+import type { GuideStep } from './guide.ts'
 
 export type AppId = 'mail' | 'chat' | 'code' | 'tracker' | 'docs' | 'monitor'
 /** A key of the scenario's cast. The scenario schema checks references; the compiler cannot. */
@@ -75,6 +76,8 @@ export interface World {
   impact: Impact
   /** How each starting level is described on the start page. Empty until the scenario has loaded. */
   levels: Partial<Record<Level, { label: string; blurb: string }>>
+  /** The scenario's opening steps, for the step guide. */
+  guide: GuideStep[]
   /** Why AI calls are failing right now, or null while they work. */
   aiProblem: string | null
   /** Simulated minutes per real minute. */
