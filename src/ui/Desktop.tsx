@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useAnimate, useMotionValue, useSpring, useTransform } from 'motion/react'
 import type { MotionValue } from 'motion/react'
 import { BatteryFull, Search, Wifi, X } from 'lucide-react'
-import { APP_IDS, APP_NAMES, clock } from '../../shared/types.ts'
+import { APP_IDS, APP_NAMES, clock, shortDay } from '../../shared/types.ts'
 import type { AppId, Theme } from '../../shared/types.ts'
 import { live, sim, useSim, wallpaperName } from '../sim/store.ts'
 import type { State } from '../sim/store.ts'
@@ -64,6 +64,7 @@ function MenuBar() {
   const focus = useSim(s => s.focus)
   const m = useSim(s => s.simMin)
   const host = useSim(s => s.workspace.host)
+  const cal = useSim(s => s.calendar)
   return (
     <motion.div className="menubar" initial={{ y: -28 }} animate={{ y: 0 }} transition={{ ...SPRING, delay: 0.15 }}>
       <Company size={15} />
@@ -76,7 +77,7 @@ function MenuBar() {
       <Wifi size={14} strokeWidth={2.3} />
       <BatteryFull size={18} strokeWidth={1.9} />
       <Search size={13} strokeWidth={2.4} />
-      <span className="tnum">Tue Sep 29&nbsp;&nbsp;{clock(m)}</span>
+      <span className="tnum">{shortDay(cal.weekday)} {cal.date}&nbsp;&nbsp;{clock(m)}</span>
     </motion.div>
   )
 }

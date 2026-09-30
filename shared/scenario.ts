@@ -140,9 +140,11 @@ const guideStep: z.ZodType<GuideStep> = z.strictObject({
 
 /** The one code workspace's labels, as Ledgerly has them. Its contents are fixed (workspace-template/ledgerly-api); only these change. */
 export const WORKSPACE = { repo: 'ledgerly-api', host: 'ledgerly-ws-02' }
+/** How many days a placement has. */
+export const DAYS = 5
 /** How the engine's own lines tell the story around an outage, as Ledgerly has it. Specs saved before this was data get these. */
 export const STORY = {
-  client: 'marta', customer: 'Northwind Freight', staff: 'finance contractors', deadline: 'renewal demo', movedTo: 'Thursday', weekday: 'Tuesday',
+  client: 'marta', customer: 'Northwind Freight', staff: 'finance contractors', deadline: 'renewal demo', movedTo: 'Thursday', weekday: 'Tuesday', date: 'Sep 29', day: 2,
   integrations: ['Osprey’s nightly export', 'Brightline’s booking sync'],
   postponed: { who: 'sam', subject: 'Northwind demo postponed', body: ['I called Marta and moved the demo to Thursday. She was polite about it, but she asked for a written explanation for their CFO.', 'Sam'] },
 }
@@ -190,6 +192,10 @@ export const Scenario = z.object({
     movedTo: line,
     /** The day the shift happens, as the colleagues know it. */
     weekday: line.default(STORY.weekday),
+    /** The shift's date as the menu bar shows it, month and day, as in "Sep 29". */
+    date: line.default(STORY.date),
+    /** Which day of the five-day placement the shift is. */
+    day: z.number().int().min(1).max(DAYS).default(STORY.day),
     /** What breaks for API-key customers, as in "Osprey’s nightly export". */
     integrations: z.array(line),
     /** The email sent when production is down at the deadline. */

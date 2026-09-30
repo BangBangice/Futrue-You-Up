@@ -7,7 +7,7 @@ import { sim, useSim } from '../sim/store.ts'
 import { Avatar, Brand, EASE, Segmented, ThemeToggle, rise, stagger } from './bits.tsx'
 
 const ROLES = [['Backend developer', Server], ['Frontend developer', LayoutDashboard], ['Data analyst', ChartColumn], ['DevOps / SRE', Cloud], ['Product manager', ClipboardList], ['QA engineer', Bug]] as const
-const DAYS = [['Setup · done', 'done'], ['First ticket', 'now'], ['Code review', ''], ['On-call', ''], ['Handoff', '']]
+const DAYS = ['Setup', 'First ticket', 'Code review', 'On-call', 'Handoff']
 
 export function Onboarding() {
   const level = useSim(s => s.level), levels = useSim(s => s.levels)
@@ -15,6 +15,7 @@ export function Onboarding() {
   const starting = useSim(s => s.starting)
   const error = useSim(s => s.error)
   const aiProblem = useSim(s => s.aiProblem)
+  const day = useSim(s => s.calendar.day)
   const player = useSim(s => s.player), me = useSim(s => s.cast[s.player])
   const account = useAccount()
   useEffect(() => { void sim.checkAi(); void sim.loadCast() }, [])
@@ -37,9 +38,9 @@ export function Onboarding() {
           <motion.h1 variants={rise}>Get it wrong here, with someone to correct you.</motion.h1>
           <motion.p variants={rise} className="lede">You get a work computer, a real codebase and a real ticket. Colleagues message you, clients escalate, and what you ship decides what happens next. When it goes wrong, a senior engineer steps in, shows you who it affected, and helps you put it right.</motion.p>
           <motion.div variants={rise} className="days">
-            <div className="label">Your 5-day placement</div>
+            <div className="label">Your {DAYS.length}-day placement</div>
             <div className="days-row">
-              {DAYS.map(([sub, state], i) => (
+              {DAYS.map((name, i) => [i + 1 < day ? name + ' · done' : name, i + 1 < day ? 'done' : i + 1 === day ? 'now' : ''] as const).map(([sub, state], i) => (
                 <div key={i} className={'day ' + state}>
                   <div className="day-bar"><motion.i initial={{ scaleX: 0 }} animate={{ scaleX: state ? 1 : 0 }} transition={{ delay: 0.55 + i * 0.14, duration: 0.7, ease: EASE }} /></div>
                   <b>Day {i + 1}</b>
@@ -86,7 +87,7 @@ export function Onboarding() {
             </div>
           )}
           <button className="cta" disabled={starting} onClick={sim.start}>
-            {starting ? <><LoaderCircle size={17} className="spin" />Setting up your workstation</> : <>Start Day 2 <ArrowRight size={17} strokeWidth={2.4} /></>}
+            {starting ? <><LoaderCircle size={17} className="spin" />Setting up your workstation</> : <>{day ? `Start Day ${day}` : 'Start'} <ArrowRight size={17} strokeWidth={2.4} /></>}
           </button>
           {error ? <div className="cta-note bad">{error}</div> : <div className="cta-note">About 25 minutes · No score at the end</div>}
         </motion.section>

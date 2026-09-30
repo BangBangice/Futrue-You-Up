@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Response } from 'express'
-import { personalize } from '../shared/scenario.ts'
+import { STORY, personalize } from '../shared/scenario.ts'
 import type { Scenario } from '../shared/scenario.ts'
 import { clock, firstName, minutes } from '../shared/types.ts'
 import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, PersonId, TermLine, Ticket, Tone, World } from '../shared/types.ts'
@@ -148,8 +148,9 @@ const sessions = new Map<string, Session>()
 const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
 // Persona cards and mentor guidance are prompts, so they stay on the server. So do security checks: the browser must not learn they exist.
-export const roster = (sc: Scenario): Pick<World, 'company' | 'workspace' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
+export const roster = (sc: Scenario): Pick<World, 'company' | 'workspace' | 'calendar' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
   company: sc.company.name, workspace: sc.workspace,
+  calendar: { weekday: sc.story.weekday ?? STORY.weekday, date: sc.story.date ?? STORY.date, day: sc.story.day ?? STORY.day, start: minutes(sc.clock.start) },
   cast: Object.fromEntries(Object.entries(sc.cast).map(([id, { persona: _, ...p }]) => [id, p])), channels: sc.channels, player: sc.player, mentor: sc.mentor,
   levels: Object.fromEntries(Object.entries(sc.levels).map(([k, { mentorGuidance: _, ...l }]) => [k, l])),
   deadline: sc.clock.deadline ? minutes(sc.clock.deadline) : null,
