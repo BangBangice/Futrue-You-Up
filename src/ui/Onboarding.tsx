@@ -72,7 +72,7 @@ export function Onboarding() {
           {aiProblem && (
             <div className="ai-warn" role="alert">
               <TriangleAlert size={16} strokeWidth={2.2} />
-              <div><b>AI colleagues are unavailable</b><span>{aiProblem[0].toUpperCase() + aiProblem.slice(1)}. You can still start: colleagues will use scripted lines. Check NVIDIA_API_KEY, NVIDIA_BASE_URL and NVIDIA_MODEL in .env, then restart the server.</span></div>
+              <div><b>AI colleagues are unavailable</b><span>{aiProblem[0].toUpperCase() + aiProblem.slice(1)}. You can still start: colleagues will use scripted lines. Check PERPLEXITY_API_KEY and PERPLEXITY_MODEL in .env, then restart the server.</span></div>
             </div>
           )}
           <button className="cta" disabled={starting} onClick={sim.start}>

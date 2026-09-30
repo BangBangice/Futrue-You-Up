@@ -8,7 +8,7 @@ import * as director from './director.ts'
 import { create } from './world.ts'
 
 process.env.LLM = 'stub'
-process.env.NVIDIA_API_KEY = 'must-never-reach-player-code'
+process.env.PERPLEXITY_API_KEY = 'must-never-reach-player-code'
 const settle = (ms = 60) => new Promise(r => setTimeout(r, ms))
 const s = await create('newgrad', 'Six years as a hospital pharmacist', 4, 'stub')
 s.timeScale = 0.001

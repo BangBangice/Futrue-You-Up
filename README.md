@@ -13,7 +13,7 @@ Needs Node 22 or newer and git.
 
 ```
 npm install
-cp .env.example .env      # then paste your NVIDIA API key into .env
+cp .env.example .env      # then paste your Perplexity API key into .env
 npm run dev
 ```
 
@@ -68,5 +68,5 @@ Three rules the design follows:
 
 - **Run it on your own machine only.** The player's code runs as your user. It cannot read outside its workspace, write files, start processes or reach the network (the last on macOS only), but those are guard rails, not a security boundary. Hosting this publicly needs container isolation in `server/sandbox.ts` first.
 - One role and one day are playable.
-- The AI model takes 10 to 60 seconds to answer, so colleagues reply like busy people.
+- Colleagues answer in a few seconds. The model is `openai/gpt-6-luna` through Perplexity; any model from `GET https://api.perplexity.ai/v1/models` works, set with `PERPLEXITY_MODEL`.
 - Files attached from your computer are not stored.

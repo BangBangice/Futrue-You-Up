@@ -7,16 +7,17 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const BASE = process.env.NVIDIA_BASE_URL ?? 'https://integrate.api.nvidia.com/v1'
-const MODEL = process.env.NVIDIA_MODEL ?? 'deepseek-ai/deepseek-v4.1-flash'
-const KEY = process.env.NVIDIA_API_KEY ?? ''
+// Perplexity's Agent API. Any model from GET /v1/models works; gpt-6-luna answers in about 2 s for a tenth of a cent.
+const BASE = process.env.PERPLEXITY_BASE_URL ?? 'https://api.perplexity.ai/v1'
+const MODEL = process.env.PERPLEXITY_MODEL ?? 'openai/gpt-6-luna'
+const KEY = process.env.PERPLEXITY_API_KEY ?? process.env.Perplexity_API_Key ?? ''
 const CACHE_FILE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.data', 'llm-cache.json')
 const MAX_IN_FLIGHT = 6, PER_MINUTE = 30
 
 export const mode = (): 'live' | 'stub' => (process.env.LLM !== 'stub' && KEY ? 'live' : 'stub')
 
 // Why the model is not answering, in words the player can act on. null while calls are getting through.
-let problem: string | null = process.env.LLM !== 'stub' && !KEY ? 'NVIDIA_API_KEY is not set' : null
+let problem: string | null = process.env.LLM !== 'stub' && !KEY ? 'PERPLEXITY_API_KEY is not set' : null
 const watchers = new Set<(p: string | null) => void>()
 export const aiProblem = () => problem
 export const onAiProblem = (fn: (p: string | null) => void) => watchers.add(fn)
@@ -64,14 +65,14 @@ const explain = (status: number) =>
 async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
   let res: Response
   try {
-    res = await fetch(BASE + '/chat/completions', {
+    res = await fetch(BASE + '/agent', {
       method: 'POST',
-      signal: AbortSignal.timeout(a.timeoutMs ?? 90_000),
+      signal: AbortSignal.timeout(a.timeoutMs ?? 30_000),
       headers: { authorization: 'Bearer ' + KEY, 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: MODEL, temperature: 0.6, max_tokens: 900, chat_template_kwargs: { thinking: false }, tool_choice: 'auto',
-        tools: a.tools.map(t => ({ type: 'function', function: t })),
-        messages: [{ role: 'system', content: a.system }, { role: 'user', content: a.user }],
+        model: MODEL, max_output_tokens: 900, reasoning: { effort: 'low' },
+        tools: a.tools.map(t => ({ type: 'function', ...t })),
+        instructions: a.system, input: a.user,
       }),
     })
   } catch (e) {
@@ -90,13 +91,16 @@ async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
     return report(explain(res.status))
   }
   report(null)
-  const message = (await res.json().catch(() => null))?.choices?.[0]?.message
+  const output: { type: string; name?: string; arguments?: string; content?: { type: string; text?: string }[] }[] =
+    (await res.json().catch(() => null))?.output ?? []
   const calls: Call[] = []
-  for (const c of message?.tool_calls ?? []) {
-    try { calls.push({ name: c.function.name, args: JSON.parse(c.function.arguments || '{}') }) } catch { /* a malformed call is dropped */ }
+  for (const item of output) {
+    if (item.type !== 'function_call' || !item.name) continue
+    try { calls.push({ name: item.name, args: JSON.parse(item.arguments || '{}') }) } catch { /* a malformed call is dropped */ }
   }
   // The model sometimes just talks. Callers decide whether plain text is usable.
-  if (!calls.length && message?.content?.trim()) calls.push({ name: '_text', args: { text: message.content.trim() } })
+  const text = output.filter(i => i.type === 'message').flatMap(i => i.content ?? []).map(c => c.text ?? '').join('').trim()
+  if (!calls.length && text) calls.push({ name: '_text', args: { text } })
   return calls.length ? calls : null
 }
 
@@ -130,11 +134,11 @@ export function probe(): Promise<string | null> {
   return probing = (async () => {
     await turn(0)
     try {
-      const res = await fetch(BASE + '/chat/completions', {
+      const res = await fetch(BASE + '/agent', {
         method: 'POST',
         signal: AbortSignal.timeout(20_000),
         headers: { authorization: 'Bearer ' + KEY, 'content-type': 'application/json' },
-        body: JSON.stringify({ model: MODEL, max_tokens: 1, chat_template_kwargs: { thinking: false }, messages: [{ role: 'user', content: 'ping' }] }),
+        body: JSON.stringify({ model: MODEL, max_output_tokens: 16, reasoning: { effort: 'low' }, input: 'ping' }),
       })
       if (!res.ok) console.warn('[llm] health check: http', res.status)
       report(res.ok ? null : explain(res.status))
