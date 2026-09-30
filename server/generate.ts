@@ -91,9 +91,11 @@ ${SCHEMA}
 A complete example, the Ledgerly lesson:
 ${JSON.stringify(LEDGERLY)}`
 
+/** spec is JSON text: Perplexity refuses an object parameter without its properties (HTTP 400), and with an empty list the model
+ * sends {}. validate() parses the text. */
 const SAVE = {
   name: 'save_lesson', description: 'Save the whole lesson.',
-  parameters: { type: 'object' as const, properties: { spec: { type: 'object', description: 'The whole lesson, matching the schema.' } }, required: ['spec'] },
+  parameters: { type: 'object' as const, properties: { spec: { type: 'string', description: 'The whole lesson as one JSON object, matching the schema, written as JSON text.' } }, required: ['spec'] },
 }
 
 export interface Brief { prompt: string; base?: Scenario; system: string; user: string }

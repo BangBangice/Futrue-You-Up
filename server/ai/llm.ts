@@ -65,6 +65,8 @@ const explain = (status: number) =>
   : status === 429 ? 'the AI service is rate-limiting requests (HTTP 429)' : `the AI service returned HTTP ${status}`
 
 async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
+  // Which call a log line is about: a colleague's reply and a whole lesson fail for different reasons.
+  const what = a.tools.map(t => t.name).join(',') || 'text'
   let res: Response
   try {
     res = await fetch(BASE + '/agent', {
@@ -79,7 +81,7 @@ async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
     })
   } catch (e) {
     const name = (e as Error).name
-    console.warn('[llm] no answer:', name)
+    console.warn(`[llm] ${what}: no answer:`, name)
     if (attempt < 1 && name !== 'TimeoutError') return request(a, attempt + 1)
     return report(name === 'TimeoutError' ? 'the AI service timed out' : `could not reach the AI service (${name})`)
   }
@@ -88,21 +90,26 @@ async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
     return request(a, attempt + 1)
   }
   if (!res.ok) {
-    console.warn('[llm] http', res.status)
+    // The body says what the service objects to; without it a 400 is a guess.
+    console.warn(`[llm] ${what}: http ${res.status}`, (await res.text().catch(() => '')).slice(0, 500))
     if (res.status >= 500 && attempt < 1) return request(a, attempt + 1)
     return report(explain(res.status))
   }
   report(null)
-  const output: { type: string; name?: string; arguments?: string; content?: { type: string; text?: string }[] }[] =
-    (await res.json().catch(() => null))?.output ?? []
+  const body = await res.json().catch(() => null)
+  const output: { type: string; name?: string; arguments?: string; content?: { type: string; text?: string }[] }[] = body?.output ?? []
   const calls: Call[] = []
   for (const item of output) {
     if (item.type !== 'function_call' || !item.name) continue
-    try { calls.push({ name: item.name, args: JSON.parse(item.arguments || '{}') }) } catch { /* a malformed call is dropped */ }
+    try { calls.push({ name: item.name, args: JSON.parse(item.arguments || '{}') }) } catch {
+      // Usually an answer cut off at max_output_tokens.
+      console.warn(`[llm] ${what}: dropped a malformed ${item.name} call (${item.arguments?.length ?? 0} chars, status ${body?.status})`)
+    }
   }
   // The model sometimes just talks. Callers decide whether plain text is usable.
   const text = output.filter(i => i.type === 'message').flatMap(i => i.content ?? []).map(c => c.text ?? '').join('').trim()
   if (!calls.length && text) calls.push({ name: '_text', args: { text } })
+  if (!calls.length) console.warn(`[llm] ${what}: answered with nothing usable (status ${body?.status}${body?.incomplete_details ? ', ' + JSON.stringify(body.incomplete_details) : ''})`)
   return calls.length ? calls : null
 }
 
