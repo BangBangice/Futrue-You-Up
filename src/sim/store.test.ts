@@ -47,7 +47,7 @@ function makeWorld(overrides: Partial<World> = {}): World {
     mentor: 'mentor',
     levels: {},
     deadline: null,
-    guide: [],
+    phases: [],
     impact: { alarmPercent: 0, checks: [], customers: { named: [], otherAccounts: 0, otherPasswordUsers: 0 } },
     emails: [
       { id: 'e1', who: 'sara', subject: 'Welcome to Ledgerly', body: ['Hi Alex!'], folder: 'inbox', time: '1:00 PM', read: false, flagged: false, files: [], thread: [] },
@@ -536,6 +536,66 @@ describe('Frontend Logic: src/sim/store.ts', () => {
       sessionStorage.setItem('larp.lesson', 'new-lesson')
       await store.resume(true)
       expect(connectSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Switching to another shift starts clean', () => {
+    const marta = { id: 'm9', who: 'sara', subject: 'Is the SSO login issue being addressed?', body: ['?'], folder: 'inbox' as const, time: '1:20 PM', read: false, flagged: false, files: [], thread: [] }
+
+    it('drops everything of the old shift and ignores its stream from then on', () => {
+      const store = new Store()
+      store.set({ theme: 'dark', scenario: 'lesson-b' })
+      ;(store as any).connect('shift-a')
+      const a = MockEventSource.instances[0]
+      a.emit('snapshot', { seq: 1, world: makeWorld({ id: 'shift-a', term: [{ c: 'out', t: 'from a' }] }) })
+      store.mark('doc:home')
+      store.set({ tabs: ['package.json'], buffers: { 'package.json': { text: 'x', saved: 'x' } } })
+      a.emit('patch', { seq: 2, patch: { emails: [marta, ...makeWorld().emails] } })
+      expect(store.state.toasts).toHaveLength(1)
+
+      ;(store as any).connect('shift-b')
+      expect(a.readyState).toBe(MockEventSource.CLOSED)
+      const s = store.state
+      expect([s.id, s.toasts, s.emails, s.term, s.tabs, s.buffers, s.seen, s.phases, s.starting]).toEqual(['', [], [], [], [], {}, [], [], true])
+      expect([s.theme, s.scenario]).toEqual(['dark', 'lesson-b'])
+
+      // Something the old stream had already queued arrives late: it must not land in the new shift, nor reconnect to the old one.
+      a.emit('patch', { seq: 3, patch: { emails: [marta] } })
+      a.emit('patch', { seq: 9, patch: {} })
+      a.emit('term', { seq: 10, lines: [{ c: 'out', t: 'late' }] })
+      expect(store.state.toasts).toHaveLength(0)
+      expect(store.state.emails).toEqual([])
+      expect(MockEventSource.instances).toHaveLength(2)
+
+      const b = MockEventSource.instances[1]
+      b.emit('snapshot', { seq: 1, world: makeWorld({ id: 'shift-b', emails: [{ ...marta, id: 'e1' }] }) })
+      b.emit('patch', { seq: 2, patch: { emails: [marta, { ...marta, id: 'e1' }] } })
+      expect(store.state.id).toBe('shift-b')
+      expect(store.state.toasts.map(t => t.body)).toEqual(['Is the SSO login issue being addressed?'])
+    })
+
+    it('a request that fails after the switch does not toast in the new shift', async () => {
+      const store = new Store()
+      ;(store as any).connect('shift-a')
+      MockEventSource.instances[0].emit('snapshot', { seq: 1, world: makeWorld({ id: 'shift-a' }) })
+      let fail: (v: unknown) => void = () => {}
+      ;(globalThis.fetch as any).mockReturnValueOnce(new Promise(r => { fail = r }))
+      const sent = store.comment('LED-214', 'on it')
+      ;(store as any).connect('shift-b')
+      fail({ ok: false, json: async () => ({ error: 'gone' }) })
+      await sent
+      await vi.runAllTimersAsync()
+      expect(store.state.toasts).toHaveLength(0)
+    })
+
+    it('reconnecting to the same shift keeps what the browser knows', () => {
+      const store = new Store()
+      ;(store as any).connect('shift-a')
+      MockEventSource.instances[0].emit('snapshot', { seq: 1, world: makeWorld({ id: 'shift-a' }) })
+      store.mark('doc:home')
+      ;(store as any).connect('shift-a')
+      MockEventSource.instances[1].emit('snapshot', { seq: 1, world: makeWorld({ id: 'shift-a' }) })
+      expect(store.state.seen).toEqual(['doc:home'])
     })
   })
 

@@ -20,9 +20,9 @@ export function Guide() {
   const now = main.find(x => !x.done)
   const done = main.filter(x => x.done).length
 
-  // A new phase is news: unfold the list if it was folded away.
-  const phase = useRef(g.phase)
-  useEffect(() => { if (phase.current !== g.phase) { phase.current = g.phase; sim.set({ guideOpen: true }) } }, [g.phase])
+  // A new phase is news, and so is being able to finish: unfold the list if it was folded away.
+  const news = g.phase + (g.ready ? ':ready' : ''), phase = useRef(news)
+  useEffect(() => { if (phase.current !== news) { phase.current = news; sim.set({ guideOpen: true }) } }, [news])
 
   return (
     <>

@@ -4,8 +4,9 @@
 // Also data: what the code workspace is called, and the words the engine uses for the client, the deadline and the outage (story).
 // Still code: what the checks test (server/acceptance.ts), the facts each persona is told, the mentor's rules and scripted fallback lines.
 import { z } from 'zod'
-import { DONE_KEYS, NEW, SHOW_KEYS } from './guide.ts'
-import type { Done, GuideStep } from './guide.ts'
+import ledgerly from '../scenarios/ledgerly-day2.json' with { type: 'json' }
+import { DONE_KEYS, GUIDE_VARS, MAIL_KINDS, NEW, SHOW_KEYS } from './guide.ts'
+import type { Done, GuideStep, Msg, Phase } from './guide.ts'
 import { normalizeTags } from './tags.ts'
 import { APP_IDS, COLS, FOLDERS, LEVELS, PRIORITIES, firstName, initials, minutes } from './types.ts'
 
@@ -45,8 +46,9 @@ const doc = z.object({ id: line, title: line, group: line, owner: person, update
 
 /** Timestamps in the session's private facts that a trigger may record or test. */
 export const FLAGS = ['warnedAt', 'readWarningAt', 'editedAt', 'testedAt', 'leoAskedAt', 'ackAt', 'askedDanielAt', 'clientMailAt', 'clientAt', 'pmAt', 'assignAckAt', 'rolledBackAt', 'fixedAt'] as const
-/** Values the engine computes for {{name}} placeholders in trigger text. {{player}} is the player's first name and works in any text. */
-export const VARS = ['now', 'deployTime', 'deployTimePlus1', 'timeToDemo', 'player'] as const
+/** Values the engine computes for {{name}} placeholders in trigger text. {{player}} is the player's first name and works in any text.
+ * {{client}} is the client contact's first name and {{customer}} what the story calls their company, so defaults need no names. */
+export const VARS = ['now', 'deployTime', 'deployTimePlus1', 'timeToDemo', 'player', 'client', 'customer'] as const
 export const EVENTS = ['start', 'incident.opened', 'incident.resolved'] as const
 const flag = z.enum(FLAGS, { error: i => `no flag "${String(i.input)}"` })
 const text = z.string().superRefine((t, ctx) => {
@@ -120,24 +122,44 @@ const customer = z.strictObject({
   short: line.optional(),
   arr: line, password: z.number().int().min(0), sso: z.number().int().min(0), note: z.string().default(''),
 })
+const pattern = line.refine(p => { try { new RegExp(p, 'u'); return true } catch { return false } }, 'not a valid regular expression')
+const msg: z.ZodType<Msg> = z.strictObject({ chan: chan.optional(), who: person.optional(), alert: z.enum(['fire', 'ok', 'info']).optional(), match: pattern.optional() })
 const done: z.ZodType<Done> = z.lazy(() => z.strictObject({
   all: z.array(done).min(1).optional(), any: z.array(done).min(1).optional(), not: done.optional(),
   mailRead: line.optional(), mailReplied: line.optional(),
   ticket: z.strictObject({ id: line, status: z.array(z.enum(COLS.map(c => c[0]))).min(1) }).optional(), commented: line.optional(),
-  posted: z.strictObject({ chan, who: person }).optional(), channelRead: chan.optional(),
+  posted: z.strictObject({ chan, who: person, match: pattern.optional(), after: msg.optional() }).optional(), channelRead: chan.optional(),
   openedDoc: line.optional(), openedFile: line.optional(),
-  code: z.enum(['changed', 'tested', 'committed']).optional(), deployed: z.boolean().optional(),
+  code: z.enum(['changed', 'tested', 'committed']).optional(), deployed: z.boolean().optional(), redeployed: z.boolean().optional(),
   git: z.enum(['branched', 'staged', 'committed', 'pushed']).optional(), ran: line.optional(),
+  incident: z.enum(['opened', 'live', 'resolved', 'rolled-back']).optional(), watched: z.boolean().optional(), postmortem: z.boolean().optional(),
+  ended: z.boolean().optional(), stepsDone: z.boolean().optional(),
 }).superRefine(one(DONE_KEYS, 'a step condition')))
 const showMe = z.strictObject({
   mail: line.optional(), reply: line.optional(), ticket: line.optional(), chat: chan.optional(), doc: line.optional(),
   file: line.optional(), edit: line.optional(), vscode: z.enum(['run-tests', 'commit', 'deploy', 'terminal']).optional(),
+  monitor: z.enum(['error-rate', 'rollback']).optional(), finish: z.literal(true).optional(),
 }).superRefine(one(SHOW_KEYS, 'a show-me target'))
 const guideStep: z.ZodType<GuideStep> = z.strictObject({
   id: key, text: line, hint: line.optional(),
   levels: z.array(z.enum(LEVELS, { error: i => `no level "${String(i.input)}"` })).min(1).optional(),
-  doneWhen: done, showMe: showMe.optional(),
+  if: done.optional(), doneWhen: done.optional(), showMe: showMe.optional(),
+  each: z.union([z.strictObject({ mail: z.array(z.enum(MAIL_KINDS)).min(1) }), z.strictObject({ dm: z.literal(true) })]).optional(),
+  hideDone: z.boolean().optional(),
+}).superRefine((x, ctx) => {
+  if (!x.each && !x.doneWhen) ctx.addIssue({ code: 'custom', path: ['doneWhen'], message: 'a step needs doneWhen (only a step with "each" has its own)' })
+  if (x.each && x.showMe) ctx.addIssue({ code: 'custom', path: ['showMe'], message: 'a step with "each" shows each email or chat itself' })
 })
+const phase: z.ZodType<Phase> = z.strictObject({
+  id: key, title: line, sub: line,
+  subs: z.array(z.strictObject({ when: done, sub: line })).min(1).optional(),
+  when: done.optional(), optional: z.boolean().optional(), happened: done.optional(),
+  steps: z.array(guideStep), side: z.array(guideStep).optional(),
+})
+/** Ledgerly's phases after its opening one. They follow the incident the engine runs on LED-214, so a lesson without a goal that
+ * was saved before phases were data gets them after its own opening steps (see withPhases), and a generated one is given them. */
+const LEDGERLY_PHASES = z.array(phase).parse(ledgerly.phases)
+export const INCIDENT_PHASES = LEDGERLY_PHASES.slice(1)
 
 /** The one code workspace's labels, as Ledgerly has them. Its contents are fixed (workspace-template/ledgerly-api); only these change. */
 export const WORKSPACE = { repo: 'ledgerly-api', host: 'ledgerly-ws-02' }
@@ -147,7 +169,8 @@ export const DAYS = 5
 export const STORY = {
   client: 'marta', customer: 'Northwind Freight', staff: 'finance contractors', deadline: 'renewal demo', movedTo: 'Thursday', weekday: 'Tuesday', date: 'Sep 29', day: 2,
   integrations: ['Osprey’s nightly export', 'Brightline’s booking sync'],
-  postponed: { who: 'sam', subject: 'Northwind demo postponed', body: ['I called Marta and moved the demo to Thursday. She was polite about it, but she asked for a written explanation for their CFO.', 'Sam'] },
+  // In placeholders, not Ledgerly's names: a spec that leaves it out gets it in its own story's names.
+  postponed: { who: 'sam', subject: '{{customer}} demo postponed', body: ['I called {{client}} and moved the demo. They were polite about it, but asked for a written explanation for their CFO.', 'Sam'] },
 }
 
 const level = z.strictObject({ label: line, blurb: line, mentorGuidance: line })
@@ -155,8 +178,8 @@ const level = z.strictObject({ label: line, blurb: line, mentorGuidance: line })
 export const Scenario = z.object({
   id: key,
   title: line,
-  /** What the player is here to practise, as the heading of their step list. A lesson with a goal is done when its guide steps
-   * are, and has no production to break: no deploys, alarm or incident, and none of the incident's cast or story is needed.
+  /** What the player is here to practise, as the heading of their step list. A lesson with a goal is done when its steps
+   * are (shared/guide.ts allDone), and has no production to break: no deploys, alarm or incident, and none of the incident's cast or story is needed.
    * Without one, the lesson is the incident shift the engine was built for: fix LED-214 and ship it. */
   goal: z.strictObject({ title: line.max(80), summary: line.max(200) }).optional(),
   /** One line for the lesson library. */
@@ -221,11 +244,13 @@ export const Scenario = z.object({
   }),
   /** Scripted things that happen on schedule. Order matters for triggers due in the same minute. */
   triggers: z.array(trigger).default([]),
-  /** The step list the player starts with, in order. Later phases (after a deploy, during an incident) are still code in src/sim/guide.ts. */
+  /** The step list, phase by phase, in road-map order: the player is in the last one whose `when` holds (see shared/guide.ts). */
+  phases: z.array(phase).min(1).optional(),
+  /** The older form: the opening steps only. Read into phases (withPhases); a lesson gives one or the other. */
   guide: z.array(guideStep).default([]),
 }).superRefine((s, ctx) => {
   const bad = (path: (string | number)[], message: string) => ctx.addIssue({ code: 'custom', path, message })
-  const unique = (what: string, ids: (string | number)[], path: string[]) => ids.forEach((id, i) => { if (ids.indexOf(id) !== i) bad([...path, i, 'id'], `duplicate ${what} id "${id}"`) })
+  const unique = (what: string, ids: (string | number)[], path: (string | number)[]) => ids.forEach((id, i) => { if (ids.indexOf(id) !== i) bad([...path, i, 'id'], `duplicate ${what} id "${id}"`) })
   const { emails, chats, unread, tickets, docs } = s.seed
 
   const who = (id: string | null, path: (string | number)[]) => { if (id !== null && !Object.hasOwn(s.cast, id)) bad(path, `no cast member with id "${id}"`) }
@@ -237,7 +262,9 @@ export const Scenario = z.object({
     who(s.story.postponed.who, ['story', 'postponed', 'who'])
     if (!s.customers.named.some(c => c.name === s.story.customer)) bad(['story', 'customer'], `no customer named "${s.story.customer}"`)
   }
-  if (s.goal && s.guide.length === 0) bad(['guide'], 'a lesson with a goal needs guide steps: finishing them is how the player finishes it')
+  if (s.goal && !s.guide.length && !s.phases?.some(p => p.steps.length)) bad(['phases'], 'a lesson with a goal needs steps: finishing them is how the player finishes it')
+  if (s.phases && s.guide.length) bad(['guide'], 'give the steps as phases or as guide, not both: guide is the older form of the first phase')
+  if (s.phases?.[0]?.when) bad(['phases', 0, 'when'], 'the first phase has no "when": it is where the lesson starts')
   if (!s.goal && s.checks.length === 0) bad(['checks'], 'the incident shift needs its production checks')
   // Nothing opens an incident in a lesson with a goal, so only the start schedules anything.
   if (s.goal) s.triggers.forEach((t, i) => { if (t.when.on !== 'start') bad(['triggers', i, 'when', 'on'], 'a lesson with a goal has no incident, so its triggers run "on": "start"') })
@@ -292,23 +319,64 @@ export const Scenario = z.object({
   const refs = (path: (string | number)[], pairs: [string, string | undefined, Set<string>][]) => {
     for (const [what, id, ids] of pairs) if (id !== undefined && !ids.has(id)) bad(path, `no ${what} with id "${id}"`)
   }
+  // Emails and tickets that arrive during the shift (a postmortem request, an incident) have ids nobody knows yet, so only
+  // conditions and targets naming seed content are checked. Tickets the engine opens start with INC.
   const cond = (c: Done, path: (string | number)[]) => {
     c.all?.forEach((x, i) => cond(x, [...path, 'all', i]))
     c.any?.forEach((x, i) => cond(x, [...path, 'any', i]))
     if (c.not) cond(c.not, [...path, 'not'])
     refs(path, [['email', c.mailRead, emailIds], ['email', c.mailReplied, emailIds], ['ticket', c.ticket?.id, ticketIds], ['ticket', c.commented, ticketIds], ['doc', c.openedDoc, docIds],
-      ['channel', c.channelRead, chanIds], ['channel', c.posted?.chan, chanIds], ['cast member', c.posted?.who, castIds]])
+      ['channel', c.channelRead, chanIds], ['channel', c.posted?.chan, chanIds], ['cast member', c.posted?.who, castIds],
+      ['channel', c.posted?.after?.chan, chanIds], ['cast member', c.posted?.after?.who, castIds]])
   }
-  s.guide.forEach((g, i) => {
-    cond(g.doneWhen, ['guide', i, 'doneWhen'])
-    const m = g.showMe
-    if (m) refs(['guide', i, 'showMe'], [['email', m.mail, emailIds], ['email', m.reply, emailIds], ['ticket', m.ticket, ticketIds], ['doc', m.doc, docIds], ['channel', m.chat, chanIds]])
-  })
+  const words = (t: string, path: (string | number)[], each: boolean) => {
+    for (const [p, name] of t.matchAll(/\{\{(.*?)\}\}/g)) {
+      if (name === 'from' ? !each : !(GUIDE_VARS as readonly string[]).includes(name) && !castIds.has(name)) bad(path, `unknown placeholder "${p}"`)
+      if (name === 'deadline' && !s.clock.deadline) bad(path, '{{deadline}} needs the clock to have a deadline')
+    }
+  }
+  const steps = (list: GuideStep[], path: (string | number)[]) => {
+    list.forEach((g, i) => {
+      const at = [...path, i]
+      if (g.doneWhen) cond(g.doneWhen, [...at, 'doneWhen'])
+      if (g.if) cond(g.if, [...at, 'if'])
+      words(g.text, [...at, 'text'], !!g.each)
+      if (g.hint) words(g.hint, [...at, 'hint'], !!g.each)
+      const m = g.showMe
+      if (m) refs([...at, 'showMe'], [['email', m.mail, emailIds], ['email', m.reply, emailIds], ['ticket', m.ticket, ticketIds], ['doc', m.doc, docIds], ['channel', m.chat, chanIds]])
+    })
+  }
+  steps(s.guide, ['guide'])
   unique('guide step', s.guide.map(g => g.id), ['guide'])
+  s.phases?.forEach((p, i) => {
+    const at = ['phases', i]
+    for (const [k, c] of [['when', p.when], ['happened', p.happened]] as const) if (c) cond(c, [...at, k])
+    p.subs?.forEach((x, j) => cond(x.when, [...at, 'subs', j, 'when']))
+    words(p.title, [...at, 'title'], false)
+    words(p.sub, [...at, 'sub'], false)
+    p.subs?.forEach((x, j) => words(x.sub, [...at, 'subs', j, 'sub'], false))
+    steps(p.steps, [...at, 'steps'])
+    steps(p.side ?? [], [...at, 'side'])
+    unique('step', [...p.steps, ...p.side ?? []].map(g => g.id), [...at, 'steps'])
+  })
+  if (s.phases) unique('phase', s.phases.map(p => p.id), ['phases'])
   // Wiki pages link to each other as [text](doc:id).
   docs.forEach((d, i) => { for (const [, id] of d.body.matchAll(/\]\(doc:([^)\s]+)\)/g)) if (!docIds.has(id)) bad(['seed', 'docs', i, 'body'], `links to missing doc "${id}"`) })
-})
+}).transform(({ guide, ...s }) => ({ ...s, phases: s.phases ?? withPhases(s, guide) }))
 export type Scenario = z.infer<typeof Scenario>
+
+/** A finish step, for a lesson with a goal that has only `guide`: once every step is done, it points at Finish lesson. */
+export const FINISH: GuideStep = { id: 'finish', text: 'Finish the lesson when you’re ready', hint: 'You get a recap and a note from {{mentor}}.', if: { stepsDone: true }, doneWhen: { ended: true }, showMe: { finish: true } }
+/** Direct messages waiting to be read, beside a practice lesson's steps. */
+export const DMS: GuideStep = { id: 'dm', text: '{{from}} messaged you in Teams', each: { dm: true }, hideDone: true }
+/**
+ * The phases of a spec saved before they were data, from its `guide`, as the engine played it then. A lesson with a goal is one
+ * phase: its steps, then finishing. The incident shift is its opening steps in Ledgerly's opening phase, then Ledgerly's later phases.
+ */
+function withPhases(s: { goal?: { title: string; summary: string } }, guide: GuideStep[]): Phase[] {
+  if (s.goal) return [{ id: 'goal', title: s.goal.title, sub: s.goal.summary, subs: [{ when: { stepsDone: true }, sub: 'Every step is done.' }], steps: [...guide, FINISH], side: [DMS] }]
+  return [{ ...structuredClone(LEDGERLY_PHASES[0]), steps: guide }, ...structuredClone(INCIDENT_PHASES)]
+}
 /** The customer the client contact works at. The schema makes sure there is one. */
 export const clientOf = (s: Scenario) => s.customers.named.find(c => c.name === s.story.customer)!
 

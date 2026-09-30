@@ -181,7 +181,9 @@ try {
   const answers = (...a: unknown[]) => { seen.length = 0; model.write = async b => { seen.push(b); return a.length > 1 ? a.shift() : a[0] } }
   const drifted = structuredClone(ledgerly)
   drifted.checks = [{ id: 'made_up', label: 'Made up', share: 1 }]
-  drifted.seed.tickets = drifted.seed.tickets.map(t => t.id === 'LED-214' ? { ...t, title: 'Something else entirely' } : t)
+  drifted.seed.tickets = drifted.seed.tickets.map(t => t.id === 'LED-214' ? { ...t, title: 'Something else entirely', desc: 'Reported by Kestrel Haulage.' } : t)
+  // The phases after the first follow the engine's incident, so they are Ledgerly's whatever the model writes.
+  drifted.phases = [drifted.phases[0], { ...drifted.phases[1], title: 'Made up', when: { deployed: false } }]
   // Labels may change: a customer's name (not its figures), the story's client company and the repo.
   drifted.customers.named[0] = { ...drifted.customers.named[0], name: 'Kestrel Haulage', short: 'Kestrel', password: 999 }
   drifted.story = { ...drifted.story, customer: 'Kestrel Haulage' }
@@ -190,7 +192,9 @@ try {
   const anchored = await generate(carol, { prompt: 'Change the bug', lessonId: lid })
   assert.equal(anchored.status, 200)
   assert.deepEqual(anchored.body.lesson.spec.checks, ledgerly.checks)
-  assert.equal(anchored.body.lesson.spec.seed.tickets.find((t: { id: string }) => t.id === 'LED-214').title, ledgerly.seed.tickets[0].title)
+  const bug = anchored.body.lesson.spec.seed.tickets.find((t: { id: string }) => t.id === 'LED-214')
+  assert.deepEqual([bug.title, bug.desc], [ledgerly.seed.tickets[0].title, 'Reported by Kestrel Haulage.'], 'the bug stays, the story’s words for it are its own')
+  assert.deepEqual(anchored.body.lesson.spec.phases, ledgerly.phases)
   assert.deepEqual(anchored.body.lesson.spec.customers.named[0], { ...ledgerly.customers.named[0], name: 'Kestrel Haulage', short: 'Kestrel' })
   assert.deepEqual([anchored.body.lesson.spec.story.customer, anchored.body.lesson.spec.workspace.repo], ['Kestrel Haulage', 'books-api'])
   assert.match(seen[0].system, /Keep these cast ids/)

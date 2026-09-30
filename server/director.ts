@@ -1,6 +1,6 @@
 // Runs the shift: the clock, the things that happen on schedule, and what follows from what the player does.
 // No model calls here. The director decides what is true; personas and the mentor decide how to say it.
-import { done, normalize, stepsFor } from '../shared/guide.ts'
+import { normalize, required } from '../shared/guide.ts'
 import { clientOf } from '../shared/scenario.ts'
 import { COLS, clock, errAt, failing, firstName, isOutage, minutes, personByName, shortDay, shortName } from '../shared/types.ts'
 import type { Attachment, ChanId, Check, CodeState, Doc, Email, Folder, PersonId, TermLine, Ticket } from '../shared/types.ts'
@@ -21,11 +21,11 @@ const call = (s: Session, who: PersonId) => firstName(s.world.cast[who])
 const open = (s: Session) => !!s.world.incident && s.world.incident.resolvedAt === null
 /** A lesson with its own goal: no production, so no deploys, verdicts or incidents. Done when its steps are. */
 const practice = (s: Session) => !!s.scenario.goal
-/** The steps this player's level sees, each with whether it is done, from what the server knows. */
+/** The steps that finish a lesson with a goal at this player's level, each with whether it is done, from what the server knows. */
 function steps(s: Session) {
   const w = s.world, f = s.priv.f
   const seen = f.testedAt === undefined ? f.seen : [...f.seen, 'tested@' + w.deploys.length]
-  return stepsFor(s.scenario.guide, w.level).map(x => ({ ...x, done: done({ ...w, seen }, x.doneWhen) }))
+  return required({ ...w, seen }, s.scenario.phases, w.level)
 }
 const stepsDone = (s: Session) => steps(s).every(x => x.done)
 /** In a lesson with a goal, after anything the player does: logs each step as it is first done, for the recap, and has the

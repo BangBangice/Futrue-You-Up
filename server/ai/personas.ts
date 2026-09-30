@@ -1,7 +1,7 @@
 // The people in the scenario. Each is a card from the scenario, a view of the facts they could plausibly know, and the things they are able to do.
 import { COLS, PRIORITIES, clock, dur, errAt, failing, firstName, isOutage, lockedAt, minutes, shortName, their } from '../../shared/types.ts'
 import type { ChanId, Email, PersonId, TicketStatus } from '../../shared/types.ts'
-import { done, stepsFor } from '../../shared/guide.ts'
+import { required } from '../../shared/guide.ts'
 import { clientOf } from '../../shared/scenario.ts'
 import type { ToolName } from '../../shared/scenario.ts'
 import type { Session } from '../world.ts'
@@ -24,7 +24,7 @@ const TOOLS: Record<ToolName, (who: PersonId, s: Session) => Tool> = {
 function practiceFacts(s: Session): string {
   const w = s.world, sc = s.scenario, me = w.cast[w.player], name = firstName(me), g = w.code
   const seen = s.priv.f.testedAt === undefined ? s.priv.f.seen : [...s.priv.f.seen, 'tested@' + w.deploys.length]
-  const steps = stepsFor(sc.guide, w.level).map(x => ({ text: x.text, done: done({ ...w, seen }, x.doneWhen) }))
+  const steps = required({ ...w, seen }, sc.phases, w.level)
   const out = [
     `Time now: ${clock(w.simMin)}, ${sc.story.weekday}.`,
     `${me.name}, ${me.title}. ${sc.playerBrief}`,

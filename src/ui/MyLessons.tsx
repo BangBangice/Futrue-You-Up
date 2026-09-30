@@ -5,6 +5,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ArrowLeft, Braces, Check, LoaderCircle, Play, Send, Sparkles } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router'
+import type { GuideStep } from '../../shared/guide.ts'
 import type { Scenario } from '../../shared/scenario.ts'
 import { useAccount, useWho } from '../sim/auth.ts'
 import { sim } from '../sim/store.ts'
@@ -341,6 +342,8 @@ function Outline({ s }: { s: Scenario }) {
   const name = (id: string) => s.cast[id]?.name ?? id
   // Whoever plays is cast by name when the shift starts; here the player's card stands in.
   const say = (t: string) => cut(t.replaceAll('{{player}}', name(s.player).split(' ')[0]))
+  // A version saved before phases were data has only guide, its opening steps.
+  const first = (s.phases?.[0]?.steps ?? (s as { guide?: GuideStep[] }).guide ?? []).filter(g => !g.if && !g.each)
   // The database keeps a spec's keys in its own order, so the player and mentor go first by hand.
   const cast = Object.entries(s.cast).filter(([id, c]) => id === s.player || c.persona)
     .sort(([a], [b]) => Number(b === s.player) - Number(a === s.player) || Number(b === s.mentor) - Number(a === s.mentor))
@@ -382,10 +385,10 @@ function Outline({ s }: { s: Scenario }) {
           </ul>
         </div>
       )}
-      {s.guide.length > 0 && (
+      {first.length > 0 && (
         <div className="field">
           <div className="field-label">{s.goal ? 'The steps' : "The player's first steps"}</div>
-          <ol className="outline-steps">{s.guide.map(g => <li key={g.id}>{g.text}</li>)}</ol>
+          <ol className="outline-steps">{first.map(g => <li key={g.id}>{say(g.text)}</li>)}</ol>
         </div>
       )}
     </div>
