@@ -80,7 +80,9 @@ function Ask({ lessonId, placeholder, label, onDone }: { lessonId?: string; plac
   useEffect(() => { send<Quota>(`${API}/generate`).then(setQuota, () => {}) }, [])
   const suggest = async (text: string, signal: AbortSignal) => {
     const res = await fetch(`${API}/complete`, { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, lessonId }) })
-    return res.ok ? ((await res.json()).suggestion as string) ?? '' : ''
+    if (!res.ok) return ''
+    const { suggestion, retry } = await res.json() as { suggestion?: string; retry?: boolean }
+    return retry ? null : suggestion ?? ''
   }
   const go = async (e: FormEvent) => {
     e.preventDefault()
