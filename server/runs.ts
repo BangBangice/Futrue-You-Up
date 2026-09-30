@@ -45,15 +45,10 @@ const files: RunStore = {
 }
 
 const postgres: RunStore = {
-  async pickScenario(file) {
-    const [row] = await db().select().from(scenarioVersions)
-      .where(and(eq(scenarioVersions.scenarioId, file.id), eq(scenarioVersions.status, 'published')))
-      .orderBy(desc(scenarioVersions.version)).limit(1)
-    const parsed = row && Scenario.safeParse(row.spec)
-    if (parsed?.success) return { spec: parsed.data, version: row.id }
-    // Nothing published yet, or the latest was written for an older schema.
-    return { spec: file, version: (await publish(file)).id }
-  },
+  // The file is the built-in's source of truth. Taking the latest published row instead kept serving whatever was
+  // there last, like a version from before {{player}}, where every colleague still called the player "Maya".
+  // publish() adds a version only when the file has changed, so runs still pin the same row until it does.
+  pickScenario: async file => ({ spec: file, version: (await publish(file)).id }),
   async createRun(s, version) {
     await db().insert(runs).values({ id: s.world.id, userId: s.userId, scenarioVersionId: version!, level: s.world.level, world: s.world, priv: s.priv })
   },
