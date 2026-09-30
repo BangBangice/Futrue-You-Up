@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { mode } from './ai/llm.ts'
 import { closeDb, dbEnabled, migrateDb } from './db/index.ts'
 import { auth, authEnabled } from './auth.ts'
-import { mailScope } from './mail.ts'
+import { checkMail, mailScope, mailStatus } from './mail.ts'
 import { api, errors } from './routes.ts'
 import { all } from './world.ts'
 
@@ -24,6 +24,8 @@ app.disable('x-powered-by')
 // the sandbox's guards and the per-shift AI call limits.
 if (authEnabled()) {
   console.log('Accounts are on: every shift belongs to a signed-in user (guests included).')
+  console.log(mailStatus())
+  void checkMail()
 } else if (PUBLIC) {
   console.warn('PUBLIC_ACCESS=1: anyone with the URL can use this server, no login.')
 } else if (APP_PASSWORD) {

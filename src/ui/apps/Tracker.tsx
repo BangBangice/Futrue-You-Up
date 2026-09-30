@@ -9,7 +9,7 @@ import { Avatar, EASE, LOGOS, SPRING } from '../bits.tsx'
 import { Rich } from '../files.tsx'
 import { DragBar, Lights } from '../Window.tsx'
 
-const TEAM: PersonId[] = ['maya', 'daniel', 'leo', 'priya']
+const TEAM: PersonId[] = ['daniel', 'leo', 'priya']
 const Pri = ({ p }: { p: Priority }) => <span className={'pri ' + p.toLowerCase()}>{p}</span>
 
 /** Text that turns into a field when clicked, and saves when you leave it. */
@@ -24,7 +24,7 @@ function Editable({ value, onSave, multiline, label }: { value: string; onSave: 
 
 function Detail({ tk }: { tk: Ticket }) {
   const [tab, setTab] = useState<'comments' | 'activity'>('comments')
-  const cast = useSim(s => s.cast)
+  const cast = useSim(s => s.cast), player = useSim(s => s.player)
   const locked = tk.id.startsWith('INC') // incidents follow production, not the board
   const comment = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -39,7 +39,7 @@ function Detail({ tk }: { tk: Ticket }) {
         <dt>Status</dt>
         <dd><select className="select" data-guide="ticket-status" value={tk.status} disabled={locked} aria-label="Status" onChange={e => sim.saveTicket(tk.id, { status: e.target.value as TicketStatus })}>{COLS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select></dd>
         <dt>Assignee</dt>
-        <dd className="assignee">{tk.who && <Avatar who={tk.who} size={18} />}<select className="select" value={tk.who ?? ''} aria-label="Assignee" onChange={e => sim.saveTicket(tk.id, { who: (e.target.value || null) as PersonId | null })}><option value="">Unassigned</option>{TEAM.map(p => <option key={p} value={p}>{cast[p].name}</option>)}</select></dd>
+        <dd className="assignee">{tk.who && <Avatar who={tk.who} size={18} />}<select className="select" value={tk.who ?? ''} aria-label="Assignee" onChange={e => sim.saveTicket(tk.id, { who: (e.target.value || null) as PersonId | null })}><option value="">Unassigned</option>{[player, ...TEAM].map(p => <option key={p} value={p}>{cast[p].name}</option>)}</select></dd>
         <dt>Priority</dt>
         <dd><select className="select" value={tk.pri} aria-label="Priority" onChange={e => sim.saveTicket(tk.id, { pri: e.target.value as Priority })}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</select></dd>
         <dt>Estimate</dt><dd>{tk.pts ? tk.pts + ' pts' : '—'}</dd>

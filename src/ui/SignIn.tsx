@@ -124,6 +124,7 @@ export function SignIn({ config, start, onDone, onBack }: { config: AuthConfig; 
             <div className="field">
               <div className="field-label signin-head"><MailCheck size={18} /> Check your inbox</div>
               <div className="level-note">We sent a link to <b>{email}</b>. Open it to confirm your email and you're in.{onBack ? ' Your shifts come with you.' : ''}</div>
+              <div className="level-note">Nothing after a few minutes? Check your spam folder. If this address already has an account, from Google say, the email tells you how to sign in instead.</div>
               <div className="signin-links">
                 <button className="link" disabled={busy} onClick={resend}>Send it again</button>
                 <button className="link" onClick={() => go('signin')}>Back to sign in</button>

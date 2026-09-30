@@ -6,9 +6,19 @@ export type AppId = 'mail' | 'chat' | 'code' | 'tracker' | 'docs' | 'monitor'
 export type PersonId = string
 /** A key of the scenario's channels. A DM channel shares its id with the person on the other end. */
 export type ChanId = string
-export interface Person { name: string; init: string; color: string; email: string; title: string }
+export interface Person {
+  name: string; init: string; color: string; email: string; title: string
+  /** What colleagues call them, when not the first word of their name. */
+  short?: string
+}
 export interface Channel { label: string; topic: string; dm?: boolean }
 export type Cast = Record<PersonId, Person>
+/** What colleagues call someone: `short` if set, else the first word of their name. */
+export const firstName = (p: Pick<Person, 'name' | 'short'>) => p.short ?? p.name.split(' ')[0]
+/** Up to two letters for an avatar: "Maya Chen" is MC. */
+export const initials = (name: string) => name.trim().split(/\s+/).map(w => [...w][0] ?? '').join('').slice(0, 2).toUpperCase() || '?'
+/** Their username on the work laptop and in branch names, like "maya". */
+export const login = (p: Pick<Person, 'name' | 'short'>) => firstName(p).normalize('NFKD').toLowerCase().replace(/[^a-z0-9]/g, '') || 'dev'
 export type Channels = Record<ChanId, Channel>
 export const LEVELS = ['newgrad', 'bootcamp', 'switcher'] as const
 export type Level = typeof LEVELS[number]
@@ -70,6 +80,8 @@ export interface World {
   id: string; stage: 'sim' | 'recap'; level: Level; background: string; ai: 'live' | 'stub'
   /** Who is in this scenario and which cast member the player is. Fixed for the shift. */
   cast: Cast; channels: Channels; player: PersonId; mentor: PersonId
+  /** The company the player works at in this scenario. */
+  company: string
   /** When the demo is, in sim minutes, or null when the scenario has none. */
   deadline: number | null
   /** What failing checks cost. Only the checks customers can feel. */

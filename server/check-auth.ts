@@ -60,6 +60,10 @@ assert.equal(started.status, 201)
 const { id } = await started.json()
 const [row] = await db().select().from(runs).where(eq(runs.id, id))
 assert.equal(row.userId, a.id, 'the run belongs to whoever started it')
+// A guest gets a made-up name, and plays the shift under it.
+assert.match(a.me.name, /^[A-Z][a-z]+ [A-Z][a-z]+$/, 'a guest is named like "Happy Mango"')
+const cast = (row.world as { cast: Record<string, { name: string }>; player: string })
+assert.equal(cast.cast[cast.player].name, a.me.name, 'the player is cast with the account name')
 
 const routes: [string, RequestInit][] = [
   [`/api/sessions/${id}/file?path=package.json`, {}],
@@ -122,6 +126,10 @@ assert.equal((await blocked.json()).code, 'EMAIL_NOT_VERIFIED')
 const samCookie = await confirm(sam)
 assert.deepEqual(Object.values(await (await call('/api/me', samCookie)).json()).slice(1), ['Sam', false, 'learner'])
 assert.equal((await signIn(sam, PASSWORD)).status, 200, 'signs in once confirmed')
+// Signing up again answers like any sign-up, and the inbox gets a nudge to sign in rather than nothing.
+assert.equal((await register(sam)).status, 200, 'a second sign-up looks the same')
+assert.match(printed, /You already have a LARP account/)
+await mailTo(sam)
 
 // A guest who registers keeps their shifts, whichever browser opens the confirmation link.
 for (const sameBrowser of [false, true]) {

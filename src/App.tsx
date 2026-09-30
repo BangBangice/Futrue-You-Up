@@ -23,7 +23,7 @@ function Gate({ config }: { config: AuthConfig }) {
   const [signing, setSigning] = useState<false | 'landing' | 'save'>(arrivedByLink && 'landing')
   const user = data?.user
   const account = useMemo(() => user && {
-    name: user.isAnonymous ? 'Guest' : user.name,
+    name: user.name,
     isAnonymous: !!user.isAnonymous,
     signOut: async () => { await authClient.signOut(); sim.replay() },
     save: config.email || config.google ? () => setSigning('save') : undefined,

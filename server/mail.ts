@@ -9,9 +9,20 @@ const escape = (s: string) => s.replace(/[&<>"]/g, c => `&${{ '&': 'amp', '<': '
 export const mailer = () => (process.env.RESEND_API_KEY ? 'resend' : process.env.MAILPIT_URL ? 'mailpit' : 'console')
 // With nowhere to send, production refuses rather than printing sign-in links into its logs.
 export const mailReady = () => mailer() !== 'console' || process.env.NODE_ENV !== 'production'
+/** One line for the startup log, so a missing key or a sender Resend will refuse shows up before anyone signs up. */
+export function mailStatus() {
+  const kind = mailer()
+  if (kind === 'console') return mailReady() ? 'Email: none set up, sign-in links are printed here.' : 'Email: RESEND_API_KEY is not set, so email sign-up and password reset are hidden.'
+  const from = FROM.match(/<(.+)>/)?.[1] ?? FROM
+  const warn = kind === 'resend' && /@(localhost|example\.\w+)$/i.test(from) ? ' Resend will refuse this sender: set EMAIL_FROM to an address on your verified domain.' : ''
+  return `Email: ${kind}, from ${from}.${warn}`
+}
 
 // Better Auth swallows errors from its email callbacks, so a failure is noted here and turned into an error response (auth.ts).
-export const mailScope = new AsyncLocalStorage<{ failed?: boolean }>()
+// `sent` lets auth.ts log requests that quietly sent nothing.
+export const mailScope = new AsyncLocalStorage<{ failed?: boolean; sent?: boolean }>()
+/** j***@gmail.com: enough to tell addresses apart in the logs without printing them. */
+export const mask = (email: string) => email.replace(/^(.)[^@]*/, '$1***')
 
 export function letter(to: string, subject: string, lines: string[], action: { label: string; url: string }): Mail {
   const text = [...lines, '', `${action.label}: ${action.url}`, '', 'If this wasn\'t you, ignore this email.'].join('\n')
@@ -40,6 +51,8 @@ async function deliver(m: Mail) {
       body: JSON.stringify({ From: address(FROM), To: [{ Email: m.to }], Subject: m.subject, Text: m.text, HTML: m.html }),
     })
   if (!res.ok) throw new Error(`${kind} answered ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  const { id } = await res.json().catch(() => ({})) as { id?: string }
+  console.log(`[mail] sent "${m.subject}" to ${mask(m.to)} via ${kind}${id ? ` (id ${id})` : ''}`)
 }
 
 function address(s: string) {
@@ -50,10 +63,33 @@ function address(s: string) {
 export async function send(m: Mail) {
   try {
     await deliver(m)
+    const scope = mailScope.getStore()
+    if (scope) scope.sent = true
   } catch (e) {
-    console.error(`[mail] could not send "${m.subject}": ${(e as Error).message}`)
+    console.error(`[mail] could not send "${m.subject}" to ${mask(m.to)}: ${(e as Error).message}`)
     const scope = mailScope.getStore()
     if (scope) scope.failed = true
     else throw e
+  }
+}
+
+/**
+ * Asks Resend whether the sender's domain is verified, so a domain that isn't shows up in the startup log
+ * rather than as mail that never arrives. A sending-only API key can't list domains; then this says so and moves on.
+ */
+export async function checkMail() {
+  if (mailer() !== 'resend') return
+  const domain = (FROM.match(/<(.+)>/)?.[1] ?? FROM).split('@')[1]?.trim().toLowerCase()
+  try {
+    const res = await fetch('https://api.resend.com/domains', { headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}` } })
+    const body = await res.json().catch(() => ({})) as { name?: string; message?: string; data?: { name: string; status: string }[] }
+    if (res.status === 401 && body.name === 'restricted_api_key') return console.log('[mail] Resend: this key can only send, so the domain check is skipped.')
+    if (!res.ok) return console.error(`[mail] Resend refused the API key (${res.status}): ${body.message ?? 'no reason given'}. No email will be sent. Check RESEND_API_KEY.`)
+    const found = body.data?.find(d => d.name.toLowerCase() === domain)
+    if (!found) console.error(`[mail] Resend has no domain "${domain}". Add and verify it in Resend, or set EMAIL_FROM to an address on a verified domain. No email will be delivered until then.`)
+    else if (found.status !== 'verified') console.error(`[mail] Resend domain "${domain}" is ${found.status}, not verified. Finish its DNS records in Resend; until then no email is delivered.`)
+    else console.log(`[mail] Resend domain "${domain}" is verified.`)
+  } catch (e) {
+    console.error(`[mail] could not reach Resend to check the domain: ${(e as Error).message}`)
   }
 }

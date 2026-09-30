@@ -16,13 +16,14 @@ export function SimBar() {
   const impact = useSim(s => s.impact)
   const deadline = useSim(s => s.deadline)
   const account = useAccount()
+  const company = useSim(s => s.company)
   const on = live({ incident }), toDemo = deadline === null ? null : deadline - m
   return (
     <header className={'simbar' + (on ? ' compact' : '')}>
       <Brand size={14} />
       <div className="simbar-role">
         <i className="vsep" />
-        <div className="stack"><b>Backend Developer · Ledgerly</b><span>Day 2 of 5 · Tue, Sep 29</span></div>
+        <div className="stack"><b>Backend Developer · {company}</b><span>Day 2 of 5 · Tue, Sep 29</span></div>
       </div>
       <div className="stack simclock"><b>{clock(m)}</b><span>SIM TIME</span></div>
       <Segmented id="pace" value={String(pace)} options={PACES.map(([n, label]) => [String(n), label])} onChange={v => sim.setPace(Number(v))} />

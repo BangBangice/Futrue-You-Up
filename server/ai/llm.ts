@@ -161,7 +161,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const t0 = Date.now()
   const calls = await ask({
     system: 'You are Priya, an engineering manager. Act only through the tool.',
-    user: 'Ask Maya in the incidents channel for a one-line status update.',
+    user: 'Ask the new developer in the incidents channel for a one-line status update.',
     tools: [{ name: 'send_teams_message', description: 'Post a message in Teams.', parameters: { type: 'object', properties: { channel: { type: 'string' }, text: { type: 'string' } }, required: ['channel', 'text'] } }],
   })
   console.log(`answered in ${((Date.now() - t0) / 1000).toFixed(1)}s`)

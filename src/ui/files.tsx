@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { File, FileCode2, FileText, Image, MonitorUp, Paperclip, X } from 'lucide-react'
-import { APP_NAMES } from '../../shared/types.ts'
+import { APP_NAMES, firstName } from '../../shared/types.ts'
 import type { Attachment } from '../../shared/types.ts'
 import { sim, useSim } from '../sim/store.ts'
 import { LOGOS } from './bits.tsx'
@@ -77,18 +77,18 @@ export function AttachButton({ onPick }: { onPick: (a: Attachment) => void }) {
   )
 }
 
-// What counts as a link in running text: file paths and names from the workspace, ticket ids, #channels, @maya and `code`.
-let built: { files: string[]; re: RegExp; byText: Map<string, string> } | undefined
-function links(files: string[]) {
-  if (built?.files === files) return built
+// What counts as a link in running text: file paths and names from the workspace, ticket ids, #channels, @you and `code`.
+let built: { files: string[]; me: string; re: RegExp; byText: Map<string, string> } | undefined
+function links(files: string[], me = built?.me ?? '') {
+  if (built?.files === files && built.me === me) return built
   const byText = new Map<string, string>()
   for (const f of files) { byText.set(f, f); const name = f.split('/').at(-1)!; if (!byText.has(name) && /\.\w+$/.test(name) && f.includes('/')) byText.set(name, f) }
   const words = [...byText.keys()].sort((a, b) => b.length - a.length).map(escape)
-  return (built = { files, byText, re: new RegExp('`([^`]+)`|(?<![\\w/.-])(' + (words.join('|') || '(?!)') + ')(?![\\w/])|\\b((?:LED|INC)-\\d+)\\b|(?<![\\w/])#(team|incidents)\\b|(@maya)\\b', 'g') })
+  return (built = { files, me, byText, re: new RegExp('`([^`]+)`|(?<![\\w/.-])(' + (words.join('|') || '(?!)') + ')(?![\\w/])|\\b((?:LED|INC)-\\d+)\\b|(?<![\\w/])#(team|incidents)\\b|(@' + (escape(me) || '(?!)') + ')(?![\\w])', 'g') })
 }
 
 export function Rich({ text }: { text: string }) {
-  const { re, byText } = links(useSim(s => s.files))
+  const { re, byText } = links(useSim(s => s.files), useSim(s => (s.cast[s.player] ? firstName(s.cast[s.player]) : '')))
   const out: ReactNode[] = []
   let at = 0
   for (const m of text.matchAll(re)) {

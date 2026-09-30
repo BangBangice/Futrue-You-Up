@@ -9,7 +9,8 @@ import { existsSync } from 'node:fs'
 import { cp, lstat, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Check, CodeState, GitFile, TermLine } from '../shared/types.ts'
+import { login } from '../shared/types.ts'
+import type { Check, CodeState, GitFile, Person, TermLine } from '../shared/types.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TEMPLATE = join(HERE, '..', 'workspace-template', 'ledgerly-api')
@@ -34,7 +35,8 @@ const getBuiltin = process.getBuiltinModule
 Object.defineProperty(process, 'getBuiltinModule', { value: id => blocked(id) ? refuse(id) : getBuiltin(id), writable: false, configurable: false })
 registerHooks({ resolve: (specifier, context, next) => blocked(specifier) ? refuse(specifier) : next(specifier, context) })
 `)}`
-export const FAKE_HOME = '/Users/maya/ledgerly-api'
+/** Where the player's clone appears to live on their laptop. */
+const fakeHome = (user: string) => `/Users/${user}/ledgerly-api`
 
 /** Thrown for anything the player may not do. The message is shown to them, so it should help. */
 export class Refusal extends Error {}
@@ -85,22 +87,24 @@ export class Workspace {
   private running: ReturnType<typeof spawn> | null = null
   readonly root: string
   private readonly home: string
-  private constructor(root: string, home: string) { this.root = root; this.home = home }
+  /** The player, as git and the shell know them. */
+  private readonly me: { name: string; email: string; user: string }
+  private constructor(root: string, home: string, me: Workspace['me']) { this.root = root; this.home = home; this.me = me }
 
-  static async open(dir: string) {
+  static async open(dir: string, player: Person) {
     const root = join(dir, 'workspace')
     const fresh = !existsSync(join(root, '.git'))
     if (fresh) {
       await rm(root, { recursive: true, force: true })
       await cp(TEMPLATE, root, { recursive: true })
     }
-    const ws = new Workspace(await realpath(root), await realpath(dir))
+    const ws = new Workspace(await realpath(root), await realpath(dir), { name: player.name, email: player.email, user: login(player) })
     if (fresh) {
       const past = { GIT_AUTHOR_NAME: 'Daniel Okafor', GIT_AUTHOR_EMAIL: 'daniel@ledgerly.io', GIT_COMMITTER_NAME: 'Daniel Okafor', GIT_COMMITTER_EMAIL: 'daniel@ledgerly.io', GIT_AUTHOR_DATE: '2026-09-22T16:40:00', GIT_COMMITTER_DATE: '2026-09-22T16:40:00' }
       await ws.git(['init', '-q', '-b', 'main'])
       await ws.git(['add', '-A'])
       await ws.git(['commit', '-q', '-m', 'chore(session): move session store to Redis 7 (LED-205)'], past)
-      await ws.git(['checkout', '-q', '-b', 'maya/led-214-sso-expiry'])
+      await ws.git(['checkout', '-q', '-b', `${ws.me.user}/led-214-sso-expiry`])
     }
     return ws
   }
@@ -188,7 +192,7 @@ export class Workspace {
       env: {
         GIT_DIR: join(this.root, '.git'), GIT_WORK_TREE: this.root, GIT_CEILING_DIRECTORIES: dirname(this.root),
         GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_PAGER: 'cat', GIT_EDITOR: 'true', GIT_OPTIONAL_LOCKS: '0',
-        GIT_AUTHOR_NAME: 'Maya Chen', GIT_AUTHOR_EMAIL: 'maya.chen@ledgerly.io', GIT_COMMITTER_NAME: 'Maya Chen', GIT_COMMITTER_EMAIL: 'maya.chen@ledgerly.io', ...env,
+        GIT_AUTHOR_NAME: this.me.name, GIT_AUTHOR_EMAIL: this.me.email, GIT_COMMITTER_NAME: this.me.name, GIT_COMMITTER_EMAIL: this.me.email, ...env,
       },
     })
   }
@@ -242,7 +246,7 @@ export class Workspace {
 
     switch (cmd) {
       case 'help': HELP.forEach(l => say(l, 'dim')); return 0
-      case 'pwd': say(FAKE_HOME + (this.cwd ? '/' + this.cwd : '')); return 0
+      case 'pwd': say(fakeHome(this.me.user) + (this.cwd ? '/' + this.cwd : '')); return 0
       case 'cd': {
         const { p, info } = args[0] && args[0] !== '~' ? await at(args[0]) : { p: this.root, info: await stat(this.root) }
         if (!info?.isDirectory()) throw new Refusal(`cd: ${args[0]}: not a folder`)

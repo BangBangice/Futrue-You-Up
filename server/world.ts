@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Response } from 'express'
+import { personalize } from '../shared/scenario.ts'
 import type { Scenario } from '../shared/scenario.ts'
 import { clock, minutes } from '../shared/types.ts'
 import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, PersonId, TermLine, Ticket, Tone, World } from '../shared/types.ts'
@@ -58,7 +59,8 @@ export class Session {
   constructor(world: World, priv: Priv, scenario: Scenario) {
     this.world = world
     this.priv = priv
-    this.scenario = scenario
+    // The shift's own copy, cast with whoever is playing, so {{player}} in later triggers and persona cards reads right.
+    this.scenario = personalize(scenario, world.cast[world.player] ?? scenario.cast[scenario.player])
     this.dir = join(DATA, world.id)
   }
 
@@ -145,7 +147,8 @@ const sessions = new Map<string, Session>()
 const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
 // Persona cards and mentor guidance are prompts, so they stay on the server. So do security checks: the browser must not learn they exist.
-export const roster = (sc = SCENARIO): Pick<World, 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
+export const roster = (sc = SCENARIO): Pick<World, 'company' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
+  company: sc.company.name,
   cast: Object.fromEntries(Object.entries(sc.cast).map(([id, { persona: _, ...p }]) => [id, p])), channels: sc.channels, player: sc.player, mentor: sc.mentor,
   levels: Object.fromEntries(Object.entries(sc.levels).map(([k, { mentorGuidance: _, ...l }]) => [k, l])),
   deadline: sc.clock.deadline ? minutes(sc.clock.deadline) : null,
@@ -161,9 +164,11 @@ async function evict() {
   await drop(s.world.id)
 }
 
-export async function create(level: Level, background: string, pace: number, ai: World['ai'], userId: string | null = null) {
+/** `who` is the person playing. Without accounts the scenario's own player is used. */
+export async function create(level: Level, background: string, pace: number, ai: World['ai'], userId: string | null = null, who?: { name: string; short?: string }) {
   await evict()
-  const { spec, version } = await store().pickScenario(SCENARIO)
+  const { spec: picked, version } = await store().pickScenario(SCENARIO)
+  const spec = personalize(picked, who ?? picked.cast[picked.player])
   const id = randomUUID()
   const world: World = {
     id, stage: 'sim', level, background, ai, aiProblem: aiProblem(), pace, simMin: minutes(spec.clock.start),
@@ -175,7 +180,7 @@ export async function create(level: Level, background: string, pace: number, ai:
   const s = new Session(world, { uid: 100, beats: [], verdicts: {}, attempts: 0, aiCalls: 0, events: [], f: { seen: [], praised: [], reviewed: [] } }, spec)
   s.userId = userId
   await mkdir(s.dir, { recursive: true })
-  s.ws = await Workspace.open(s.dir)
+  s.ws = await Workspace.open(s.dir, world.cast[world.player])
   await store().createRun(s, version)
   sessions.set(id, s)
   return s
@@ -196,7 +201,7 @@ async function load(id: string) {
   s.rev = saved.rev
   s.userId = saved.userId
   await mkdir(s.dir, { recursive: true })
-  s.ws = await Workspace.open(s.dir)
+  s.ws = await Workspace.open(s.dir, s.world.cast[s.world.player])
   sessions.set(id, s)
   return s
 }
