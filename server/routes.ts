@@ -10,6 +10,7 @@ import { authEnabled, googleEnabled, me } from './auth.ts'
 import { lessonsApi, playable } from './authoring.ts'
 import type { Me } from './auth.ts'
 import { mailReady } from './mail.ts'
+import { adminApi, removed, reportRoute } from './moderation.ts'
 import { lessonTags, listLessons } from './lessons.ts'
 import { listRuns } from './runs.ts'
 import { DEFAULT_SCENARIO, catalog, scenarioFile } from './scenarios.ts'
@@ -58,7 +59,7 @@ api.get('/health', async (_req, res) => {
 
 /** A built-in's id, or a lesson from the database this player may play (see authoring.ts). */
 async function lesson(id: unknown, userId: string | null, missing: Error) {
-  const found = typeof id === 'string' && (scenarioFile(id) ? id : await playable(id, userId))
+  const found = typeof id === 'string' && !(await removed(id)) && (scenarioFile(id) ? id : await playable(id, userId))
   if (!found) throw missing
   return found
 }
@@ -96,6 +97,8 @@ api.get('/me/runs', async (_req, res) => {
   res.json(await listRuns(res.locals.me.id))
 })
 api.use('/my/lessons', lessonsApi)
+api.post('/lessons/:id/report', reportRoute)
+api.use('/admin', adminApi)
 
 api.post('/sessions', async (req, res) => {
   const level = pick(req.body?.level, LEVELS, 'level')
@@ -177,6 +180,10 @@ api.post('/sessions/:id/act', async (req, res) => {
   }
   res.json({ ok: true })
 })
+
+/** Any other /api path, including /api/admin for anyone but an admin (moderation.ts): JSON, never the app's index.html. */
+export const notFound = (_req: Request, res: Response) => { res.status(404).json({ error: 'Not found.' }) }
+api.use(notFound)
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Express recognises error handlers by their four arguments
 export function errors(err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) {

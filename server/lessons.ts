@@ -3,6 +3,7 @@ import { and, arrayContains, desc, eq, exists, ilike, or, sql } from 'drizzle-or
 import { normalizeTag } from '../shared/tags.ts'
 import { db, dbEnabled } from './db/index.ts'
 import { scenarioVersions, scenarios, users } from './db/schema.ts'
+import { live } from './moderation.ts'
 import { catalog } from './scenarios.ts'
 
 export interface Lesson { id: string; title: string; summary: string | null; tags: string[]; author: { name: string } | null; updatedAt: string }
@@ -18,8 +19,8 @@ const clean = ({ tag, q }: LessonQuery) => ({
   q: typeof q === 'string' ? q.trim().slice(0, 100) : '',
 })
 
-// A public lesson with nothing published yet has nothing to play.
-const listed = () => and(eq(scenarios.visibility, 'public'), exists(db().select({ one: sql`1` }).from(scenarioVersions)
+// A public lesson with nothing published yet has nothing to play. One taken down by moderators, or by a banned author, isn't listed.
+const listed = () => and(eq(scenarios.visibility, 'public'), live(), exists(db().select({ one: sql`1` }).from(scenarioVersions)
   .where(and(eq(scenarioVersions.scenarioId, scenarios.id), eq(scenarioVersions.status, 'published')))))
 
 export async function listLessons(query: LessonQuery = {}): Promise<Lesson[]> {
