@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { bigserial, boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core'
+import { bigserial, boolean, customType, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core'
 
 const at = (name: string) => timestamp(name, { withTimezone: true }).notNull().defaultNow()
 
@@ -61,6 +61,16 @@ export const runEvents = pgTable('run_events', {
   data: jsonb('data').notNull(),
   createdAt: at('created_at'),
 }, t => [unique().on(t.runId, t.seq)])
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' })
+
+/** The shift's git repository, so it survives a redeploy or a move to another instance (see Workspace.pack). One row per run. */
+export const runWorkspaces = pgTable('run_workspaces', {
+  runId: uuid('run_id').primaryKey().references(() => runs.id, { onDelete: 'cascade' }),
+  bundle: bytea('bundle').notNull(),
+  bytes: integer('bytes').notNull(),
+  updatedAt: at('updated_at'),
+})
 
 export const REPORT_REASONS = ['spam', 'offensive', 'broken', 'other'] as const
 export const lessonReports = pgTable('lesson_reports', {
