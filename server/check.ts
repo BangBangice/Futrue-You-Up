@@ -12,7 +12,7 @@ import { normalizeTags } from '../shared/tags.ts'
 import { errAt, isOutage, minutes as minutesOf } from '../shared/types.ts'
 import { heard } from './ai/llm.ts'
 import * as director from './director.ts'
-import { lessonTags, listLessons } from './lessons.ts'
+import { getLesson, lessonTags, listLessons } from './lessons.ts'
 import { api, errors } from './routes.ts'
 import { store } from './runs.ts'
 import { conform } from './sandbox.ts'
@@ -290,6 +290,8 @@ if (!process.env.DATABASE_URL) {
   assert.deepEqual([lesson?.id, lesson?.author], ['ledgerly-day2', null], 'a built-in is a public lesson with no author')
   assert.deepEqual(await listLessons({ tag: 'no-such-tag' }), [])
   assert.ok((await lessonTags()).some(t => t.tag === 'communication' && t.count === 1))
+  assert.deepEqual(await getLesson('ledgerly-day2', null), lesson, 'a built-in opens by id, as listed')
+  assert.equal(await getLesson('no-such-lesson', null), null)
 }
 
 // ---- a lesson that renames everyone: the engine's own lines follow, so no old name reaches the browser or the model.

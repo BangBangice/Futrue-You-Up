@@ -43,7 +43,9 @@ export function Top() {
 function Authoring() {
   const { config, userId, loading } = useWho()
   const account = useAccount()
-  if (!config.enabled || loading || (account && !account.isAnonymous && !account.verified)) return null
+  if (!config.enabled || loading) return null
+  // The authoring page's gate says how to confirm.
+  if (account && !account.isAnonymous && !account.verified) return <div className="sub"><Link className="link" to="/my/lessons">Confirm your email</Link> to create lessons.</div>
   if (account?.verified) return <div><Link className="btn btn-soft" to="/my/lessons"><PenLine size={14} />My lessons</Link></div>
   const signUp = account?.save ?? (!userId && (config.email || config.google) ? true : undefined)
   if (!signUp) return null
@@ -157,11 +159,11 @@ export function LessonPage() {
     const ask = new AbortController()
     setLesson(undefined)
     setRoster(null)
-    // The library has no single-lesson endpoint yet, so the lesson comes from the list.
-    get<Lesson[]>('/api/lessons', ask.signal).then(all => setLesson(all.find(l => l.id === id) ?? null), () => { if (!ask.signal.aborted) setLesson(null) })
+    // Unlisted and the author's own private lessons aren't in the library list, but are here by link.
+    get<Lesson>(`/api/lessons/${encodeURIComponent(id)}`, ask.signal).then(setLesson, () => { if (!ask.signal.aborted) setLesson(null) })
     get<Roster>(`/api/scenario?id=${encodeURIComponent(id)}`, ask.signal).then(setRoster, () => {})
     return () => ask.abort()
-  }, [id])
+  }, [id, userId])
 
   const start = () => { sim.choose(id); navigate('/play') }
   const me = roster?.cast[roster.player], mentor = roster?.cast[roster.mentor]

@@ -5,7 +5,7 @@ import { eq, like } from 'drizzle-orm'
 import { closeDb, db, dbEnabled, migrateDb } from './db/index.ts'
 import { publish } from './db/publish.ts'
 import { runEvents, runWorkspaces, runs, scenarioVersions, scenarios, users } from './db/schema.ts'
-import { lessonTags, listLessons } from './lessons.ts'
+import { getLesson, lessonTags, listLessons } from './lessons.ts'
 import * as director from './director.ts'
 import { store } from './runs.ts'
 import { scenarioFile } from './scenarios.ts'
@@ -140,12 +140,22 @@ await db().insert(scenarios).values([
   { id: `${tag}-private`, title: 'Private', tags: [tag, 'incident-response'], authorId: author },
   { id: `${tag}-public`, title: 'Public', tags: [tag], visibility: 'public', authorId: author },
   { id: `${tag}-unpublished`, title: 'Unpublished', tags: [tag], visibility: 'public' },
+  { id: `${tag}-unlisted`, title: 'Unlisted', tags: [tag], visibility: 'unlisted', authorId: author },
 ])
-await db().insert(scenarioVersions).values([`${tag}-private`, `${tag}-public`].map(scenarioId => ({ scenarioId, version: 1, spec: {}, status: 'published' as const })))
+await db().insert(scenarioVersions).values([`${tag}-private`, `${tag}-public`, `${tag}-unlisted`].map(scenarioId => ({ scenarioId, version: 1, spec: {}, status: 'published' as const })))
 assert.deepEqual(await ids({ tag }), [`${tag}-public`], 'only public lessons with a published version are listed')
 assert.deepEqual((await listLessons({ tag }))[0].author, { name: 'Check Author' })
 assert.equal(await counted(), before, 'a private lesson\'s tags are not counted')
 assert.deepEqual((await lessonTags()).find(t => t.tag === tag), { tag, count: 1 })
+// By id, a lesson opens on the same terms as starting it: an unlisted link for anyone, a private lesson for its author only.
+const open = async (id: string, userId: string | null = null) => (await getLesson(`${tag}-${id}`, userId))?.title ?? null
+assert.deepEqual([await open('public'), await open('unlisted'), await open('private'), await open('unpublished')], ['Public', 'Unlisted', null, null])
+assert.equal(await open('private', author), 'Private', 'the author sees their own private lesson')
+assert.deepEqual(await getLesson('ledgerly-day2', null), builtIn, 'a built-in opens by id, as listed')
+await db().update(scenarios).set({ hiddenAt: new Date() }).where(eq(scenarios.id, `${tag}-unlisted`))
+assert.deepEqual([await open('unlisted'), await open('unlisted', author)], [null, null], 'a lesson taken down is missing, even for its author')
+await db().update(users).set({ bannedAt: new Date() }).where(eq(users.id, author))
+assert.equal(await open('public'), null, 'so is one by a banned author')
 await db().delete(users).where(eq(users.id, author))
 assert.equal((await listLessons({ tag }))[0].author, null, 'a lesson outlives its author')
 await db().delete(scenarioVersions).where(like(scenarioVersions.scenarioId, `${tag}-%`))
