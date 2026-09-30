@@ -128,8 +128,6 @@ export const clock = (m: number, sec?: number) => {
   const h24 = Math.floor(m / 60) % 24, mm = m % 60, h = ((h24 + 11) % 12) + 1
   return h + ':' + String(mm).padStart(2, '0') + (sec === undefined ? '' : ':' + String(sec).padStart(2, '0')) + ' ' + (h24 >= 12 ? 'PM' : 'AM')
 }
-/** What a pace means in real time: "Relaxed · 1 sim-min every 30s". */
-export const paceTip = (pace: number, label: string) => `${label} · 1 sim-min every ${60 / pace}s`
 /** The inverse of clock: "1:10 PM" is 790. NaN for anything else. */
 export const minutes = (t: string) => {
   const [, h, mm, ap] = /^(\d{1,2}):(\d{2}) ([AP]M)$/.exec(t) ?? []
