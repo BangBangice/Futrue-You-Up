@@ -6,7 +6,7 @@
     "description": "a 40-person invoicing software company"
   },
   "player": "maya",
-  "playerBrief": "It is her second day.",
+  "playerBrief": "It is their second day.",
   "mentor": "daniel",
   "levels": {
     "newgrad": {
@@ -88,8 +88,8 @@
       "title": "Senior Engineer",
       "persona": {
         "voice": "Calm, direct, kind. Teaches by asking questions. Never writes the code for someone. Short paragraphs.",
-        "knows": "The auth code better than anyone. He wrote most of it. He is Maya’s mentor this week.",
-        "wants": "Maya to become a good engineer, which means letting her do the work and correcting her when it goes wrong.",
+        "knows": "The auth code better than anyone. He wrote most of it. He is {{player}}’s mentor this week.",
+        "wants": "{{player}} to become a good engineer, which means letting them do the work and correcting them when it goes wrong.",
         "rooms": [
           "daniel",
           "team",
@@ -238,7 +238,7 @@
         "read": false,
         "kind": "assign",
         "body": [
-          "Hi Maya,",
+          "Hi {{player}},",
           "Handing you a real one today. Customers on SSO, Northwind included, get bounced to the login page after about an hour. Support has logged six tickets since Monday.",
           "Northwind’s renewal demo is at 3:00 PM and Sam wants SSO stable before then. Can you take a look, get a fix out, and keep me posted?",
           "Daniel knows the auth code best. He is your mentor this week, so lean on him.",
@@ -284,7 +284,7 @@
         "time": "9:02 AM",
         "read": true,
         "body": [
-          "Morning Maya,",
+          "Morning {{player}},",
           "Day 2: 9:30 standup, 12:00 lunch, afternoon is yours for LED tickets. Your 1:1 with Priya is Thursday.",
           "People Ops"
         ]
@@ -307,7 +307,7 @@
           }
         ],
         "body": [
-          "Welcome, Maya!",
+          "Welcome, {{player}}!",
           "Your laptop is set up and you have prod deploy access for auth-api and billing-api. Daniel is your go-to for anything auth.",
           "Deploys go out with ldg deploy, rollbacks with ldg rollback. Both post to #incidents.",
           "Priya"
@@ -406,7 +406,7 @@
           {
             "who": "priya",
             "time": "1:09 PM",
-            "text": "Assigning to Maya. Daniel to mentor."
+            "text": "Assigning to {{player}}. Daniel to mentor."
           }
         ],
         "activity": [
@@ -416,7 +416,7 @@
           },
           {
             "time": "1:09 PM",
-            "text": "Priya Raman: assignee → Maya Chen"
+            "text": "Priya Raman: assignee → {{player}}"
           }
         ]
       },
@@ -555,7 +555,7 @@
           "post": {
             "chan": "team",
             "who": "daniel",
-            "text": "@maya saw Priya gave you LED-214. Heads up: verifySession is shared by every login path (SSO, password, API keys). Whatever you change in there, check the password flow too. Ping me when you get stuck, not after.",
+            "text": "@{{player}} saw Priya gave you LED-214. Heads up: verifySession is shared by every login path (SSO, password, API keys). Whatever you change in there, check the password flow too. Ping me when you get stuck, not after.",
             "files": [
               {
                 "kind": "code",
@@ -584,7 +584,7 @@
           "post": {
             "chan": "leo",
             "who": "leo",
-            "text": "hey Maya, sorry to bug you. how do I run just the auth tests? the full suite takes 9 minutes on my laptop"
+            "text": "hey {{player}}, sorry to bug you. how do I run just the auth tests? the full suite takes 9 minutes on my laptop"
           }
         }
       ]
@@ -668,7 +668,7 @@
           "post": {
             "chan": "priya",
             "who": "priya",
-            "text": "Maya, login errors are spiking and it lines up with your {{deployTime}} deploy. Are you on it?"
+            "text": "{{player}}, login errors are spiking and it lines up with your {{deployTime}} deploy. Are you on it?"
           }
         }
       ]
@@ -769,7 +769,7 @@
           "post": {
             "chan": "incidents",
             "who": "priya",
-            "text": "@maya Northwind demo is in {{timeToDemo}}. Revert or patch? I need to know which."
+            "text": "@{{player}} Northwind demo is in {{timeToDemo}}. Revert or patch? I need to know which."
           }
         }
       ]
@@ -824,7 +824,7 @@
               }
             ],
             "body": [
-              "Hi Maya,",
+              "Hi {{player}},",
               "Thanks for getting us back. Please send a short, blameless postmortem before you log off: what happened, impact, why, how we fixed it, and what we’ll change. Replying here is fine, or write it up as a page in Confluence.",
               "Priya"
             ]

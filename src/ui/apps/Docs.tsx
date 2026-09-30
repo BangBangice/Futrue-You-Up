@@ -68,7 +68,7 @@ function Editor({ doc, onDone }: { doc: Doc | null; onDone: () => void }) {
 export function Docs() {
   const docs = useSim(s => s.docs)
   const page = useSim(s => s.docPage)
-  const cast = useSim(s => s.cast)
+  const cast = useSim(s => s.cast), company = useSim(s => s.company)
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState<'read' | 'edit' | 'new'>('read')
   const doc = docs.find(d => d.id === page) ?? docs[0]
@@ -85,7 +85,7 @@ export function Docs() {
       <DragBar className="titlebar">
         <Lights />
         <img className="title-logo" src={LOGOS.docs} alt="" />
-        <div className="stack title"><b>Confluence</b><span>Ledgerly · Engineering</span></div>
+        <div className="stack title"><b>Confluence</b><span>{company} · Engineering</span></div>
         <div className="grow" />
         <label className="search"><Search size={13} strokeWidth={2.4} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search pages" aria-label="Search pages" /></label>
         <button className="btn btn-accent sm" onClick={() => setMode('new')}><Plus size={14} strokeWidth={2.6} />Create</button>

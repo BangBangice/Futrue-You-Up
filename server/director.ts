@@ -1,6 +1,6 @@
 // Runs the shift: the clock, the things that happen on schedule, and what follows from what the player does.
 // No model calls here. The director decides what is true; personas and the mentor decide how to say it.
-import { COLS, clock, errAt, failing, isOutage, minutes, personByName } from '../shared/types.ts'
+import { COLS, clock, errAt, failing, firstName, isOutage, minutes, personByName } from '../shared/types.ts'
 import type { Attachment, ChanId, Check, Doc, Email, Folder, PersonId, TermLine, Ticket } from '../shared/types.ts'
 import * as mentor from './ai/mentor.ts'
 import { reply } from './ai/personas.ts'
@@ -13,6 +13,7 @@ import type { Beat, Session } from './world.ts'
 const visible = (s: Session, checks: Check[]) => checks.filter(c => (s.scenario.checks.find(x => x.id === c.id)?.share ?? 0) > 0)
 const label = (s: Session, id: string) => s.scenario.checks.find(c => c.id === id)!.label
 const accept = (s: Session) => s.ws.accept(s.scenario.checks.map(c => c.id))
+const player = (s: Session) => firstName(s.world.cast[s.world.player])
 const open = (s: Session) => !!s.world.incident && s.world.incident.resolvedAt === null
 const dashboard: Attachment = { kind: 'link', label: 'auth-api · prod dashboard', app: 'monitor' }
 const wait = (s: Session, ms: number) => new Promise(r => setTimeout(r, ms * s.timeScale))
@@ -76,7 +77,7 @@ function openIncident(s: Session) {
   s.set({ incident: { id, sha: live.sha, startedAt: m, resolvedAt: null, failing: failing(live.checks) }, tickets: [t, ...w.tickets] })
   s.mail({ who: 'jira', folder: 'alerts', subject: `[JIRA] (${id}) assigned to you: ${t.title}`, body: [`CloudWatch assigned ${id} to you.`, t.desc], files: [{ kind: 'ticket', id }] })
   s.post('incidents', 'cloudwatch', `[FIRING] auth-api · 401 rate ${rate}% (threshold ${alarm}%) · top reason: ${reason}`, { alert: 'fire', files: [dashboard] })
-  s.mail({ who: 'cloudwatch', folder: 'alerts', subject: `[FIRING] auth-api: 401 rate ${rate}% (threshold ${alarm}%)`, body: [`Alarm: auth-api 401 rate above ${alarm}% for 2 minutes.`, `Current: ${rate}% · Baseline: 0.4%`, `Top reason: ${reason}`, `Most recent deploy: auth-api@${live.sha} by maya.chen at ${clock(live.at)}`], files: [dashboard, { kind: 'doc', doc: 'incident' }] })
+  s.mail({ who: 'cloudwatch', folder: 'alerts', subject: `[FIRING] auth-api: 401 rate ${rate}% (threshold ${alarm}%)`, body: [`Alarm: auth-api 401 rate above ${alarm}% for 2 minutes.`, `Current: ${rate}% · Baseline: 0.4%`, `Top reason: ${reason}`, `Most recent deploy: auth-api@${live.sha} by ${s.world.cast[live.by].email.split('@')[0]} at ${clock(live.at)}`], files: [dashboard, { kind: 'doc', doc: 'incident' }] })
   s.timeline(`Alarm fired: 401 rate > ${alarm}%`, 'bad')
   s.log('incident', { id, what })
   triggers.schedule(s, s.scenario.triggers, 'incident.opened', id)
@@ -136,10 +137,10 @@ async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
     say(`✓ auth-api@${st.head} is live in prod`, 'ok')
     const first = !shipped(s), bad = failing(v.checks), holes = bad.filter(c => mentor.security(s).includes(c))
     s.set({ deploys: [...w.deploys, { sha: st.head, at: s.world.simMin, by: s.world.player, kind: 'deploy', checks: visible(s, v.checks) }] })
-    s.timeline(`Deploy auth-api@${st.head} (Maya)`, 'accent')
-    s.post('incidents', 'cloudwatch', `Deploy · auth-api@${st.head} by maya.chen · 6/6 pods healthy`, { alert: 'info' })
+    s.timeline(`Deploy auth-api@${st.head} (${player(s)})`, 'accent')
+    s.post('incidents', 'cloudwatch', `Deploy · auth-api@${st.head} by ${s.world.cast[s.world.player].email.split('@')[0]} · 6/6 pods healthy`, { alert: 'info' })
     s.log('deploy', { sha: st.head, tested: f.testedAt !== undefined && (f.editedAt === undefined || f.testedAt >= f.editedAt), broke: bad.filter(c => c !== 'sso_after_refresh').map(c => label(s, c)).join(', ') })
-    if (first) s.later(2500, () => s.say('priya', 'priya', 'Saw LED-214 go out. Thanks Maya. Keep an eye on CloudWatch for a few minutes.'))
+    if (first) s.later(2500, () => s.say('priya', 'priya', `Saw LED-214 go out. Thanks ${player(s)}. Keep an eye on CloudWatch for a few minutes.`))
 
     if (!bad.length) {
       f.fixedAt = s.world.simMin
@@ -158,8 +159,8 @@ async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
     const hadHole = failing(s.priv.verdicts[live.sha]?.checks ?? []).some(c => mentor.security(s).includes(c))
     f.rolledBackAt = s.world.simMin
     s.set({ deploys: [...w.deploys, { sha: wanted.sha, at: s.world.simMin, by: s.world.player, kind: 'rollback', checks: wanted.checks }] })
-    s.timeline(`Rollback to auth-api@${wanted.sha} (Maya)`, 'accent')
-    s.post('incidents', 'cloudwatch', `Rollback · auth-api → ${wanted.sha} by maya.chen`, { alert: 'info' })
+    s.timeline(`Rollback to auth-api@${wanted.sha} (${player(s)})`, 'accent')
+    s.post('incidents', 'cloudwatch', `Rollback · auth-api → ${wanted.sha} by ${s.world.cast[s.world.player].email.split('@')[0]}`, { alert: 'info' })
     s.log('rollback', { sha: wanted.sha })
     if (s.world.tickets.find(t => t.id === 'LED-214')?.status === 'done') s.ticket('LED-214', { status: 'progress', reopened: true }, 'jira', `reopened: auth-api@${live.sha} was rolled back`)
     if (!open(s) && hadHole) void mentor.onHealthy(s, 'rollback')
@@ -246,7 +247,7 @@ export function chat(s: Session, chan: ChanId, text: string, files: Attachment[]
   const f = s.priv.f, m = s.world.simMin
   s.post(chan, s.world.player, text, { files })
   const firstAck = open(s) && f.ackAt === undefined && (chan === 'incidents' || chan === 'priya')
-  if (firstAck) { f.ackAt = m; f.ackText = text; s.timeline('Acknowledged by Maya', 'accent'); void mentor.review(s, 'ack', text) }
+  if (firstAck) { f.ackAt = m; f.ackText = text; s.timeline(`Acknowledged by ${player(s)}`, 'accent'); void mentor.review(s, 'ack', text) }
   if (chan === s.scenario.mentor) f.askedDanielAt ??= m
   if (chan === 'leo' && f.leoAskedAt !== undefined && !f.leo) f.leo = /later|busy|after|swamped|not now/i.test(text) ? 'deferred' : 'helped'
 
@@ -272,13 +273,13 @@ export function mail(s: Session, a: { mode: 'reply' | 'new' | 'forward'; ref?: s
 
   const kind = answers?.kind
   if (kind === 'assign') f.assignAckAt ??= m
-  if (kind === 'client' && f.clientAt === undefined) { f.clientAt = m; f.clientText = a.text; s.timeline('Client update sent to Northwind (Maya)', 'accent'); void mentor.review(s, 'client', a.text) }
+  if (kind === 'client' && f.clientAt === undefined) { f.clientAt = m; f.clientText = a.text; s.timeline(`Client update sent to Northwind (${player(s)})`, 'accent'); void mentor.review(s, 'client', a.text) }
   if (kind === 'pm' && f.pmAt === undefined) { f.pmAt = m; f.pmText = a.text; void mentor.review(s, 'pm', a.text) }
-  const line = kind === 'assign' ? 'Thanks Maya. Shout if you get stuck, and loop Daniel in early on anything auth.'
-    : kind === 'client' ? (open(s) ? 'Thank you, Maya. Please let me know as soon as they can get in.\nMarta' : 'Confirmed, the team is back in. Thank you for writing to me directly.\nMarta')
+  const line = kind === 'assign' ? `Thanks ${player(s)}. Shout if you get stuck, and loop Daniel in early on anything auth.`
+    : kind === 'client' ? (open(s) ? `Thank you, ${player(s)}. Please let me know as soon as they can get in.\nMarta` : 'Confirmed, the team is back in. Thank you for writing to me directly.\nMarta')
     : kind === 'pm' ? 'Got it, thank you. We’ll go through the action items at standup tomorrow.'
     : null
-  const context = answers ? s.world.emails.find(e => e.id === answers.id)! : { ...sent, who: to, body: [`(Maya wrote to ${s.world.cast[to].name})`], thread: [{ time: s.now, text: a.text, files: [] }] }
+  const context = answers ? s.world.emails.find(e => e.id === answers.id)! : { ...sent, who: to, body: [`(${player(s)} wrote to ${s.world.cast[to].name})`], thread: [{ time: s.now, text: a.text, files: [] }] }
   void reply(s, to, { room: to === 'priya' && kind !== 'client' ? 'priya' : null, mail: context }, a.text, line)
 }
 

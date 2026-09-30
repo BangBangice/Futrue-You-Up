@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ArrowRight, Bug, ChartColumn, Check, ClipboardList, Cloud, LayoutDashboard, LoaderCircle, Server, TriangleAlert } from 'lucide-react'
-import { LEVELS } from '../../shared/types.ts'
+import { LEVELS, initials } from '../../shared/types.ts'
 import { useAccount } from '../sim/auth.ts'
 import { sim, useSim } from '../sim/store.ts'
 import { Avatar, Brand, EASE, Segmented, ThemeToggle, rise, stagger } from './bits.tsx'
@@ -24,8 +24,12 @@ export function Onboarding() {
         <Brand />
         <div className="topbar-right">
           {account?.isAnonymous && account.save && <button className="btn sm btn-soft" onClick={account.save}>Save your progress</button>}
-          {account && <><span>{account.name}</span><button className="btn sm btn-chip" onClick={() => void account.signOut()}>Sign out</button></>}
-          <ThemeToggle />{me && <><span>{me.name}</span><Avatar who={player} size={28} /></>}</div>
+          <ThemeToggle />
+          {/* Signed in, you play as yourself: the shift is cast with your account's name (a guest's is made up). */}
+          {account
+            ? <><span>{account.name}</span><div className="avatar" style={{ width: 28, height: 28, background: me?.color, fontSize: 11 }}>{initials(account.name)}</div><button className="btn sm btn-chip" onClick={() => void account.signOut()}>Sign out</button></>
+            : me && <><span>{me.name}</span><Avatar who={player} size={28} /></>}
+        </div>
       </header>
       <motion.main className="onboard" variants={stagger(0.07, 0.05)} initial="hidden" animate="show">
         <section className="hero">

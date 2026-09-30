@@ -8,6 +8,7 @@ import { Avatar, Brand, ThemeToggle, rise, stagger } from './bits.tsx'
 export function Post() {
   const recap = useSim(s => s.recap)
   const end = useSim(s => s.simMin)
+  const company = useSim(s => s.company)
   const mentorId = useSim(s => s.mentor), mentor = useSim(s => s.cast[s.mentor])
   if (!recap) return null
   return (
@@ -23,7 +24,7 @@ export function Post() {
           <motion.div variants={rise} className="post-head">
             <div className="eyebrow">SHIFT COMPLETE · DAY 2 OF 5</div>
             <h1>What today was for</h1>
-            <div className="sub">Ledgerly · Backend Developer · Tue, Sep 29 · 1:10 PM – {clock(end)}</div>
+            <div className="sub">{company} · Backend Developer · Tue, Sep 29 · 1:10 PM – {clock(end)}</div>
           </motion.div>
 
           <motion.section variants={rise} className="panel mentor-note">

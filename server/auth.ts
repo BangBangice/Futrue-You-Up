@@ -8,6 +8,7 @@ import type { IncomingHttpHeaders } from 'node:http'
 import { db, dbEnabled } from './db/index.ts'
 import { accounts, jwks, sessions, users, verifications } from './db/schema.ts'
 import { letter, mailScope, send } from './mail.ts'
+import { guestName } from './names.ts'
 import { adopt } from './world.ts'
 
 export const authEnabled = dbEnabled
@@ -78,7 +79,7 @@ const build = () => betterAuth({
     },
   },
   plugins: [
-    anonymous({ onLinkAccount: ({ anonymousUser, newUser }) => adopt(anonymousUser.user.id, newUser.user.id) }),
+    anonymous({ generateName: guestName, onLinkAccount: ({ anonymousUser, newUser }) => adopt(anonymousUser.user.id, newUser.user.id) }),
     // GET /api/auth/token swaps the session cookie for a JWT; other services check it against /api/auth/jwks.
     jwt(),
   ],

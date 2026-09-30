@@ -53,7 +53,7 @@ export function Mail() {
       </div>
       <div className="app-body">
         <nav className="sidebar" style={{ width: 186 }}>
-          <div className="side-label">maya.chen@ledgerly.io</div>
+          <div className="side-label">{cast[me]?.email}</div>
           {FOLDERS.map(([k, label, Icon]) => {
             const unread = emails.filter(e => e.folder === k && !e.read).length
             return (

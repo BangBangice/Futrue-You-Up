@@ -1,5 +1,5 @@
 // The people in the scenario. Each is a card from the scenario, a view of the facts they could plausibly know, and the things they are able to do.
-import { COLS, PRIORITIES, clock, dur, errAt, failing, isOutage, lockedAt, minutes } from '../../shared/types.ts'
+import { COLS, PRIORITIES, clock, dur, errAt, failing, firstName, isOutage, lockedAt, minutes } from '../../shared/types.ts'
 import type { ChanId, Email, PersonId, TicketStatus } from '../../shared/types.ts'
 import type { ToolName } from '../../shared/scenario.ts'
 import type { Session } from '../world.ts'
@@ -9,8 +9,8 @@ import type { Call, Tool } from './llm.ts'
 const card = (s: Session, who: PersonId) => s.scenario.cast[who]?.persona
 
 const TOOLS: Record<ToolName, (who: PersonId, s: Session) => Tool> = {
-  send_teams_message: (who, s) => ({ name: 'send_teams_message', description: 'Post a message in Teams. Use your own name as the channel to message Maya directly.', parameters: { type: 'object', properties: { channel: { type: 'string', enum: card(s, who)!.rooms }, text: { type: 'string', description: 'What you write. Plain text, no markdown.' } }, required: ['channel', 'text'] } }),
-  send_email: () => ({ name: 'send_email', description: 'Send Maya an email.', parameters: { type: 'object', properties: { subject: { type: 'string' }, body: { type: 'string', description: 'Plain text. Separate paragraphs with a blank line. End with your sign-off.' } }, required: ['subject', 'body'] } }),
+  send_teams_message: (who, s) => ({ name: 'send_teams_message', description: `Post a message in Teams. Use your own name as the channel to message ${firstName(s.world.cast[s.world.player])} directly.`, parameters: { type: 'object', properties: { channel: { type: 'string', enum: card(s, who)!.rooms }, text: { type: 'string', description: 'What you write. Plain text, no markdown.' } }, required: ['channel', 'text'] } }),
+  send_email: (_, s) => ({ name: 'send_email', description: `Send ${firstName(s.world.cast[s.world.player])} an email.`, parameters: { type: 'object', properties: { subject: { type: 'string' }, body: { type: 'string', description: 'Plain text. Separate paragraphs with a blank line. End with your sign-off.' } }, required: ['subject', 'body'] } }),
   comment_on_ticket: (_, s) => ({ name: 'comment_on_ticket', description: 'Add a comment to a Jira ticket.', parameters: { type: 'object', properties: { ticket: { type: 'string', enum: s.world.tickets.map(t => t.id) }, text: { type: 'string' } }, required: ['ticket', 'text'] } }),
   update_ticket: (_, s) => ({ name: 'update_ticket', description: 'Change a Jira ticket’s status or priority.', parameters: { type: 'object', properties: { ticket: { type: 'string', enum: s.world.tickets.map(t => t.id) }, status: { type: 'string', enum: COLS.map(c => c[0]) }, priority: { type: 'string', enum: PRIORITIES } }, required: ['ticket'] } }),
   create_page: () => ({ name: 'create_page', description: 'Create a Confluence page.', parameters: { type: 'object', properties: { title: { type: 'string' }, markdown: { type: 'string' } }, required: ['title', 'markdown'] } }),
@@ -33,14 +33,14 @@ export function facts(s: Session, who: PersonId | 'mentor'): string {
 
   const t = w.tickets.find(x => x.id === 'LED-214')!
   const me = s.world.cast[s.world.player]
-  out.push(`${me.name}, ${me.title}. ${s.scenario.playerBrief} Priya assigned her LED-214 (${t.title}) at 1:10 PM. It is now "${COLS.find(c => c[0] === t.status)![1]}"${t.reopened ? ', reopened' : ''}.`)
+  out.push(`${me.name}, ${me.title}. ${s.scenario.playerBrief} Priya assigned them LED-214 (${t.title}) at 1:10 PM. It is now "${COLS.find(c => c[0] === t.status)![1]}"${t.reopened ? ', reopened' : ''}.`)
   out.push(`Live in production: auth-api@${live.sha}, ${live.kind === 'rollback' ? 'rolled back' : 'deployed'} by ${w.cast[live.by].name} at ${clock(live.at)}.`)
   out.push(`auth-api 401 error rate: ${errAt(sc, w.deploys, m).toFixed(1)}% (alarm at ${sc.alarmPercent}%, normal about 0.5%).`)
   if (outage) out.push(`Failing right now: ${broken.join('; ')}. About ${lockedAt(sc, w.deploys, m).toLocaleString('en-US')} people cannot sign in, including Northwind’s 22 finance contractors. SSO and API-key users ${broken.some(b => b.includes('api key')) ? 'are partly affected' : 'are fine'}.`)
-  if (w.incident) out.push(w.incident.resolvedAt ? `${w.incident.id} was opened automatically by the CloudWatch alarm at ${clock(w.incident.startedAt)} and resolved at ${clock(w.incident.resolvedAt)} (${w.incident.resolvedAt - w.incident.startedAt} min).` : `${w.incident.id} was opened automatically by the CloudWatch alarm at ${clock(w.incident.startedAt)} and is still open (${m - w.incident.startedAt} min). Owner: Maya.`)
+  if (w.incident) out.push(w.incident.resolvedAt ? `${w.incident.id} was opened automatically by the CloudWatch alarm at ${clock(w.incident.startedAt)} and resolved at ${clock(w.incident.resolvedAt)} (${w.incident.resolvedAt - w.incident.startedAt} min).` : `${w.incident.id} was opened automatically by the CloudWatch alarm at ${clock(w.incident.startedAt)} and is still open (${m - w.incident.startedAt} min). Owner: ${firstName(me)}.`)
   else out.push('No incident today so far.')
-  if (w.incident && !w.incident.resolvedAt) out.push(f.ackAt !== undefined ? `Maya acknowledged the incident at ${clock(f.ackAt)}.` : 'Maya has not acknowledged the incident anywhere yet.')
-  if (f.clientMailAt !== undefined) out.push(f.clientAt !== undefined ? `Maya wrote to the client (Marta Lindqvist) at ${clock(f.clientAt)}.` : `Marta Lindqvist emailed at ${clock(f.clientMailAt)} and has had no reply.`)
+  if (w.incident && !w.incident.resolvedAt) out.push(f.ackAt !== undefined ? `${firstName(me)} acknowledged the incident at ${clock(f.ackAt)}.` : `${firstName(me)} has not acknowledged the incident anywhere yet.`)
+  if (f.clientMailAt !== undefined) out.push(f.clientAt !== undefined ? `${firstName(me)} wrote to the client (Marta Lindqvist) at ${clock(f.clientAt)}.` : `Marta Lindqvist emailed at ${clock(f.clientMailAt)} and has had no reply.`)
   if (who === 'mentor' || who === s.scenario.mentor) {
     const sso = live.checks.find(c => c.id === 'sso_after_refresh')
     out.push(sso?.ok ? 'The original SSO bug (LED-214) is fixed in what is live.' : 'The original SSO bug (LED-214) is still present in what is live: after a token refresh the browser sends a bearer header, and the session check ignores it.')
@@ -108,17 +108,17 @@ export function apply(s: Session, who: PersonId, calls: Call[], fallbackRoom: Ch
  */
 export async function reply(s: Session, who: PersonId, via: { room: ChanId | null; mail?: Email }, said: string, scripted: string | null) {
   const { room, mail } = via
-  const c = card(s, who)
+  const c = card(s, who), player = firstName(s.world.cast[s.world.player])
   if (!c) return
   const thread = mail
-    ? [`[${mail.time}] ${s.world.cast[mail.who].name}: ${mail.subject}\n${mail.body.join('\n')}`, ...mail.thread.map(r => `[${r.time}] Maya: ${r.text}`)].join('\n')
-    : s.world.chats[room!].slice(-12).map(m => `[${m.time}] ${m.who === s.world.player ? 'Maya' : s.world.cast[m.who].name}: ${m.text}`).join('\n')
-  const where = mail ? 'email' : s.world.channels[room!].dm ? 'a direct message with Maya in Teams' : `${s.world.channels[room!].label} in Teams`
+    ? [`[${mail.time}] ${s.world.cast[mail.who].name}: ${mail.subject}\n${mail.body.join('\n')}`, ...mail.thread.map(r => `[${r.time}] ${player}: ${r.text}`)].join('\n')
+    : s.world.chats[room!].slice(-12).map(m => `[${m.time}] ${m.who === s.world.player ? player : s.world.cast[m.who].name}: ${m.text}`).join('\n')
+  const where = mail ? 'email' : s.world.channels[room!].dm ? `a direct message with ${player} in Teams` : `${s.world.channels[room!].label} in Teams`
   const budget = s.priv.aiCalls++ < 80
   const calls = budget ? await ask({
     priority: 1, timeoutMs: 75_000, system: system(s, who),
     tools: c.can.map(n => TOOLS[n](who, s)),
-    user: `FACTS\n${facts(s, who)}\n\nCONVERSATION (${where})\n${thread}\n\nMAYA WROTE\n"""${said.slice(0, 2000)}"""\n\nReply as ${s.world.cast[who].name}${room ? `. To answer in Teams use the channel "${room}"` : ', by email'}.`,
+    user: `FACTS\n${facts(s, who)}\n\nCONVERSATION (${where})\n${thread}\n\n${player.toUpperCase()} WROTE\n"""${said.slice(0, 2000)}"""\n\nReply as ${s.world.cast[who].name}${room ? `. To answer in Teams use the channel "${room}"` : ', by email'}.`,
   }) : null
   if (s.world.stage !== 'sim') return
   if (calls && apply(s, who, calls, room)) return

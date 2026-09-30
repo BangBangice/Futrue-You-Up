@@ -9,6 +9,14 @@ const escape = (s: string) => s.replace(/[&<>"]/g, c => `&${{ '&': 'amp', '<': '
 export const mailer = () => (process.env.RESEND_API_KEY ? 'resend' : process.env.MAILPIT_URL ? 'mailpit' : 'console')
 // With nowhere to send, production refuses rather than printing sign-in links into its logs.
 export const mailReady = () => mailer() !== 'console' || process.env.NODE_ENV !== 'production'
+/** One line for the startup log, so a missing key or a sender Resend will refuse shows up before anyone signs up. */
+export function mailStatus() {
+  const kind = mailer()
+  if (kind === 'console') return mailReady() ? 'Email: none set up, sign-in links are printed here.' : 'Email: RESEND_API_KEY is not set, so email sign-up and password reset are hidden.'
+  const from = FROM.match(/<(.+)>/)?.[1] ?? FROM
+  const warn = kind === 'resend' && /@(localhost|example\.\w+)$/i.test(from) ? ' Resend will refuse this sender: set EMAIL_FROM to an address on your verified domain.' : ''
+  return `Email: ${kind}, from ${from}.${warn}`
+}
 
 // Better Auth swallows errors from its email callbacks, so a failure is noted here and turned into an error response (auth.ts).
 export const mailScope = new AsyncLocalStorage<{ failed?: boolean }>()

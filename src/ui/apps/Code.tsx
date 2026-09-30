@@ -2,14 +2,13 @@ import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Blocks, Bug, ChevronDown, ChevronRight, CircleStop, FileCode2, FileJson, FilePlus2, FileText, Files, FlaskConical, GitBranch, GitCompare, LoaderCircle, Play, Rocket, Search, Undo2, X } from 'lucide-react'
-import { clock } from '../../../shared/types.ts'
+import { clock, login } from '../../../shared/types.ts'
 import { live, sim, useSim } from '../../sim/store.ts'
 import { EASE, LOGOS } from '../bits.tsx'
 import { DragBar, Lights } from '../Window.tsx'
 
 const Editor = lazy(() => import('./Monaco.tsx').then(m => ({ default: m.Code })))
 const Compare = lazy(() => import('./Monaco.tsx').then(m => ({ default: m.Diff })))
-const PROMPT = 'maya@ws-02 ledgerly-api % '
 const STATUS: Record<string, string> = { M: 'Modified', A: 'Added', D: 'Deleted', '??': 'Untracked', R: 'Renamed' }
 
 const icon = (path: string) => (/\.test\.ts$/.test(path) ? <FlaskConical size={13} className="ic-test" /> : /\.json$/.test(path) ? <FileJson size={13} className="ic-json" /> : /\.md$/.test(path) ? <FileText size={13} className="sub" /> : <FileCode2 size={13} className="ic-ts" />)
@@ -95,6 +94,7 @@ function SourceControl() {
 function Terminal() {
   const term = useSim(s => s.term)
   const busy = useSim(s => s.code.busy)
+  const prompt = useSim(s => `${s.cast[s.player] ? login(s.cast[s.player]) : 'dev'}@ws-02 ledgerly-api % `)
   const shown = useSim(s => s.wins.code.open && !s.wins.code.min)
   const [line, setLine] = useState('')
   const history = useRef<string[]>([]), at = useRef(0)
@@ -119,10 +119,10 @@ function Terminal() {
     <div className="terminal" onClick={() => { if (!getSelection()?.toString()) input.current?.focus() }}>
       <div className="term-tabs"><span className="on">TERMINAL</span><span>PROBLEMS</span><span>OUTPUT</span><div className="grow" />{busy && <button className="term-stop" onClick={sim.stop}><CircleStop size={13} strokeWidth={2.2} />Stop</button>}</div>
       <div className="term-out" ref={scroller}>
-        {term.map((l, i) => <div key={i} className={'tl ' + l.c}>{l.c === 'cmd' && <span className="prompt">{PROMPT}</span>}{l.t || ' '}</div>)}
+        {term.map((l, i) => <div key={i} className={'tl ' + l.c}>{l.c === 'cmd' && <span className="prompt">{prompt}</span>}{l.t || ' '}</div>)}
         {busy ? <div className="tl dim"><LoaderCircle size={11} className="spin" /> running {busy}…</div> : (
           <form className="tl cmd term-line" onSubmit={run}>
-            <span className="prompt">{PROMPT}</span>
+            <span className="prompt">{prompt}</span>
             <input ref={input} value={line} onChange={e => setLine(e.target.value)} onKeyDown={recall} spellCheck={false} autoCapitalize="off" autoComplete="off" aria-label="Terminal input" />
           </form>
         )}
@@ -141,9 +141,10 @@ export function Code() {
   const code = useSim(s => s.code)
   const deploys = useSim(s => s.deploys)
   const outage = useSim(s => live(s))
+  const player = useSim(s => s.player)
   const prod = deploys.at(-1)
   const dirty = (p: string) => !!buffers[p] && buffers[p].text !== buffers[p].saved
-  const banner = !prod || prod.by !== 'maya' ? '' : prod.kind === 'rollback' ? `Production was rolled back to ${prod.sha} at ${clock(prod.at)}. Your change is no longer live.` : `auth-api@${prod.sha} has been live in production since ${clock(prod.at)}.`
+  const banner = !prod || prod.by !== player ? '' : prod.kind === 'rollback' ? `Production was rolled back to ${prod.sha} at ${clock(prod.at)}. Your change is no longer live.` : `auth-api@${prod.sha} has been live in production since ${clock(prod.at)}.`
 
   return (
     <div className="app code">

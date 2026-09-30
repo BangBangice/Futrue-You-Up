@@ -5,7 +5,7 @@
 import { z } from 'zod'
 import { DONE_KEYS, NEW, SHOW_KEYS } from './guide.ts'
 import type { Done, GuideStep } from './guide.ts'
-import { APP_IDS, COLS, FOLDERS, LEVELS, PRIORITIES, minutes } from './types.ts'
+import { APP_IDS, COLS, FOLDERS, LEVELS, PRIORITIES, firstName, initials, minutes } from './types.ts'
 
 const line = z.string().min(1)
 const key = z.string().regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes')
@@ -43,8 +43,8 @@ const doc = z.object({ id: line, title: line, group: line, owner: person, update
 
 /** Timestamps in the session's private facts that a trigger may record or test. */
 export const FLAGS = ['warnedAt', 'readWarningAt', 'editedAt', 'testedAt', 'leoAskedAt', 'ackAt', 'askedDanielAt', 'clientMailAt', 'clientAt', 'pmAt', 'assignAckAt', 'rolledBackAt', 'fixedAt'] as const
-/** Values the engine computes for {{name}} placeholders in trigger text. */
-export const VARS = ['now', 'deployTime', 'deployTimePlus1', 'timeToDemo'] as const
+/** Values the engine computes for {{name}} placeholders in trigger text. {{player}} is the player's first name and works in any text. */
+export const VARS = ['now', 'deployTime', 'deployTimePlus1', 'timeToDemo', 'player'] as const
 export const EVENTS = ['start', 'incident.opened', 'incident.resolved'] as const
 const flag = z.enum(FLAGS, { error: i => `no flag "${String(i.input)}"` })
 const text = z.string().superRefine((t, ctx) => {
@@ -152,7 +152,7 @@ export const Scenario = z.object({
   checks: z.array(check).min(1),
   customers: z.strictObject({ named: z.array(customer), otherAccounts: z.number().int().min(0), otherPasswordUsers: z.number().int().min(0) }),
   /** Only a member with a persona answers the player. */
-  cast: z.record(key, z.object({ name: line, init: line, color: z.string().regex(/^#[0-9a-f]{6}$/i, 'a #rrggbb colour'), email: line, title: line, persona: persona.optional() })),
+  cast: z.record(key, z.object({ name: line, short: line.optional(), init: line, color: z.string().regex(/^#[0-9a-f]{6}$/i, 'a #rrggbb colour'), email: line, title: line, persona: persona.optional() })),
   /** A DM channel's id is the id of the person on the other end. */
   channels: z.record(key, z.object({ label: line, topic: z.string(), dm: z.boolean().optional() })),
   seed: z.object({
@@ -243,3 +243,20 @@ export const Scenario = z.object({
   docs.forEach((d, i) => { for (const [, id] of d.body.matchAll(/\]\(doc:([^)\s]+)\)/g)) if (!docIds.has(id)) bad(['seed', 'docs', i, 'body'], `links to missing doc "${id}"`) })
 })
 export type Scenario = z.infer<typeof Scenario>
+
+/**
+ * Casts the person playing as the scenario's player: their name on the player's cast card, and in place of {{player}}
+ * everywhere else. `short` is what colleagues call them, for names without a first name to take, like a guest's "Happy Mango".
+ */
+export function personalize(s: Scenario, who: { name: string; short?: string }): Scenario {
+  const name = who.name.trim().replace(/\s+/g, ' ').slice(0, 60)
+  const base = s.cast[s.player]
+  const p = name ? { ...base, name, short: who.short, init: initials(name), email: `${slug(name) || 'you'}@${base.email.split('@')[1]}` } : base
+  const call = firstName(p)
+  const fill = (v: unknown): unknown => typeof v === 'string' ? v.replaceAll('{{player}}', call)
+    : Array.isArray(v) ? v.map(fill)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x)]))
+    : v
+  return fill({ ...s, cast: { ...s.cast, [s.player]: p } }) as Scenario
+}
+const slug = (name: string) => name.normalize('NFKD').replace(/[^\w\s.-]/g, '').trim().toLowerCase().replace(/[\s_]+/g, '.')

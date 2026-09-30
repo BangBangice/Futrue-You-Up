@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { done, stepsFor } from '../shared/guide.ts'
-import { Scenario } from '../shared/scenario.ts'
+import { Scenario, personalize } from '../shared/scenario.ts'
 import { errAt, isOutage } from '../shared/types.ts'
 import * as director from './director.ts'
 import { conform } from './sandbox.ts'
@@ -229,6 +229,16 @@ assert.match(conform(verdict, [...ids.slice(1), 'new_check']).error ?? '', /miss
 assert.ok(broken(c => { delete c.mentor }).length)
 // Nor those stored before the clock, checks and customers were, so they fall back to the file too.
 assert.ok(broken(c => { delete c.checks; delete c.customers }).length)
+
+// ---- the player is whoever is playing. Without accounts, the scenario's own player; a guest keeps their whole made-up name.
+assert.ok(!JSON.stringify(s.world).includes('{{player}}'), 'no {{player}} left in the world')
+assert.equal(s.world.emails.find(e => e.id === 'e1')!.body[0], 'Hi Maya,')
+const guest = personalize(good, { name: 'Happy Mango', short: 'Happy Mango' }), named = personalize(good, { name: 'Jimmy Lee' })
+assert.deepEqual([guest.cast.maya.name, guest.cast.maya.init, guest.cast.maya.email], ['Happy Mango', 'HM', 'happy.mango@ledgerly.io'])
+assert.equal(guest.seed.emails.find(e => e.id === 'e1')!.body[0], 'Hi Happy Mango,')
+assert.equal(named.seed.emails.find(e => e.id === 'e1')!.body[0], 'Hi Jimmy,')
+assert.match(named.cast.daniel.persona!.knows, /Jimmy’s mentor/)
+assert.ok(!JSON.stringify(named).includes('{{player}}') && !/Maya/.test(JSON.stringify({ ...named, cast: { ...named.cast, maya: null } })), 'no Maya left once someone else plays')
 
 s.stop()
 console.log(`server check passed · ${s.priv.events.length} events · ${events.length} stream messages`)

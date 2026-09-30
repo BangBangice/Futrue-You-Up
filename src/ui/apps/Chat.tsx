@@ -44,6 +44,7 @@ function Message({ x }: { x: ChatMsg }) {
 }
 
 export function Chat() {
+  const company = useSim(s => s.company)
   const chan = useSim(s => s.chan)
   const chats = useSim(s => s.chats)
   const unread = useSim(s => s.unread)
@@ -99,7 +100,7 @@ export function Chat() {
         <nav className="sidebar tm-list">
           <div className="tm-list-head">Chat</div>
           <div className="side-scroll">
-            <div className="side-label">Ledgerly</div>
+            <div className="side-label">{company}</div>
             {Object.keys(channels).filter(k => !channels[k].dm).map(item)}
             <div className="side-label">Chats</div>
             {Object.keys(channels).filter(k => channels[k].dm).map(item)}

@@ -60,6 +60,10 @@ assert.equal(started.status, 201)
 const { id } = await started.json()
 const [row] = await db().select().from(runs).where(eq(runs.id, id))
 assert.equal(row.userId, a.id, 'the run belongs to whoever started it')
+// A guest gets a made-up name, and plays the shift under it.
+assert.match(a.me.name, /^[A-Z][a-z]+ [A-Z][a-z]+$/, 'a guest is named like "Happy Mango"')
+const cast = (row.world as { cast: Record<string, { name: string }>; player: string })
+assert.equal(cast.cast[cast.player].name, a.me.name, 'the player is cast with the account name')
 
 const routes: [string, RequestInit][] = [
   [`/api/sessions/${id}/file?path=package.json`, {}],

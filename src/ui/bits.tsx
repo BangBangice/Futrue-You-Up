@@ -44,7 +44,8 @@ export function AppIcon({ app, size = 30 }: { app: AppId; size?: number }) {
 }
 
 export function Company({ size = 22 }: { size?: number }) {
-  return <div className="company" style={{ width: size, height: size, borderRadius: size * 0.27, fontSize: size * 0.5 }}>L</div>
+  const initial = useSim(s => s.company.slice(0, 1).toUpperCase())
+  return <div className="company" style={{ width: size, height: size, borderRadius: size * 0.27, fontSize: size * 0.5 }}>{initial}</div>
 }
 
 export function Segmented<T extends string>({ id, value, options, onChange, grow }: { id: string; value: T; options: [T, string][]; onChange: (v: T) => void; grow?: boolean }) {

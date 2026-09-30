@@ -7,6 +7,7 @@ import { mode, probe } from './ai/llm.ts'
 import * as director from './director.ts'
 import { Refusal } from './sandbox.ts'
 import { authEnabled, googleEnabled, me } from './auth.ts'
+import type { Me } from './auth.ts'
 import { mailReady } from './mail.ts'
 import { listRuns } from './runs.ts'
 import { create, find, roster, valid } from './world.ts'
@@ -81,7 +82,10 @@ api.get('/me/runs', async (_req, res) => {
 api.post('/sessions', async (req, res) => {
   const level = pick(req.body?.level, LEVELS, 'level')
   const speed = PACES.map(p => p[0]).includes(req.body?.pace) ? req.body.pace : 4
-  const s = await create(level, maybe(req.body?.background, 400).trim(), speed, mode(), res.locals.me?.id ?? null)
+  const user = res.locals.me as Me | undefined
+  // The player takes the account's name. A guest's made-up name ("Happy Mango") has no first name to shorten to.
+  const who = user && { name: user.name, short: user.isAnonymous ? user.name : undefined }
+  const s = await create(level, maybe(req.body?.background, 400).trim(), speed, mode(), user?.id ?? null, who)
   await director.start(s)
   res.status(201).json({ id: s.world.id })
 })

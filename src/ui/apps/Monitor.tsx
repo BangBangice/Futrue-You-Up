@@ -43,6 +43,7 @@ export function Monitor() {
   const incident = useSim(s => s.incident)
   const timeline = useSim(s => s.timeline)
   const busy = useSim(s => s.code.busy)
+  const owner = useSim(s => s.cast[s.player]?.name)
   const impact = useSim(s => s.impact), alarm = impact.alarmPercent
   const on = live({ incident })
   const err = errAt(impact, deploys, m), bad = err > alarm, locked = lockedAt(impact, deploys, m)
@@ -83,7 +84,7 @@ export function Monitor() {
                   <dt>Started</dt><dd>{clock(incident.startedAt)}</dd>
                   <dt>Duration</dt><dd>{end - incident.startedAt} min</dd>
                   <dt>Revenue exposed</dt><dd>{money((end - incident.startedAt) * RATE)}</dd>
-                  <dt>Owner</dt><dd>Maya Chen</dd>
+                  <dt>Owner</dt><dd>{owner}</dd>
                 </dl>
                 {on && prod?.sha === incident.sha && <div className="recover"><button className="btn btn-danger" data-guide="rollback" disabled={!!busy} onClick={() => sim.exec('ldg rollback auth-api')}><Undo2 size={14} strokeWidth={2.4} />Roll back release</button></div>}
                 {on && prod?.sha !== incident.sha && <div className="progress"><i />Rolling out auth-api@{prod?.sha}…</div>}
