@@ -92,6 +92,16 @@ class Store {
       this.connect((await res.json()).id)
     } catch (e) { this.set({ starting: false, error: (e as Error).message.includes('fetch') ? 'Cannot reach the LARP server. Is "npm run dev" running?' : (e as Error).message }) }
   }
+  /** Asks the server whether the AI model answers, so the start page can warn before a colleague goes quiet. */
+  checkAi = async () => {
+    try {
+      const res = await fetch('/api/health')
+      if (!res.ok) return
+      const { ai, problem } = await res.json() as { ai: World['ai']; problem: string | null }
+      if (problem) console.error(`[LARP] AI health check failed: ${problem}. Colleagues will use scripted lines until it recovers.`)
+      this.set(s => (s.stage === 'onboard' ? { ai, aiProblem: problem } : null))
+    } catch { /* the server is down; starting a shift will say so */ }
+  }
   leave() { this.stream?.close(); this.stream = null }
   /** Picks up a shift that was already running, for instance after a reload. */
   resume() { const id = sessionStorage.getItem(KEY); if (id) this.connect(id) }
@@ -134,6 +144,7 @@ class Store {
   }
   private apply(patch: Patch) {
     const before = this.state
+    if (patch.aiProblem && patch.aiProblem !== before.aiProblem) console.error(`[LARP] AI calls are failing: ${patch.aiProblem}`)
     this.set(patch as Partial<State>)
     const s = this.state
     // Announce what is new, unless the player is already looking at it.

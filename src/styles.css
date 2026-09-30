@@ -651,6 +651,10 @@ dt { color: var(--sub); }
 .chip.bad { background: rgba(229, 72, 77, 0.14); color: var(--bad-ink); }
 .simbar .chip.bad { min-width: 0; max-width: 380px; flex-shrink: 1; }
 .cta:disabled { opacity: 0.6; cursor: default; transform: none; box-shadow: none; }
+.ai-warn { display: flex; gap: 10px; padding: 12px 14px; border-radius: 11px; background: rgba(229, 160, 13, 0.13); box-shadow: inset 0 0 0 1px rgba(229, 160, 13, 0.35); font-size: 12.5px; line-height: 1.45; }
+.ai-warn svg { flex: none; margin-top: 1px; color: var(--warn); }
+.ai-warn div { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.ai-warn span { color: var(--sub); }
 .cta-note.bad { color: var(--bad-ink); font-weight: 500; }
 .field-label .sub { font-weight: 400; font-size: 12px; }
 

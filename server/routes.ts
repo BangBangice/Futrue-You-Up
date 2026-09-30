@@ -3,7 +3,7 @@ import { Router } from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import { APP_IDS, CHAN_IDS, COLS, PACES, PEOPLE, PRIORITIES } from '../shared/types.ts'
 import type { Attachment, Level, PersonId } from '../shared/types.ts'
-import { mode } from './ai/llm.ts'
+import { mode, probe } from './ai/llm.ts'
 import * as director from './director.ts'
 import { Refusal } from './sandbox.ts'
 import { create, find, valid } from './world.ts'
@@ -43,6 +43,11 @@ async function session(req: Request) {
 }
 
 export const api = Router()
+
+// Checked from the start page, so a broken key or model shows up before the first colleague fails to reply.
+api.get('/health', async (_req, res) => {
+  res.json({ ai: mode(), problem: await probe() })
+})
 
 api.post('/sessions', async (req, res) => {
   const level = pick(req.body?.level, LEVELS, 'level')

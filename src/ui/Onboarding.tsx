@@ -1,5 +1,6 @@
+import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowRight, Bug, ChartColumn, Check, ClipboardList, Cloud, LayoutDashboard, LoaderCircle, Server } from 'lucide-react'
+import { ArrowRight, Bug, ChartColumn, Check, ClipboardList, Cloud, LayoutDashboard, LoaderCircle, Server, TriangleAlert } from 'lucide-react'
 import { LEVELS } from '../../shared/types.ts'
 import { sim, useSim } from '../sim/store.ts'
 import { Avatar, Brand, EASE, Segmented, ThemeToggle, rise, stagger } from './bits.tsx'
@@ -12,6 +13,8 @@ export function Onboarding() {
   const background = useSim(s => s.background)
   const starting = useSim(s => s.starting)
   const error = useSim(s => s.error)
+  const aiProblem = useSim(s => s.aiProblem)
+  useEffect(() => { void sim.checkAi() }, [])
   return (
     <div className="page">
       <header className="topbar">
@@ -66,6 +69,12 @@ export function Onboarding() {
             <textarea className="input" rows={2} maxLength={400} value={background} onChange={e => sim.set({ background: e.target.value })} placeholder="For example: six years as a hospital pharmacist, or a computer science degree and one internship" />
             <div className="level-note">Your mentor uses this to explain things in terms you already know.</div>
           </label>
+          {aiProblem && (
+            <div className="ai-warn" role="alert">
+              <TriangleAlert size={16} strokeWidth={2.2} />
+              <div><b>AI colleagues are unavailable</b><span>{aiProblem[0].toUpperCase() + aiProblem.slice(1)}. You can still start: colleagues will use scripted lines. Check NVIDIA_API_KEY, NVIDIA_BASE_URL and NVIDIA_MODEL in .env, then restart the server.</span></div>
+            </div>
+          )}
           <button className="cta" disabled={starting} onClick={sim.start}>
             {starting ? <><LoaderCircle size={17} className="spin" />Setting up your workstation</> : <>Start Day 2 <ArrowRight size={17} strokeWidth={2.4} /></>}
           </button>
