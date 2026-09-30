@@ -129,6 +129,9 @@ img { display: block; user-select: none; }
 
 .simbar { height: 56px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 14px 0 18px; background: var(--hostbar); border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; }
 .simbar-role { display: flex; align-items: center; gap: 16px; flex: none; }
+.finish-ask { position: fixed; top: 62px; right: 14px; z-index: 60; width: 300px; display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 12px; background: var(--card); box-shadow: 0 0 0 0.5px var(--edge), 0 16px 44px rgba(0, 0, 0, 0.24); white-space: normal; transform-origin: top right; }
+.finish-ask .sub { font-size: 12.5px; line-height: 1.45; }
+.finish-ask-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .simbar-role b, .title b { font-size: 13px; }
 .vsep { width: 1px; height: 28px; background: var(--line); }
 .simclock b { font: 600 17px/1.15 var(--mono); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }

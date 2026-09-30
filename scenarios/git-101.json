@@ -1,0 +1,113 @@
+{
+  "id": "git-101",
+  "title": "Git 101: your first commit, start to finish",
+  "summary": "Branch, diff, add, commit and push a real change to a real repository, with a senior engineer a message away.",
+  "tags": ["git", "beginner", "onboarding"],
+  "goal": {
+    "title": "Your first commit, start to finish",
+    "summary": "Add yourself to the README on a branch of your own, commit it and push it. Daniel is a message away."
+  },
+  "company": { "name": "Ledgerly", "description": "a 40-person invoicing software company" },
+  "player": "maya",
+  "playerBrief": "It is their first week, and today is their first commit.",
+  "mentor": "daniel",
+  "levels": {
+    "newgrad": {
+      "label": "New grad",
+      "blurb": "Your mentor names the next command when you're stuck.",
+      "mentorGuidance": "New graduate who has used git a little for coursework, mostly through buttons. Name the next command when they are stuck and say what it will show them. Explain a term (branch, staging area, remote) the first time it comes up."
+    },
+    "bootcamp": {
+      "label": "Bootcamp grad",
+      "blurb": "Your mentor asks what you expect before telling you.",
+      "mentorGuidance": "Bootcamp graduate who has run git commands without always knowing what they do. Ask what they expect a command to do before they run it, then point them at git status to check."
+    },
+    "switcher": {
+      "label": "Career switcher",
+      "blurb": "Your mentor connects git to how you worked before.",
+      "mentorGuidance": "Career switcher, new to git. Use one analogy from their previous field (drafts, sign-off, filing) for branches, staging and pushing. Hold a high bar on commit messages: what changed and why."
+    }
+  },
+  "clock": { "start": "9:30 AM" },
+  "workspace": { "repo": "ledgerly-api", "host": "ledgerly-ws-02" },
+  "story": { "weekday": "Monday", "date": "Sep 28", "day": 1 },
+  "cast": {
+    "maya": { "name": "Maya Chen", "pronouns": "she", "init": "MC", "color": "#2f6fde", "email": "maya.chen@ledgerly.io", "title": "Junior Backend Developer" },
+    "daniel": {
+      "name": "Daniel Okafor", "pronouns": "he", "init": "DO", "color": "#1f7a6d", "email": "daniel@ledgerly.io", "title": "Senior Engineer",
+      "persona": {
+        "voice": "Calm, friendly and brief. Teaches by asking what they expect to happen, then pointing at git status. Never types a command for someone, but will name one when they are stuck.",
+        "knows": "Git inside out, and this repository. Every new starter's first commit here is adding themselves to the README, so they learn the flow on a change that cannot break anything. main is protected: changes reach it through a pull request from a branch. He is {{player}}’s mentor this week.",
+        "wants": "{{player}} to be able to take a change from a fresh branch to a pushed commit on their own, and to understand what each command did.",
+        "rooms": ["daniel", "team"],
+        "can": ["send_teams_message", "do_nothing"],
+        "internal": true
+      }
+    }
+  },
+  "channels": {
+    "team": { "label": "# team", "topic": "Backend team · 6 members" },
+    "daniel": { "label": "Daniel Okafor", "dm": true, "topic": "Senior Engineer · your mentor" }
+  },
+  "seed": {
+    "emails": [
+      {
+        "id": "e1", "folder": "inbox", "who": "daniel", "subject": "Your first change, start to finish", "time": "9:14 AM", "read": false,
+        "body": [
+          "Morning {{player}},",
+          "Everyone’s first commit here is the same: add yourself to the “Who to ask” list at the bottom of README.md, as something like “Onboarding questions: {{player}}”. It can’t break anything, so you can spend all your attention on git.",
+          "The flow: look around with git status, make a branch of your own, make the change, check it with git diff, stage it with git add, commit it with a message that says what and why, and push your branch to origin. main is protected, so a push to main is refused. That’s on purpose.",
+          "The wiki page “Git: the everyday commands” has each one. If git says something you don’t understand, paste it to me in Teams.",
+          "Daniel"
+        ],
+        "files": [{ "kind": "doc", "doc": "git" }, { "kind": "code", "path": "README.md" }]
+      }
+    ],
+    "chats": {
+      "team": [
+        { "id": 1, "who": "daniel", "time": "9:05 AM", "text": "Say hi to {{player}}, who joined us this week. First commit today." }
+      ],
+      "daniel": [
+        { "id": 2, "who": "daniel", "time": "9:15 AM", "text": "Morning {{player}}! Today is about git: one small change, from a branch to a push. The plan is in your inbox. Ask me anything here." }
+      ]
+    },
+    "unread": { "team": 1, "daniel": 1 },
+    "tickets": [
+      {
+        "id": "LED-230", "title": "Add yourself to the README", "status": "todo", "who": "maya", "pri": "Low", "pts": 1,
+        "desc": "Every new starter's first change: add yourself to “Who to ask” in README.md, on your own branch, and push it.",
+        "comments": [], "activity": [{ "time": "9:14 AM", "text": "Daniel Okafor: created the issue" }]
+      }
+    ],
+    "docs": [
+      {
+        "id": "home", "title": "Engineering home", "group": "Overview", "owner": "daniel", "updated": "last week", "version": 1,
+        "body": "Welcome to Ledgerly engineering.\n\n## New here?\n\nStart with [Git: the everyday commands](doc:git). Your first change is adding yourself to the README.\n\n## How changes ship\n\n- Work on a branch of your own, never on main.\n- Push the branch and open a pull request. main is protected.\n- Someone reviews it, then it is merged."
+      },
+      {
+        "id": "git", "title": "Git: the everyday commands", "group": "Onboarding", "owner": "daniel", "updated": "last week", "version": 3,
+        "body": "Run these in the terminal at the bottom of VS Code.\n\n| Command | What it does |\n|---|---|\n| `git status` | Where you are: your branch, and what has changed. Run it before and after everything else. |\n| `git switch -c yourname/topic` | Makes a new branch and moves you onto it. `git checkout -b yourname/topic` does the same. |\n| `git branch` | Lists your branches. The one with a * is where you are. |\n| `git diff` | What you changed and have not staged yet. Lines with + are added, - are removed. |\n| `git add README.md` | Stages a file: puts it in the next commit. |\n| `git diff --staged` | What is staged, so what the next commit will contain. |\n| `git commit -m \"docs: say what and why\"` | Records the staged changes as a commit on your branch. |\n| `git log --oneline` | The history, newest first. |\n| `git push -u origin yourname/topic` | Sends your branch to origin. `-u` links it, so next time `git push` is enough. |\n| `git checkout main` | Switches back to main. `git switch main` does the same. |\n\n> [!NOTE] main is protected\n> A push to main is refused. Changes reach main through a pull request from your branch.\n\n## A good commit message\n\nOne line that says what changed, starting with the kind of change: `docs: add Maya to who to ask`. If the why is not obvious, add it."
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "id": "checkin",
+      "when": { "on": "start", "after": 25 },
+      "do": [{ "post": { "chan": "daniel", "who": "daniel", "text": "How’s it going, {{player}}? If git has said anything that didn’t make sense, paste it here and we’ll read it together." } }]
+    }
+  ],
+  "guide": [
+    { "id": "read", "text": "Read Daniel’s email with today’s plan", "doneWhen": { "mailRead": "e1" }, "showMe": { "mail": "e1" } },
+    { "id": "status", "text": "See where you are: run git status", "hint": "The terminal is at the bottom of VS Code. It tells you your branch and whether anything has changed.", "doneWhen": { "ran": "git status" }, "showMe": { "vscode": "terminal" } },
+    { "id": "branch", "text": "Make a branch of your own", "hint": "git switch -c yourname/readme, or git checkout -b yourname/readme. Then git status again: which branch are you on?", "doneWhen": { "git": "branched" }, "showMe": { "vscode": "terminal" } },
+    { "id": "edit", "text": "Add yourself under “Who to ask” in README.md, and save (⌘S)", "doneWhen": { "any": [{ "code": "changed" }, { "git": "committed" }] }, "showMe": { "edit": "README.md" } },
+    { "id": "diff", "text": "Check exactly what you changed with git diff", "hint": "Lines starting with + are yours. Is that everything you meant to change, and nothing else?", "doneWhen": { "ran": "git diff" }, "showMe": { "vscode": "terminal" } },
+    { "id": "add", "text": "Stage your change with git add", "hint": "git add README.md, then git status: the file moves to “Changes to be committed”.", "doneWhen": { "git": "staged" }, "showMe": { "vscode": "terminal" } },
+    { "id": "commit", "text": "Commit it with a message that says what and why", "hint": "git commit -m \"docs: add {{player}} to who to ask\". The wiki page has more on good messages.", "doneWhen": { "all": [{ "git": "committed" }, { "not": { "code": "changed" } }] }, "showMe": { "vscode": "terminal" } },
+    { "id": "log", "text": "Find your commit with git log --oneline", "doneWhen": { "ran": "git log" }, "showMe": { "vscode": "terminal" } },
+    { "id": "push", "text": "Push your branch to origin", "hint": "git push -u origin yourname/readme, with your branch’s name. Pushing to main is refused: that is on purpose.", "doneWhen": { "git": "pushed" }, "showMe": { "vscode": "terminal" } },
+    { "id": "main", "text": "Switch back to main and see that your line isn’t there yet", "hint": "git checkout main, then open README.md. Your change lives on your branch until a pull request merges it.", "doneWhen": { "any": [{ "ran": "git checkout main" }, { "ran": "git switch main" }] }, "showMe": { "vscode": "terminal" } },
+    { "id": "tell", "text": "Tell Daniel in Teams that your branch is pushed", "hint": "Say which branch, so he knows what to look for.", "doneWhen": { "posted": { "chan": "daniel", "who": "maya" } }, "showMe": { "chat": "daniel" } }
+  ]
+}

@@ -1,4 +1,4 @@
-// After the shift: what happened, what you put right, and what to practise next. No score.
+// After the lesson: what happened, what you put right, and what to practise next. No score.
 import { motion } from 'motion/react'
 import { ArrowLeft, Check, CircleAlert, Footprints, LoaderCircle, RotateCcw } from 'lucide-react'
 import { Link } from 'react-router'
@@ -12,6 +12,7 @@ export function Post() {
   const company = useSim(s => s.company), lesson = useSim(s => s.lesson), role = useSim(s => s.cast[s.player]?.title)
   const cal = useSim(s => s.calendar)
   const mentorId = useSim(s => s.mentor), mentor = useSim(s => s.cast[s.mentor])
+  const goal = useSim(s => s.goal)
   if (!recap) return null
   return (
     <>
@@ -25,8 +26,8 @@ export function Post() {
       <div className="page">
         <motion.div className="recap" variants={stagger(0.08)} initial="hidden" animate="show">
           <motion.div variants={rise} className="post-head">
-            <div className="eyebrow">SHIFT COMPLETE</div>
-            <h1>What today was for</h1>
+            <div className="eyebrow">LESSON RECAP</div>
+            <h1>{goal ? goal.title : 'What today was for'}</h1>
             <div className="sub">{lesson.title} · {role}, {company} · {shortDay(cal.weekday)}, {cal.date} · {clock(cal.start)} – {clock(end)}</div>
           </motion.div>
 
@@ -34,7 +35,7 @@ export function Post() {
           {lesson.mine && (
             <motion.section variants={rise} className={'panel author-test' + (recap.finished ? ' good' : '')}>
               {recap.finished ? <Check size={18} strokeWidth={2.6} /> : <CircleAlert size={18} strokeWidth={2.2} />}
-              <span>{recap.finished ? 'This test counted: you have finished a shift on this version of your lesson.' : "This test didn't count: ship the fix so every check passes, then end the shift."}</span>
+              <span>{recap.finished ? 'This test counted: you finished this version of your lesson.' : goal ? "This test didn't count: finish every step, then press Finish lesson." : "This test didn't count: ship the fix so every check passes, then press Finish lesson."}</span>
               <Link className="btn btn-soft" to={`/my/lessons/${lesson.id}`} onClick={sim.replay}><ArrowLeft size={14} strokeWidth={2.4} />Back to your lesson</Link>
             </motion.section>
           )}
@@ -52,7 +53,7 @@ export function Post() {
               <b className="panel-title">What happened</b>
               <ol className="happened">
                 {recap.happened.map((line, i) => <li key={i}><time>{line.slice(0, line.indexOf('  '))}</time><i /><span>{line.slice(line.indexOf('  ') + 2)}</span></li>)}
-                {!recap.happened.length && <li><span className="sub">Nothing was shipped this shift.</span></li>}
+                {!recap.happened.length && <li><span className="sub">{goal ? 'No steps done this time.' : 'Nothing was shipped this time.'}</span></li>}
               </ol>
             </motion.section>
             <div className="recap-side">
@@ -64,7 +65,7 @@ export function Post() {
               )}
               {recap.ready && (
                 <motion.section variants={rise} className="panel">
-                  <b className="panel-title">Practise on your next ticket</b>
+                  <b className="panel-title">What to practise next</b>
                   {recap.next.map((c, i) => <div key={i} className="recap-item"><Footprints size={15} strokeWidth={2} /><span>{c}</span></div>)}
                 </motion.section>
               )}

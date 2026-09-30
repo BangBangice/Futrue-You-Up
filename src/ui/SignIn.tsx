@@ -77,9 +77,9 @@ export function SignIn({ config, start, guest: asGuest, token = '', onDone, onBa
     <div className="signin-others">
       {config.email && <div className="signin-or"><span>or</span></div>}
       {config.google && <button className="btn btn-chip signin-alt" disabled={busy} onClick={google}>Continue with Google</button>}
-      {config.google && asGuest && <div className="level-note">Your shifts come with you to a Google account that's new here, not to one you have already used.</div>}
+      {config.google && asGuest && <div className="level-note">Your lessons come with you to a Google account that's new here, not to one you have already used.</div>}
       {config.guest && !onBack && <button className="btn btn-chip signin-alt" disabled={busy} onClick={guest}>Continue as guest</button>}
-      {config.guest && !onBack && <div className="level-note">As a guest, your shifts stay with this browser. Create an account any time to keep them.</div>}
+      {config.guest && !onBack && <div className="level-note">As a guest, your lessons stay with this browser. Create an account any time to keep them.</div>}
     </div>
   )
 
@@ -93,14 +93,14 @@ export function SignIn({ config, start, guest: asGuest, token = '', onDone, onBa
         <section className="hero">
           <motion.div variants={rise} className="eyebrow">WORKPLACE SIMULATOR</motion.div>
           <motion.h1 variants={rise}>Get it wrong here, with someone to correct you.</motion.h1>
-          <motion.p variants={rise} className="lede">Sign in to start a shift. Your shifts are kept with your account, so you can pick up where you left off.</motion.p>
+          <motion.p variants={rise} className="lede">Sign in to start a lesson. Your progress is kept with your account, so you can pick up where you left off.</motion.p>
         </section>
         <motion.section variants={rise} className="card setup signin">
           {onBack && <button className="link signin-back" onClick={onBack}><ArrowLeft size={14} /> Back</button>}
           {config.email && mode === 'signin' && (
             <form className="field" onSubmit={signIn}>
               <div className="field-label">Sign in</div>
-              {asGuest && <div className="level-note">Signing in to an account you already have starts it without this guest's shifts, and they are deleted. To keep them, create a new account.</div>}
+              {asGuest && <div className="level-note">Signing in to an account you already have starts it without this guest's lessons, and they are deleted. To keep them, create a new account.</div>}
               {emailField}
               {passwordField(false)}
               {submit('Sign in', 'Signing you in')}
@@ -113,7 +113,7 @@ export function SignIn({ config, start, guest: asGuest, token = '', onDone, onBa
           {config.email && mode === 'register' && (
             <form className="field" onSubmit={register}>
               <div className="field-label">{saving ? 'Save your progress' : 'Create an account'}</div>
-              {saving && <div className="level-note">Your shifts so far move to the new account once you confirm your email.</div>}
+              {saving && <div className="level-note">Your lessons so far move to the new account once you confirm your email.</div>}
               <input className="input" required maxLength={80} autoComplete="name" placeholder="Name" value={name} onChange={e => setName(e.target.value)} />
               {emailField}
               {passwordField(true)}
@@ -124,7 +124,7 @@ export function SignIn({ config, start, guest: asGuest, token = '', onDone, onBa
           {mode === 'inbox' && (
             <div className="field">
               <div className="field-label signin-head"><MailCheck size={18} /> Check your inbox</div>
-              <div className="level-note">We sent a link to <b>{email}</b>. Open it to confirm your email and you're in.{onBack ? ' Your shifts come with you.' : ''}</div>
+              <div className="level-note">We sent a link to <b>{email}</b>. Open it to confirm your email and you're in.{onBack ? ' Your lessons come with you.' : ''}</div>
               <div className="level-note">Nothing after a few minutes? Check your spam folder. If this address already has an account, from Google say, the email tells you how to sign in instead.</div>
               <div className="signin-links">
                 <button className="link" disabled={busy} onClick={resend}>Send it again</button>

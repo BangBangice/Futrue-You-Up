@@ -30,6 +30,8 @@ function makeWorld(overrides: Partial<World> = {}): World {
     simMin: 10,
     lesson: { id: 'ledgerly-day2', title: 'Ledgerly, Day 2', summary: null },
     company: 'Ledgerly',
+    goal: null,
+    ran: [],
     workspace: { repo: 'ledgerly', host: 'app.ledgerly.io' },
     calendar: { weekday: 'Mon', date: 'Oct 1', day: 1, start: 540 },
     cast: {

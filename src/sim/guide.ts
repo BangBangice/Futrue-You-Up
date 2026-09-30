@@ -54,7 +54,24 @@ function target(s: State, m: ShowMe = {}): () => void {
   return () => {}
 }
 
+const finish = (hint: string): Step => ({ id: 'finish', text: 'Finish the lesson when you’re ready', done: false, hint, show: () => sim.spotlight(['end-shift']) })
+
+/** A lesson with its own goal: its steps are the whole plan, and messages waiting in a DM are shown beside them. */
+function practice(s: State): Guide {
+  const mentorName = s.cast[s.mentor] ? firstName(s.cast[s.mentor]) : 'your mentor'
+  const steps: Step[] = stepsFor(s.guide, s.level).map(x => ({ id: x.id, text: x.text, hint: x.hint, done: done(s, x.doneWhen), show: target(s, x.showMe) }))
+  const all = steps.every(x => x.done)
+  const waiting: Step[] = Object.entries(s.channels).filter(([id, c]) => c.dm && s.unread[id] && s.cast[id])
+    .map(([id]) => ({ id: 'dm:' + id, text: `${firstName(s.cast[id])} messaged you in Teams`, done: false, side: true, show: inChat(id) }))
+  return {
+    phase: all ? 'done' : 'goal', title: s.goal!.title,
+    sub: all ? 'Every step is done.' : s.goal!.summary,
+    steps: [...steps, ...(all ? [finish(`You get a recap and a note from ${mentorName}.`)] : []), ...waiting],
+  }
+}
+
 export function guide(s: State): Guide {
+  if (s.goal) return practice(s)
   const n = s.deploys.length, prod = s.deploys.at(-1)
   const fixed = s.tickets.find(t => t.id === 'LED-214')?.status === 'done'
   const committed = !!s.code.head && !s.deploys.some(d => d.sha === s.code.head)
@@ -115,7 +132,7 @@ export function guide(s: State): Guide {
       steps: [
         watch('Watch the 401 rate in CloudWatch for a few minutes'),
         { id: 'tell', text: `Tell ${call('priya')} it is out`, done: saidIn('priya', out), show: inChat('priya') },
-        { id: 'end', text: 'End your shift when you’re ready', done: false, hint: `You get a recap of the day and a note from ${mentorName}.`, show: () => sim.spotlight(['end-shift']) },
+        finish(`You get a recap of the day and a note from ${mentorName}.`),
       ],
     }
   }

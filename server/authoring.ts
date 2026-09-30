@@ -44,7 +44,7 @@ export const latest = async (id: string, published = false): Promise<Version | u
   .orderBy(desc(scenarioVersions.version)).limit(1))[0]
 
 /** Which of these versions the author has finished a shift on: ended with the lesson's work done (director.end sets
- * `finished`), not just ended early from the End shift button. */
+ * `finished`), not just ended early from the Finish lesson button. */
 async function tested(userId: string, versionIds: string[]) {
   if (!versionIds.length) return new Set<string>()
   const rows = await db().selectDistinct({ id: runs.scenarioVersionId }).from(runs)
@@ -148,7 +148,7 @@ export async function publishLesson(userId: string, id: string, to: unknown) {
   const top = (await latest(id))!
   if (top.status === 'published') throw new Refused(409, `Version ${top.version} is already published. Save a new draft to publish changes.`)
   if (!(await tested(userId, [top.id])).has(top.id)) {
-    throw new Refused(409, `Test the draft first: play version ${top.version} yourself, ship the fix so every check passes, then end the shift. Then publish.`)
+    throw new Refused(409, `Test the draft first: play version ${top.version} yourself, finish its work (every step, or for the incident shift the fix shipped with every check passing), then press Finish lesson. Then publish.`)
   }
   await db().transaction(async tx => {
     await tx.update(scenarioVersions).set({ status: 'published' }).where(eq(scenarioVersions.id, top.id))

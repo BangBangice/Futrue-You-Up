@@ -90,12 +90,14 @@ export function conform(v: Verdict, ids: string[]): Verdict {
   return { build: 'broken', error, checks: [] }
 }
 
-const GIT_SUBCOMMANDS = ['status', 'diff', 'log', 'show', 'add', 'commit', 'restore', 'checkout', 'switch', 'branch', 'stash', 'reset', 'revert', 'rm', 'mv', 'blame']
-const GIT_FLAGS = /^(-[0-9]+|-m|-a|-am|-p|-A|-b|-B|-d|-D|-s|-sb|-u|-v|-q|-f|-r|-n|--|--staged|--cached|--stat|--oneline|--graph|--all|--amend|--no-edit|--hard|--soft|--mixed|--name-only|--name-status|--short|--branch|--patch|--decorate|--abbrev-commit|--force|--theirs|--ours|--worktree|--source|--include-untracked|--max-count=\d+|--(pretty|format)=[\w%:() ,.'-]+)$/
+const GIT_SUBCOMMANDS = ['status', 'diff', 'log', 'show', 'add', 'commit', 'restore', 'checkout', 'switch', 'branch', 'stash', 'reset', 'revert', 'rm', 'mv', 'blame', 'merge']
+/** Talk to origin, so they are played here rather than run: there is no origin to talk to (see remoteCommand). */
+const REMOTE_SUBCOMMANDS = ['push', 'pull', 'fetch', 'remote', 'clone']
+const GIT_FLAGS = /^(-[0-9]+|-m|-a|-am|-p|-A|-b|-B|-c|-C|-d|-D|-s|-sb|-u|-v|-vv|-q|-f|-r|-n|--|--staged|--cached|--stat|--oneline|--graph|--all|--amend|--no-edit|--hard|--soft|--mixed|--name-only|--name-status|--short|--branch|--patch|--decorate|--abbrev-commit|--force|--theirs|--ours|--worktree|--source|--include-untracked|--list|--merged|--no-merged|--no-ff|--ff-only|--abort|--word-diff|--create|--max-count=\d+|--(pretty|format)=[\w%:() ,.'-]+)$/
 const HELP = [
   'Available on this workstation:',
   '  ls, cat, cd, pwd, touch, mkdir, rm, clear',
-  '  git status | diff | log | show | add | commit | restore | checkout | switch | branch | stash | reset | revert | blame',
+  '  git status | diff | log | show | add | commit | restore | checkout | switch | branch | merge | stash | reset | revert | blame',
   '  npm test [-- path]        run the tests, all or one area',
   '  ldg status                what is live in production',
   '  ldg deploy auth-api --env prod',
@@ -131,12 +133,15 @@ export class Workspace {
   private readonly repo: string
   /** Where player code runs. Set in open(). */
   private runner!: Runner
-  private constructor(root: string, home: string, me: Workspace['me'], repo: string) { this.root = root; this.home = home; this.me = me; this.repo = repo }
+  /** The address origin claims to be, when the repository has one. It is never contacted: git push is played here (see push()). */
+  private readonly remote: string | null
+  private constructor(root: string, home: string, me: Workspace['me'], repo: string, remote: string | null) { this.root = root; this.home = home; this.me = me; this.repo = repo; this.remote = remote }
 
   /** `author` wrote the commit the player's branch starts from. */
   /** Without a repository on disk, `saved` is asked for a snapshot (see pack()) to rebuild it from, and only without one does the
-   * shift start from the template. A repository on disk wins: on this instance it is at least as new as any snapshot. */
-  static async open(dir: string, player: Person, { repo, author, saved }: { repo: string; author: Person; saved?: () => Promise<Buffer | null> }) {
+   * shift start from the template. A repository on disk wins: on this instance it is at least as new as any snapshot.
+   * With a `remote`, the player starts on main, cloned from an origin at that address; without one, on a branch for LED-214. */
+  static async open(dir: string, player: Person, { repo, author, saved, remote }: { repo: string; author: Person; saved?: () => Promise<Buffer | null>; remote?: string }) {
     const root = join(dir, 'workspace')
     let fresh = !existsSync(join(root, '.git'))
     const snapshot = fresh && saved ? await saved() : null
@@ -145,7 +150,7 @@ export class Workspace {
       if (snapshot) await mkdir(root, { recursive: true })
       else await cp(TEMPLATE, root, { recursive: true })
     }
-    const ws = new Workspace(await realpath(root), await realpath(dir), { name: player.name, email: player.email, user: login(player) }, repo)
+    const ws = new Workspace(await realpath(root), await realpath(dir), { name: player.name, email: player.email, user: login(player) }, repo, remote ?? null)
     // The E2B client is only loaded when it is used. Nothing starts until the first run (see e2b.ts).
     ws.runner = useE2B() ? new (await import('./e2b.ts')).Remote(ws.root, basename(ws.home)) : new Local(ws.root, ws.home)
     if (snapshot) {
@@ -160,10 +165,34 @@ export class Workspace {
       const past = { GIT_AUTHOR_NAME: author.name, GIT_AUTHOR_EMAIL: author.email, GIT_COMMITTER_NAME: author.name, GIT_COMMITTER_EMAIL: author.email, GIT_AUTHOR_DATE: '2026-09-22T16:40:00', GIT_COMMITTER_DATE: '2026-09-22T16:40:00' }
       await ws.git(['init', '-q', '-b', 'main'])
       await ws.git(['add', '-A'])
-      await ws.git(['commit', '-q', '-m', 'chore(session): move session store to Redis 7 (LED-205)'], past)
-      await ws.git(['checkout', '-q', '-b', `${ws.me.user}/led-214-sso-expiry`])
+      await ws.git(['commit', '-q', '-m', remote ? 'docs: explain how to run the tests' : 'chore(session): move session store to Redis 7 (LED-205)'], past)
+      if (remote) {
+        await ws.git(['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+        await ws.origin()
+      } else await ws.git(['checkout', '-q', '-b', `${ws.me.user}/led-214-sso-expiry`])
     }
     return ws
+  }
+  /** Points origin at its address, and each local branch that origin also has at its counterpart, as a clone and `push -u` would.
+   * Config is not in a snapshot, so a restored repository gets it back here. */
+  private async origin() {
+    if (!this.remote) return
+    await this.plumb(['config', 'remote.origin.url', this.remote])
+    await this.plumb(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'])
+    const { local, remote } = await this.refs()
+    for (const b of local.filter(b => remote.includes(b))) {
+      await this.plumb(['config', `branch.${b}.remote`, 'origin'])
+      await this.plumb(['config', `branch.${b}.merge`, `refs/heads/${b}`])
+    }
+  }
+  /** Local branches, and the branches origin has as far as this repository knows. */
+  private async refs() {
+    const { out } = await this.plumb(['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin'])
+    const names = out.split('\n').filter(Boolean)
+    return {
+      local: names.filter(r => r.startsWith('refs/heads/')).map(r => r.slice('refs/heads/'.length)),
+      remote: names.filter(r => r.startsWith('refs/remotes/origin/') && r !== 'refs/remotes/origin/HEAD').map(r => r.slice('refs/remotes/origin/'.length)),
+    }
   }
 
   // ---------- snapshots ----------
@@ -227,6 +256,7 @@ export class Workspace {
         await writeFile(p, raw.subarray(at, at += len))
       }
       for (const rel of h.deleted) await rm(this.inside(rel), { force: true })
+      await this.origin()
     } finally { await rm(tmp, { recursive: true, force: true }) }
   }
 
@@ -325,10 +355,16 @@ export class Workspace {
   }
 
   async state(): Promise<CodeState> {
-    const [branch, head, status] = await Promise.all([this.git(['rev-parse', '--abbrev-ref', 'HEAD']), this.git(['log', '-1', '--format=%h%x09%s']), this.git(['status', '--porcelain'])])
+    const [branch, head, status, mine, refs] = await Promise.all([
+      this.git(['rev-parse', '--abbrev-ref', 'HEAD']), this.git(['log', '-1', '--format=%h%x09%s']), this.git(['status', '--porcelain']),
+      this.plumb(['rev-list', '--count', '--all', '--fixed-strings', `--author=<${this.me.email}>`]), this.refs(),
+    ])
     const [sha, subject] = head.out.trim().split('\t')
-    const changes: GitFile[] = status.out.split('\n').filter(Boolean).map(l => ({ status: l.slice(0, 2).trim(), path: l.slice(3) }))
-    return { branch: branch.out.trim(), head: sha, subject, changes, busy: null }
+    const lines = status.out.split('\n').filter(Boolean)
+    const changes: GitFile[] = lines.map(l => ({ status: l.slice(0, 2).trim(), path: l.slice(3) }))
+    // Porcelain's first column is the index: anything there but a space or "?" is staged.
+    const staged = lines.some(l => l[0] !== ' ' && l[0] !== '?')
+    return { branch: branch.out.trim(), head: sha, subject, changes, busy: null, branches: refs.local, staged, mine: Number(mine.out.trim()) || 0, ...(this.remote ? { remote: refs.remote } : {}) }
   }
   async commit(message: string) {
     await this.git(['add', '-A'])
@@ -361,6 +397,114 @@ export class Workspace {
     const line = out.split('\n').findLast(l => l.startsWith('@@CHECKS@@'))
     if (line) return conform(JSON.parse(line.slice(10)), ids)
     return { build: 'broken', error: out.split('\n').find(l => /Error|error/.test(l))?.trim().slice(0, 300) ?? 'the service did not start', checks: [] }
+  }
+
+  /**
+   * push, pull, fetch and remote, for a repository with an origin. Nothing leaves this machine: origin's branches are the
+   * repository's refs/remotes/origin/*, and a push moves one, with the output and refusals a real one would give.
+   * main is protected, as it is on most teams: work reaches it through a pull request.
+   */
+  private async remoteCommand(sub: string, args: string[], emit: Emit): Promise<number> {
+    const say = (t: string, c: TermLine['c'] = 'out') => emit({ c, t })
+    const url = this.remote!, where = url.replace(/^git@([^:]+):/, '$1/').replace(/\.git$/, '')
+    const sha = async (ref: string) => { const r = await this.plumb(['rev-parse', '--verify', '-q', ref]); return r.code === 0 ? r.out.trim() : null }
+    const current = (await this.plumb(['symbolic-ref', '-q', '--short', 'HEAD'])).out.trim()
+    const upstream = async (b: string) => (await this.plumb(['config', '--get', `branch.${b}.merge`])).out.trim().replace(/^refs\/heads\//, '') || null
+    const positional = args.filter(a => !a.startsWith('-'))
+    const bad = args.find(a => a.startsWith('-') && !['-u', '--set-upstream', '-f', '--force', '-v', '--verbose'].includes(a))
+    if (bad) throw new Refusal(`git ${sub}: the option ${bad} is not available here.`)
+    if (positional[0] && positional[0] !== 'origin' && sub !== 'remote') {
+      say(`fatal: '${positional[0]}' does not appear to be a git repository`, 'err')
+      say('fatal: Could not read from remote repository.', 'err')
+      say('The only remote here is origin. See: git remote -v', 'dim')
+      return 128
+    }
+
+    if (sub === 'clone') throw new Refusal(`git clone: you already have ${this.repo} checked out here. You are in it.`)
+    if (sub === 'remote') {
+      if (positional.length) throw new Refusal('git remote: only "git remote" and "git remote -v" are available here.')
+      if (args.includes('-v') || args.includes('--verbose')) { say(`origin\t${url} (fetch)`); say(`origin\t${url} (push)`) } else say('origin')
+      return 0
+    }
+    // Nobody else pushes here, so there is never anything new to fetch.
+    if (sub === 'fetch') return 0
+    if (sub === 'pull') {
+      if (!current || !(await upstream(current))) {
+        say('There is no tracking information for the current branch.')
+        say('Please specify which branch you want to merge with.')
+        say('')
+        say('If you wish to set tracking information for this branch you can do so with:')
+        say('')
+        say(`    git branch --set-upstream-to=origin/<branch> ${current || '<branch>'}`)
+        return 1
+      }
+      say('Already up to date.')
+      return 0
+    }
+
+    // push
+    const force = args.includes('-f') || args.includes('--force'), track = args.includes('-u') || args.includes('--set-upstream')
+    const spec = positional[1] === 'HEAD' ? current : positional[1]
+    const [from, to] = spec?.includes(':') ? spec.split(':') : [spec, spec]
+    let branch = from, target = to
+    if (!branch) {
+      if (!current) { say('fatal: You are not currently on a branch.', 'err'); return 128 }
+      const up = await upstream(current)
+      if (!up) {
+        say(`fatal: The current branch ${current} has no upstream branch.`, 'err')
+        say('To push the current branch and set the remote as upstream, use')
+        say('')
+        say(`    git push --set-upstream origin ${current}`)
+        return 128
+      }
+      branch = current; target = up
+    }
+    if (!/^[\w./-]+$/.test(branch!) || !/^[\w./-]+$/.test(target!)) throw new Refusal(`git push: ${spec} is not a branch name`)
+    const local = await sha(`refs/heads/${branch}`)
+    if (!local) { say(`error: src refspec ${branch} does not match any`, 'err'); say(`error: failed to push some refs to '${url}'`, 'err'); return 1 }
+    const theirs = await sha(`refs/remotes/origin/${target}`)
+    if (theirs === local) {
+      say('Everything up-to-date')
+      if (track) await this.track(branch!, target!, say)
+      return 0
+    }
+    if (target === 'main' || target === 'master') {
+      say('remote: error: GH006: Protected branch update failed for refs/heads/main.', 'err')
+      say('remote: error: Changes must be made through a pull request.', 'err')
+      say(`To ${url}`)
+      say(` ! [remote rejected] ${branch} -> ${target} (protected branch hook declined)`, 'err')
+      say(`error: failed to push some refs to '${url}'`, 'err')
+      say('Push your own branch instead: git switch -c <name>, commit there, then git push -u origin <name>', 'dim')
+      return 1
+    }
+    if (theirs && !force && (await this.plumb(['merge-base', '--is-ancestor', theirs, local])).code !== 0) {
+      say(`To ${url}`)
+      say(` ! [rejected]        ${branch} -> ${target} (non-fast-forward)`, 'err')
+      say(`error: failed to push some refs to '${url}'`, 'err')
+      say('hint: Updates were rejected because the tip of your current branch is behind', 'dim')
+      say('hint: its remote counterpart. If you rewrote history on purpose, git push --force replaces it.', 'dim')
+      return 1
+    }
+    const count = Number((await this.plumb(['rev-list', '--count', local, ...(theirs ? [`^${theirs}`] : ['--not', '--remotes=origin'])])).out.trim()) || 1
+    say(`Enumerating objects: ${count * 5}, done.`, 'dim')
+    say(`Writing objects: 100% (${count * 3}/${count * 3}), done.`, 'dim')
+    if (!theirs) {
+      say('remote:')
+      say(`remote: Create a pull request for '${target}' on GitHub by visiting:`)
+      say(`remote:      https://${where}/pull/new/${target}`)
+      say('remote:')
+    }
+    say(`To ${url}`)
+    const short = (x: string) => x.slice(0, 7)
+    say(!theirs ? ` * [new branch]      ${branch} -> ${target}` : force && (await this.plumb(['merge-base', '--is-ancestor', theirs, local])).code !== 0 ? ` + ${short(theirs)}...${short(local)} ${branch} -> ${target} (forced update)` : `   ${short(theirs)}..${short(local)}  ${branch} -> ${target}`)
+    await this.plumb(['update-ref', `refs/remotes/origin/${target}`, local])
+    if (track) await this.track(branch!, target!, say)
+    return 0
+  }
+  private async track(branch: string, target: string, say: (t: string) => void) {
+    await this.plumb(['config', `branch.${branch}.remote`, 'origin'])
+    await this.plumb(['config', `branch.${branch}.merge`, `refs/heads/${target}`])
+    say(`branch '${branch}' set up to track 'origin/${target}'.`)
   }
 
   /**
@@ -411,9 +555,14 @@ export class Workspace {
         return 0
       }
       case 'git': {
-        const sub = args.find(a => !a.startsWith('-'))
+        const sub = args[0]
         if (!sub) throw new Refusal('git: which command? Try git status.')
-        if (['push', 'pull', 'fetch', 'clone', 'remote'].includes(sub)) throw new Refusal(`git ${sub}: there is no remote on this workstation. Ship with: ldg deploy auth-api --env prod`)
+        // Options go after the command. Before it they are git's own, like -c, which could reconfigure it.
+        if (sub.startsWith('-')) throw new Refusal(`git: put the command first, as in git status. Options like ${sub} go after it.`)
+        if (REMOTE_SUBCOMMANDS.includes(sub)) {
+          if (!this.remote) throw new Refusal(`git ${sub}: there is no remote on this workstation. Ship with: ldg deploy auth-api --env prod`)
+          return this.remoteCommand(sub, args.slice(1), emit)
+        }
         if (!GIT_SUBCOMMANDS.includes(sub)) throw new Refusal(`git ${sub} is not available here. Try: ${GIT_SUBCOMMANDS.slice(0, 8).join(', ')}.`)
         args.forEach((a, i) => {
           const isMessage = ['-m', '-am'].includes(args[i - 1])

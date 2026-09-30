@@ -213,9 +213,32 @@ export async function review(s: Session, kind: keyof typeof RUBRIC, text: string
   s.log('mentor', { review: kind, good })
 }
 
+// ---------- a lesson with its own goal ----------
+/** Every step is done. Said at once, in the mentor's DM, so the player knows the lesson can end here. */
+export function onGoal(s: Session) {
+  const m = s.scenario.mentor
+  const text = `That’s all of it, ${first(s, s.world.player)}: ${s.scenario.goal!.title.replace(/[.!]$/, '')}, done. Press Finish lesson at the top when you’re ready and I’ll write up how it went.`
+  s.say(m, m, text)
+  s.log('mentor', { stage: 1, text })
+}
+/** The lesson as facts with times, from the event log. */
+function practiceStory(s: Session): string[] {
+  const out: [number, string][] = []
+  for (const e of s.priv.events) {
+    if (e.type === 'step') out.push([e.t, `Done: ${e.text}`])
+    if (e.type === 'commit') out.push([e.t, `Committed ${e.sha}: ${e.subject}`])
+    if (e.type === 'push') out.push([e.t, `Pushed ${e.branch} to origin`])
+    if (e.type === 'test') out.push([e.t, `Ran the tests: ${e.passed ? 'all passed' : 'some failed'}`])
+    if (e.type === 'doc' && e.who === s.world.player) out.push([e.t, `Wrote the wiki page "${e.title}"`])
+    if (e.type === 'goal') out.push([e.t, 'Every step done'])
+  }
+  return out.sort((a, b) => a[0] - b[0]).map(([t, text]) => `${clock(t)}  ${text}`)
+}
+
 // ---------- end of shift ----------
 /** The shift as a list of facts with times. Built from the event log, so it is the same whether or not the model is available. */
 export function story(s: Session): string[] {
+  if (s.scenario.goal) return practiceStory(s)
   const out: [number, string][] = [], f = s.priv.f
   const add = (t: number | undefined, text: string) => { if (t !== undefined) out.push([t, text]) }
   add(f.readWarningAt, `Read ${mentorName(s)}’s warning that every login path shares verifySession`)
@@ -246,7 +269,23 @@ const RECAP: Tool = {
     practise_next: { type: 'array', items: { type: 'string' }, description: 'Two or three small, concrete things to practise on the next ticket. One short sentence each.' },
   } },
 }
+async function practiceRecap(s: Session): Promise<Recap> {
+  const happened = story(s), goal = s.scenario.goal!, finished = s.priv.finished
+  const fallback: Recap = {
+    ready: true, happened, corrected: [],
+    next: ['Do it once more tomorrow without the step list.', 'Explain to a colleague what each step was for, in your own words.'],
+    note: finished ? `You did every step of “${goal.title}”. Do it once more from memory and it will stick.` : `You stopped before the end of “${goal.title}”, and that is fine. Start again when you are ready: the steps will feel shorter the second time.`,
+  }
+  const calls = s.priv.aiCalls++ < 90 ? await ask({
+    priority: 0, system: prompt(s, 'write_recap'), tools: [RECAP],
+    user: `${learner(s)}\n\nFACTS\n${facts(s, 'mentor')}\n\nTHE LESSON, IN ORDER\n${happened.join('\n') || 'Nothing was done yet.'}\n\nThey ${finished ? 'finished every step' : 'ended before finishing every step'}. The lesson is over. Write their recap: what they practised, what to practise next. "corrected" is for things they got wrong at first and then did right.`,
+  }) : null
+  const a = calls?.find(c => c.name === 'write_recap')?.args
+  const note = str(a?.note, 1200), next = list(a?.practise_next, 3, 600)
+  return note && next.length ? { ready: true, happened, note, next, corrected: list(a?.corrected, 4, 600) } : fallback
+}
 export async function recap(s: Session): Promise<Recap> {
+  if (s.scenario.goal) return practiceRecap(s)
   const f = s.priv.f, happened = story(s)
   const fixed = s.world.deploys.at(-1)!.checks.every(c => c.ok)
   const fallback: Recap = {

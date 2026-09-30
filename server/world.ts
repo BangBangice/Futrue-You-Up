@@ -176,15 +176,19 @@ const sessions = new Map<string, Session>()
 const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
 // Persona cards and mentor guidance are prompts, so they stay on the server. So do security checks: the browser must not learn they exist.
-export const roster = (sc: Scenario): Pick<World, 'lesson' | 'company' | 'workspace' | 'calendar' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
+export const roster = (sc: Scenario): Pick<World, 'lesson' | 'company' | 'workspace' | 'calendar' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide' | 'goal'> => structuredClone({
   lesson: { id: sc.id, title: sc.title, summary: sc.summary ?? null }, company: sc.company.name, workspace: sc.workspace,
   calendar: { weekday: sc.story.weekday ?? STORY.weekday, date: sc.story.date ?? STORY.date, day: sc.story.day ?? STORY.day, start: minutes(sc.clock.start) },
   cast: Object.fromEntries(Object.entries(sc.cast).map(([id, { persona: _, ...p }]) => [id, p])), channels: sc.channels, player: sc.player, mentor: sc.mentor,
   levels: Object.fromEntries(Object.entries(sc.levels).map(([k, { mentorGuidance: _, ...l }]) => [k, l])),
   deadline: sc.clock.deadline ? minutes(sc.clock.deadline) : null,
   impact: { alarmPercent: sc.alarmPercent, checks: sc.checks.filter(c => c.share > 0).map(({ security: _, ...c }) => c), customers: sc.customers },
-  guide: sc.guide,
+  guide: sc.guide, goal: sc.goal ?? null,
 })
+
+/** Where a lesson with a goal says its repository was cloned from. Nothing is ever sent there (see Workspace.remoteCommand). The
+ * incident shift has no remote: it ships with ldg deploy. */
+const remoteOf = (sc: Scenario) => sc.goal ? `git@github.com:${sc.company.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'team'}/${sc.workspace.repo}.git` : undefined
 
 /** Makes room, preferring a shift nobody is watching. Its open streams reconnect and reload it. */
 async function evict() {
@@ -207,7 +211,7 @@ export async function create(level: Level, background: string, pace: number, ai:
   const world: World = {
     id, stage: 'sim', level, background, ai, aiProblem: aiProblem(), pace, simMin: minutes(spec.clock.start),
     ...roster(spec), ...structuredClone(spec.seed), typing: [],
-    files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
+    files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [], ran: [],
     deploys: [], incident: null, demo: 'pending',
     timeline: [{ time: '12:02 PM', text: `Deploy billing-api@e0c3a18 (${firstName(spec.cast[spec.mentor])})`, tone: 'dim' }], recap: null,
   }
@@ -215,7 +219,7 @@ export async function create(level: Level, background: string, pace: number, ai:
   const s = new Session(world, { uid: 100, beats: [], verdicts: {}, attempts: 0, aiCalls: 0, events: [], f: { seen: [], praised: [], reviewed: [] } }, spec)
   s.userId = userId
   await mkdir(s.dir, { recursive: true })
-  s.ws = await Workspace.open(s.dir, world.cast[world.player], { repo: spec.workspace.repo, author: spec.cast[spec.mentor] })
+  s.ws = await Workspace.open(s.dir, world.cast[world.player], { repo: spec.workspace.repo, author: spec.cast[spec.mentor], remote: remoteOf(spec) })
   await store().createRun(s, version)
   sessions.set(id, s)
   return s
@@ -232,13 +236,13 @@ async function load(id: string) {
   if (!saved) return null
   await evict()
   // Shifts saved before the cast moved into the world have none of their own.
-  const s = new Session({ ...roster(saved.scenario), ...saved.world, aiProblem: aiProblem(), typing: [], code: { ...saved.world.code, busy: null } }, saved.priv, saved.scenario)
+  const s = new Session({ ...roster(saved.scenario), ...saved.world, ran: saved.world.ran ?? [], aiProblem: aiProblem(), typing: [], code: { ...saved.world.code, busy: null } }, saved.priv, saved.scenario)
   s.rev = saved.rev
   s.userId = saved.userId
   await mkdir(s.dir, { recursive: true })
   // A redeploy or another instance has no copy on disk: the store's snapshot brings back the player's commits and unsaved work.
   const snapshot = async () => (await store().workspaces?.load(id)) ?? null
-  s.ws = await Workspace.open(s.dir, s.world.cast[s.world.player], { repo: s.scenario.workspace.repo, author: s.scenario.cast[s.scenario.mentor], saved: snapshot })
+  s.ws = await Workspace.open(s.dir, s.world.cast[s.world.player], { repo: s.scenario.workspace.repo, author: s.scenario.cast[s.scenario.mentor], saved: snapshot, remote: remoteOf(s.scenario) })
   sessions.set(id, s)
   return s
 }

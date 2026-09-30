@@ -39,14 +39,14 @@ function Detail({ tk }: { tk: Ticket }) {
         <dt>Status</dt>
         <dd><select className="select" data-guide="ticket-status" value={tk.status} disabled={locked} aria-label="Status" onChange={e => sim.saveTicket(tk.id, { status: e.target.value as TicketStatus })}>{COLS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select></dd>
         <dt>Assignee</dt>
-        <dd className="assignee">{tk.who && <Avatar who={tk.who} size={18} />}<select className="select" value={tk.who ?? ''} aria-label="Assignee" onChange={e => sim.saveTicket(tk.id, { who: (e.target.value || null) as PersonId | null })}><option value="">Unassigned</option>{[player, ...TEAM].map(p => <option key={p} value={p}>{cast[p].name}</option>)}</select></dd>
+        <dd className="assignee">{tk.who && <Avatar who={tk.who} size={18} />}<select className="select" value={tk.who ?? ''} aria-label="Assignee" onChange={e => sim.saveTicket(tk.id, { who: (e.target.value || null) as PersonId | null })}><option value="">Unassigned</option>{[player, ...TEAM].filter(p => cast[p]).map(p => <option key={p} value={p}>{cast[p].name}</option>)}</select></dd>
         <dt>Priority</dt>
         <dd><select className="select" value={tk.pri} aria-label="Priority" onChange={e => sim.saveTicket(tk.id, { pri: e.target.value as Priority })}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</select></dd>
         <dt>Estimate</dt><dd>{tk.pts ? tk.pts + ' pts' : '—'}</dd>
       </dl>
       <div className="ticket-desc"><Editable multiline label="Description" value={tk.desc} onSave={desc => sim.saveTicket(tk.id, { desc })} /></div>
       <div className="ticket-actions">
-        {tk.id.startsWith('LED') && tk.status !== 'done' && <button className="btn btn-soft sm" onClick={() => sim.openCode('src/auth/verifySession.ts')}>Open in VS Code</button>}
+        {tk.id === 'LED-214' && tk.status !== 'done' && <button className="btn btn-soft sm" onClick={() => sim.openCode('src/auth/verifySession.ts')}>Open in VS Code</button>}
         {locked && <button className="btn btn-soft sm" onClick={() => sim.open('monitor')}>Open in CloudWatch</button>}
         {locked && <button className="btn btn-soft sm" onClick={() => sim.openChat('incidents')}>Open #incidents</button>}
       </div>

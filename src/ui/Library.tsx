@@ -104,14 +104,14 @@ export function Library() {
         <motion.main className="library" variants={stagger(0.06, 0.04)} initial="hidden" animate="show">
           <motion.section variants={rise} className="library-head">
             <div className="eyebrow">LESSON LIBRARY</div>
-            <h1>Pick a shift to practise.</h1>
-            <p className="lede">Each lesson is a day at work: a real codebase, colleagues who message you, and a mentor who steps in when it goes wrong.</p>
+            <h1>Pick a skill to practise.</h1>
+            <p className="lede">Each lesson puts you at a work computer with a real codebase, colleagues who message you, and a mentor who steps in when you get stuck.</p>
             <Authoring />
           </motion.section>
           {run && (
             <motion.button variants={rise} className="lesson-card resume" onClick={() => resume(run.id)}>
               <Play size={18} strokeWidth={2.2} />
-              <span className="grow"><b>Resume your shift</b>{run.title && <span className="sub"> · {run.title}</span>}</span>
+              <span className="grow"><b>Resume your lesson</b>{run.title && <span className="sub"> · {run.title}</span>}</span>
               <ArrowRight size={16} strokeWidth={2.4} />
             </motion.button>
           )}

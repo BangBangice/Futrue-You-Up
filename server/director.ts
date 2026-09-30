@@ -1,8 +1,9 @@
 // Runs the shift: the clock, the things that happen on schedule, and what follows from what the player does.
 // No model calls here. The director decides what is true; personas and the mentor decide how to say it.
+import { done, normalize, stepsFor } from '../shared/guide.ts'
 import { clientOf } from '../shared/scenario.ts'
 import { COLS, clock, errAt, failing, firstName, isOutage, minutes, personByName, shortDay, shortName } from '../shared/types.ts'
-import type { Attachment, ChanId, Check, Doc, Email, Folder, PersonId, TermLine, Ticket } from '../shared/types.ts'
+import type { Attachment, ChanId, Check, CodeState, Doc, Email, Folder, PersonId, TermLine, Ticket } from '../shared/types.ts'
 import * as mentor from './ai/mentor.ts'
 import { reply } from './ai/personas.ts'
 import { Refusal, tokenize } from './sandbox.ts'
@@ -18,18 +19,41 @@ const player = (s: Session) => firstName(s.world.cast[s.world.player])
 /** A colleague's first name, by cast id, so a renamed cast reads right. */
 const call = (s: Session, who: PersonId) => firstName(s.world.cast[who])
 const open = (s: Session) => !!s.world.incident && s.world.incident.resolvedAt === null
+/** A lesson with its own goal: no production, so no deploys, verdicts or incidents. Done when its steps are. */
+const practice = (s: Session) => !!s.scenario.goal
+/** The steps this player's level sees, each with whether it is done, from what the server knows. */
+function steps(s: Session) {
+  const w = s.world, f = s.priv.f
+  const seen = f.testedAt === undefined ? f.seen : [...f.seen, 'tested@' + w.deploys.length]
+  return stepsFor(s.scenario.guide, w.level).map(x => ({ ...x, done: done({ ...w, seen }, x.doneWhen) }))
+}
+const stepsDone = (s: Session) => steps(s).every(x => x.done)
+/** In a lesson with a goal, after anything the player does: logs each step as it is first done, for the recap, and has the
+ * mentor say so once they all are. */
+function checkGoal(s: Session) {
+  if (!practice(s) || s.world.stage !== 'sim') return
+  const f = s.priv.f, now = steps(s)
+  for (const x of now) if (x.done && !f.seen.includes('step:' + x.id)) { f.seen.push('step:' + x.id); s.log('step', { id: x.id, text: x.text }) }
+  if (f.fixedAt !== undefined || !now.every(x => x.done)) return
+  // fixedAt is when the lesson's work was done, whatever the lesson.
+  f.fixedAt = s.world.simMin
+  s.log('goal', { title: s.scenario.goal!.title })
+  s.timeline('All steps done', 'good')
+  mentor.onGoal(s)
+}
 const dashboard: Attachment = { kind: 'link', label: 'auth-api · prod dashboard', app: 'monitor' }
 const wait = (s: Session, ms: number) => new Promise(r => setTimeout(r, ms * s.timeScale))
 
 // ---------- start, clock ----------
 export async function start(s: Session) {
-  // The shift has only the template so far, whose verdict is known without starting a sandbox for it.
-  const [state, base] = [await s.ws.state(), await s.ws.acceptTemplate(s.scenario.checks.map(c => c.id))]
+  // The shift has only the template so far, whose verdict is known without starting a sandbox for it. A lesson with a goal
+  // has no production to judge it by.
+  const [state, base] = [await s.ws.state(), practice(s) ? { build: 'ok' as const, checks: [] } : await s.ws.acceptTemplate(s.scenario.checks.map(c => c.id))]
   s.priv.verdicts[state.head] = { ...base, diff: '' }
   s.world.term = [{ c: 'dim', t: `Last login: ${shortDay(s.world.calendar.weekday)} ${s.world.calendar.date} 09:14 on ttys002` }, { c: 'dim', t: 'Type "help" to see what is available here.' }]
   s.set({ files: await s.ws.tree(), code: state, deploys: [{ sha: state.head, at: minutes(s.scenario.clock.start) - 300, by: s.scenario.mentor, kind: 'deploy', checks: visible(s, base.checks) }] })
   triggers.schedule(s, s.scenario.triggers, 'start')
-  if (s.scenario.clock.deadline) s.priv.beats.push({ at: minutes(s.scenario.clock.deadline), kind: 'demo' })
+  if (s.scenario.clock.deadline && !practice(s)) s.priv.beats.push({ at: minutes(s.scenario.clock.deadline), kind: 'demo' })
   s.log('start', { level: s.world.level })
 }
 /** The clock only runs while someone is watching. */
@@ -102,6 +126,7 @@ function resolveIncident(s: Session) {
 
 async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
   const say = (t: string, c: TermLine['c'] = 'out') => emit({ c, t })
+  if (practice(s)) throw new Refusal('ldg: this lesson has no production to deploy to. Your work is done when the steps in the top-left corner are.')
   const w = s.world, f = s.priv.f, m = w.simMin, live = w.deploys.at(-1)!
   const [sub, service] = args
   if (!sub || sub === 'help') { ['ldg status', 'ldg logs', 'ldg deploy auth-api --env prod', 'ldg rollback auth-api [--to <sha>]'].forEach(l => say(l, 'dim')); return 0 }
@@ -184,6 +209,7 @@ export async function refresh(s: Session) {
   s.set({ code: state, files })
   // Saves, commits, branch changes and every command end up here, so this is where the workspace is snapshotted (debounced).
   s.snap()
+  if (practice(s)) return progress(s, before, state)
   if (!before || state.head === before || s.priv.verdicts[state.head]) return
   s.log('commit', { sha: state.head, subject: state.subject })
   // Get ahead: find out now what this commit would do in production, and start on the coaching if it would do harm.
@@ -196,6 +222,14 @@ export async function refresh(s: Session) {
   if (v.build === 'ok' && failing(v.checks).length) void mentor.prepare(s, state.head, v, v.diff)
 }
 
+/** In a lesson with a goal: logs new commits and pushes for the recap, then sees how far the steps have got. */
+function progress(s: Session, before: string, state: CodeState) {
+  const f = s.priv.f
+  if (before && state.head !== before && !s.priv.events.some(e => e.type === 'commit' && e.sha === state.head)) s.log('commit', { sha: state.head, subject: state.subject })
+  for (const b of state.remote ?? []) if (!f.seen.includes('pushed:' + b)) { f.seen.push('pushed:' + b); if (b !== 'main') s.log('push', { branch: b }) }
+  checkGoal(s)
+}
+
 /** One line typed into the terminal, or sent by a button that types it for you. */
 export async function command(s: Session, raw: string) {
   const cmd = raw.trim().slice(0, 500)
@@ -203,7 +237,8 @@ export async function command(s: Session, raw: string) {
   if (s.world.code.busy) return s.term({ c: 'err', t: 'A command is still running. Stop it first.' })
   const f = s.priv.f, emit: Emit = l => s.term(l)
   s.term({ c: 'cmd', t: cmd })
-  s.set(w => ({ code: { ...w.code, busy: cmd.split(/\s+/)[0] } }))
+  const said = normalize(cmd)
+  s.set(w => ({ code: { ...w.code, busy: cmd.split(/\s+/)[0] }, ran: w.ran.includes(said) ? w.ran : [...w.ran, said].slice(-100) }))
   try {
     const argv = tokenize(cmd)
     if (argv[0] === 'clear') { s.world.term = []; s.send('term', { clear: true, lines: [] }) }
@@ -224,6 +259,7 @@ export async function saveFile(s: Session, path: string, text: string) {
   await s.ws.write(path, text)
   s.priv.f.editedAt = s.world.simMin
   s.log('edit', { path })
+  seen(s, 'file:' + path)
   await refresh(s)
 }
 
@@ -236,6 +272,7 @@ export function seen(s: Session, what: string) {
   } else if (kind === 'mail') {
     if (s.world.emails.some(e => e.id === id && !e.read)) s.set(w => ({ emails: w.emails.map(e => (e.id === id ? { ...e, read: true } : e)) }))
   } else if ((kind === 'file' || kind === 'doc') && !f.seen.includes(what)) { f.seen.push(what); s.log('seen', { what }) }
+  checkGoal(s)
 }
 export function patchMail(s: Session, id: string, p: { read?: boolean; flagged?: boolean; folder?: Folder }) {
   s.set(w => ({ emails: w.emails.map(e => (e.id === id ? { ...e, ...p } : e)) }))
@@ -250,6 +287,7 @@ function named(s: Session, text: string): PersonId | undefined {
 }
 /** The line a colleague falls back on when the model cannot be reached. */
 function scripted(s: Session, who: PersonId, firstAck: boolean): string {
+  if (practice(s)) return who === s.scenario.mentor ? 'Tell me what you tried and what you expected to happen, and I’ll come back with a question.' : 'Thanks, noted.'
   const f = s.priv.f, live = open(s), resolved = !!s.world.incident?.resolvedAt
   if (who === 'leo') return f.leo === 'deferred' ? 'no worries, I’ll poke around the test config' : f.leo === 'helped' && f.leoAskedAt !== undefined && !s.priv.events.some(e => e.type === 'leo-thanked') ? 'oh that’s so much faster. thank you!! owe you a coffee' : live ? 'want me to keep an eye on support tickets while you fix it?' : 'nice, thanks'
   if (who === 'priya') return firstAck ? 'Thanks for owning it. Post updates in #incidents every 10 minutes. Revert or patch is your call, but tell me which before you do it.' : live ? 'Ok. Tell me when it’s green.' : resolved ? 'Thanks. Postmortem in my inbox when you can.' : 'Sounds good.'
@@ -264,9 +302,13 @@ export function chat(s: Session, chan: ChanId, text: string, files: Attachment[]
   if (chan === s.scenario.mentor) f.askedDanielAt ??= m
   if (chan === 'leo' && f.leoAskedAt !== undefined && !f.leo) f.leo = /later|busy|after|swamped|not now/i.test(text) ? 'deferred' : 'helped'
 
-  const who = chan === 'team' ? named(s, text) ?? (text.includes('?') ? s.scenario.mentor : 'leo') : chan === 'incidents' ? named(s, text) ?? 'priya' : chan
+  // A DM goes to whoever is on the other end. In a shared channel, to whoever is named, else the colleague the channel belongs to.
+  const has = (id: PersonId) => !!s.scenario.cast[id]?.persona
+  const who = s.world.channels[chan]?.dm ? chan
+    : named(s, text) ?? (chan === 'team' && !text.includes('?') && has('leo') ? 'leo' : chan === 'incidents' && has('priya') ? 'priya' : s.scenario.mentor)
   const line = scripted(s, who, firstAck)
   if (who === 'leo' && f.leo === 'helped') s.log('leo-thanked')
+  checkGoal(s)
   void reply(s, who, { room: chan }, text + (files.length ? `\n[attached: ${files.map(a => (a.kind === 'code' ? a.path : a.kind === 'doc' ? 'wiki page ' + a.doc : a.kind === 'ticket' ? a.id : a.kind === 'upload' ? a.name : a.label)).join(', ')}]` : ''), line)
 }
 
@@ -282,13 +324,14 @@ export function mail(s: Session, a: { mode: 'reply' | 'new' | 'forward'; ref?: s
   const sent: Email = { id: 's' + s.id(), folder: 'sent', who: s.world.player, toName: to ? s.world.cast[to].name : (a.to ?? '').trim().slice(0, 120), subject: a.mode === 'reply' ? 'Re: ' + ref!.subject.replace(/^Re: /, '') : (a.subject ?? '').trim().slice(0, 140) || '(No subject)', time: s.now, read: true, body, files: a.files, thread: [] }
   s.set(x => ({ emails: [sent, ...x.emails.map(e => (e.id === answers?.id ? { ...e, read: true, thread: [...e.thread, { time: s.now, text: a.text, files: a.files }] } : e))] }))
   s.log('mail', { who: s.world.player, to: sent.toName, subject: sent.subject, text: a.text })
+  checkGoal(s)
   if (!to || !s.scenario.cast[to].persona) return
 
   const kind = answers?.kind
   if (kind === 'assign') f.assignAckAt ??= m
   if (kind === 'client' && f.clientAt === undefined) { f.clientAt = m; f.clientText = a.text; s.timeline(`Client update sent to ${shortName(clientOf(s.scenario))} (${player(s)})`, 'accent'); void mentor.review(s, 'client', a.text) }
   if (kind === 'pm' && f.pmAt === undefined) { f.pmAt = m; f.pmText = a.text; void mentor.review(s, 'pm', a.text) }
-  const sign = call(s, s.scenario.story.client)
+  const sign = s.world.cast[s.scenario.story.client] ? call(s, s.scenario.story.client) : ''
   const line = kind === 'assign' ? `Thanks ${player(s)}. Shout if you get stuck, and loop ${call(s, s.scenario.mentor)} in early on anything auth.`
     : kind === 'client' ? (open(s) ? `Thank you, ${player(s)}. Please let me know as soon as they can get in.\n${sign}` : `Confirmed, the team is back in. Thank you for writing to me directly.\n${sign}`)
     : kind === 'pm' ? 'Got it, thank you. We’ll go through the action items at standup tomorrow.'
@@ -298,7 +341,7 @@ export function mail(s: Session, a: { mode: 'reply' | 'new' | 'forward'; ref?: s
 }
 
 export function saveTicket(s: Session, id: string | undefined, p: Partial<Pick<Ticket, 'title' | 'desc' | 'status' | 'pri' | 'who' | 'pts'>>) {
-  if (id) return s.ticket(id, p, s.world.player)
+  if (id) { s.ticket(id, p, s.world.player); return checkGoal(s) }
   const n = Math.max(217, ...s.world.tickets.map(t => Number(t.id.replace('LED-', '')) || 0)) + 1
   const t: Ticket = { id: 'LED-' + n, title: p.title || 'Untitled', desc: p.desc ?? '', status: p.status ?? 'todo', who: p.who ?? s.world.player, pri: p.pri ?? 'Medium', pts: p.pts ?? null, comments: [], activity: [{ time: s.now, text: `${s.world.cast[s.world.player].name}: created the issue` }] }
   s.set(w => ({ tickets: [...w.tickets, t] }))
@@ -323,14 +366,15 @@ export function saveDoc(s: Session, id: string | undefined, d: Pick<Doc, 'title'
   return next.id
 }
 
-/** Ends the shift, from the player's End shift button. It counts as finished, which is what testing a draft needs, only once the
- * lesson's work is done: the fix shipped and everything live passes, hidden checks included. That is the guide's last phase. */
+/** Ends the shift, from the player's Finish lesson button. It counts as finished, which is what testing a draft needs, only once the
+ * lesson's work is done: every step, for a lesson with a goal; otherwise the fix shipped and everything live passes, hidden checks
+ * included, which is the guide's last phase. */
 export async function end(s: Session) {
   if (s.world.stage !== 'sim') return
   pause(s)
   void s.ws.close()
   const live = s.priv.verdicts[s.world.deploys.at(-1)!.sha]
-  s.priv.finished = s.priv.f.fixedAt !== undefined && !!live && !failing(live.checks).length
+  s.priv.finished = practice(s) ? stepsDone(s) : s.priv.f.fixedAt !== undefined && !!live && !failing(live.checks).length
   s.log('end', { finished: s.priv.finished })
   const { finished } = s.priv
   s.set({ stage: 'recap', typing: [], recap: { ready: false, happened: mentor.story(s), corrected: [], next: [], note: '', finished } })

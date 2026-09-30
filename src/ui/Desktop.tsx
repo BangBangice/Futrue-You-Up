@@ -111,10 +111,13 @@ const badgeOf = (s: State, id: AppId): number | string =>
 
 function Dock() {
   const mouseX = useMotionValue(Infinity)
+  // CloudWatch watches production, which a lesson with its own goal does not have.
+  const goal = useSim(s => !!s.goal)
+  const apps = goal ? APP_IDS.filter(id => id !== 'monitor') : APP_IDS
   return (
     <div className="dock-wrap">
       <motion.div className="dock" initial={{ y: 110, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ ...SPRING, delay: 0.28 }} onMouseMove={e => mouseX.set(e.clientX)} onMouseLeave={() => mouseX.set(Infinity)}>
-        {APP_IDS.map(id => <DockIcon key={id} id={id} mouseX={mouseX} />)}
+        {apps.map(id => <DockIcon key={id} id={id} mouseX={mouseX} />)}
       </motion.div>
     </div>
   )

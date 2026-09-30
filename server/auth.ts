@@ -48,7 +48,7 @@ const build = () => betterAuth({
     autoSignInAfterVerification: true,
     expiresIn: 24 * HOUR,
     sendVerificationEmail: ({ user, url }) => send(letter(user.email, 'Confirm your email for LARP', [
-      `Hi ${user.name},`, 'Confirm your email address to finish setting up your LARP account. Your shifts are kept with it.',
+      `Hi ${user.name},`, 'Confirm your email address to finish setting up your LARP account. Your lessons are kept with it.',
     ], { label: 'Confirm my email', url })),
   },
   socialProviders: googleEnabled()
