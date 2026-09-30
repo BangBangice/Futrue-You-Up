@@ -226,7 +226,7 @@ try {
   for (const u of [guest, unverified]) assert.equal((await suggest(u, { text: 'A fintech startup on a Friday' })).status, 403, `${u} gets no suggestions`)
   assert.deepEqual((await suggest(carol, { text: 'Too short' })).body, { suggestion: '' }, 'no suggestion before there is an idea')
   const stubbed = await suggest(carol, { text: 'A Friday before a release' })
-  assert.deepEqual([stubbed.status, stubbed.body.suggestion], [200, ' at a small fintech startup'])
+  assert.deepEqual([stubbed.status, stubbed.body.suggestion], [200, ' for a junior developer in their first week'])
   assert.equal((await call(carol, 'GET', '/generate')).body.remaining, 0, "suggestions don't spend generations")
   assert.equal((await suggest(bob, { text: 'Make the manager meaner', lessonId: lid })).status, 404, "no suggestions on someone else's lesson")
   const heardFor: string[] = []
@@ -234,7 +234,7 @@ try {
   completer.complete = async (text, base) => { heardFor.push(base?.title ?? ''); return text.includes('echo') ? '"the client echo and more"' : null }
   assert.deepEqual((await suggest(carol, { text: 'Make the client echo', lessonId: lid })).body, { suggestion: ' and more' }, 'the echo and quotes are trimmed')
   assert.ok(heardFor[0], 'a revision is suggested with the lesson in mind')
-  assert.deepEqual((await suggest(carol, { text: 'The model is not answering' })).body, { suggestion: '' })
+  assert.deepEqual((await suggest(carol, { text: 'The model is not answering' })).body, { suggestion: '', retry: true }, 'no answer is worth asking for again')
   completer.complete = realComplete
   let limited = 0
   for (let i = 0; i < SUGGESTIONS_PER_MINUTE; i++) if ((await suggest(alice, { text: `A fintech startup, take ${i}` })).status === 429) limited++

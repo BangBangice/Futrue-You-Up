@@ -12,11 +12,11 @@ export const MIN_TEXT = 12
 const MAX_SUGGESTION = 200
 export const PER_MINUTE = 20, PER_DAY = 500
 
-const SYSTEM = `You help an author describe a lesson for LARP, a workplace simulator. A lesson is one shift at a software company: the player joins a team, colleagues message them, email, chat and tickets land over the day, and they fix a bug in the code while all that pulls at their attention. An AI turns the author's description into the whole lesson.
+const SYSTEM = `You help an author describe a lesson for LARP, a workplace simulator that teaches the skills of a software job by doing them. The learner sits at a simulated work computer (a real code repository with git and a terminal, email, team chat, tickets and a wiki), works through a task, and a senior colleague coaches them. A lesson can teach any skill that fits: git basics, reading code, testing, debugging, code review, writing to a client, handling an incident, working with a team. An AI turns the author's description into the whole lesson.
 
-Continue the author's description where it stops, with the next few words or one short sentence (at most 25 words). Build on their idea; never change its direction or contradict it. Add what makes it concrete and easy to turn into a lesson, whichever is still missing: the company and what it sells, who is on the team and how they behave, what arrives in the inbox or chat and when, the deadline, the pressure or twist.
+Continue the author's description where it stops, with the next few words or one short sentence (at most 25 words). Build on their idea; never change its direction, topic or skill, and never contradict it. Add what makes it concrete and easy to turn into a lesson, whichever is still missing: who the learner is, the concrete steps they should practise, what a good result looks like, who coaches them, what arrives in the inbox or chat.
 
-The code is fixed: an auth service where SSO users get logged out after a token refresh. Weave that bug in if it fits; don't invent a different one.
+Stay on the author's topic. Don't bring in outages, deadlines, angry clients or a bug to fix unless the author already did.
 
 Answer with the exact characters to insert after the text, by calling suggest. If the text stops mid-word, finish that word. If it stops after a full word or punctuation, start with a space. Don't repeat what is already written. Write in the author's language and voice.`
 
@@ -42,19 +42,20 @@ export function join(text: string, raw: string): string {
 /** Without a model: a nudge towards whatever the description still lacks, so the box works offline and in the checks. */
 function stub(text: string): string {
   const t = text.toLowerCase(), ended = /[.!?]$/.test(text.trimEnd())
-  if (!/(startup|company|bank|shop|agency|fintech|saas)/.test(t)) return join(text, ended ? 'It happens at a small fintech startup.' : ' at a small fintech startup')
-  const nudge = !/(email|inbox|message|slack|teams|chat)/.test(t) ? 'Mid-morning, an angry client emails about customers being logged out.'
-    : !/(\d|morning|afternoon|noon|deadline|demo|release)/.test(t) ? 'All before a client demo at 3pm.'
-    : 'Meanwhile a junior colleague keeps asking for help.'
+  if (!/(junior|new hire|intern|beginner|graduate|learner|developer|engineer)/.test(t)) return join(text, ended ? 'It is for a junior developer in their first week.' : ' for a junior developer in their first week')
+  const nudge = !/(mentor|senior|lead|coach)/.test(t) ? 'A senior engineer coaches them over chat.'
+    : !/(step|then|first|finally)/.test(t) ? 'First they look around, then they make one small change.'
+    : 'They finish by telling the team what they did.'
   return join(text, ended ? nudge : '. ' + nudge)
 }
 
-/** The model's continuation. Swapped out by the checks. */
+/** The model's continuation, or null when it gave none: busy, down, or nothing usable. Swapped out by the checks. */
 export const model = {
   complete: async (text: string, base?: Scenario): Promise<string | null> => {
     if (mode() === 'stub') return stub(text)
     const about = base ? `They are asking for a change to their lesson "${base.title}": ${base.summary ?? ''}\n\n` : ''
-    const calls = await ask({ system: SYSTEM, user: `${about}The author's text so far:\n${text}`, tools: [SUGGEST], priority: 2, timeoutMs: 8_000, maxTokens: 120, optional: true })
+    // Reasoning tokens count against the budget too, so a tight one ends before the answer and comes back empty.
+    const calls = await ask({ system: SYSTEM, user: `${about}The author's text so far:\n${text}`, tools: [SUGGEST], priority: 2, timeoutMs: 8_000, maxTokens: 400, optional: true })
     const call = calls?.find(c => c.name === SUGGEST.name) ?? calls?.find(c => c.name === '_text')
     return typeof call?.args.text === 'string' ? call.args.text : null
   },
@@ -70,21 +71,22 @@ function allow(userId: string) {
   asked.set(userId, times)
 }
 
-/** A suggestion to append to the text, or '' when there is none worth showing. */
-export async function complete(userId: string, raw: { text?: unknown; lessonId?: unknown }): Promise<string> {
+/** A suggestion to append to the text, or '' when there is none worth showing. `retry` says there may be one if asked again in a
+ * moment: the model was busy or gave nothing usable, which is no verdict on the text. */
+export async function complete(userId: string, raw: { text?: unknown; lessonId?: unknown }): Promise<{ suggestion: string; retry?: true }> {
   await author(userId)
   const text = typeof raw.text === 'string' ? raw.text.slice(0, MAX_PROMPT) : ''
-  if (text.trim().length < MIN_TEXT) return ''
+  if (text.trim().length < MIN_TEXT) return { suggestion: '' }
   const id = typeof raw.lessonId === 'string' ? raw.lessonId : null
   if (id) await owned(userId, id)
   allow(userId)
   const base = id ? (await latest(id))?.spec as Scenario | undefined : undefined
   const answer = await model.complete(text, base)
-  if (!answer) return ''
+  if (answer === null) return { suggestion: '', retry: true }
   const s = join(text, answer)
-  return text.length + s.length > MAX_PROMPT ? '' : s
+  return { suggestion: text.length + s.length > MAX_PROMPT ? '' : s }
 }
 
 // ---------- routes: /api/my/lessons/complete ----------
 export const completeApi = Router()
-completeApi.post('/complete', async (req, res) => { res.json({ suggestion: await complete(who(res), req.body ?? {}) }) })
+completeApi.post('/complete', async (req, res) => { res.json(await complete(who(res), req.body ?? {})) })

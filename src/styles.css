@@ -760,6 +760,7 @@ button.chip.tag:hover, a.chip.tag:hover { background: var(--track); }
 .suggest-hint { color: var(--sub); opacity: 0.75; }
 .suggest-key { position: relative; align-self: end; justify-self: end; margin: 0 8px 6px 0; padding: 2px 6px; border-radius: 6px; background: var(--field); font-size: 11px; }
 .suggest-key:hover { color: var(--ink); }
+.suggest-wait { display: inline-flex; align-items: center; gap: 5px; pointer-events: none; }
 .suggest-key .on-touch { display: none; }
 @media (pointer: coarse) { .suggest-key .on-key { display: none; } .suggest-key .on-touch { display: inline; } }
 .suggest-key kbd { font: inherit; font-weight: 600; padding: 0 4px; border-radius: 4px; background: var(--chip); }
