@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Response } from 'express'
 import type { Scenario } from '../shared/scenario.ts'
-import { START, clock } from '../shared/types.ts'
+import { clock, minutes } from '../shared/types.ts'
 import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, PersonId, TermLine, Ticket, Tone, World } from '../shared/types.ts'
 import { aiProblem, onAiProblem } from './ai/llm.ts'
 import { Workspace } from './sandbox.ts'
@@ -144,10 +144,12 @@ export class Session {
 const sessions = new Map<string, Session>()
 const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
-// Persona cards and mentor guidance are prompts, so they stay on the server.
-export const roster = (sc = SCENARIO): Pick<World, 'cast' | 'channels' | 'player' | 'mentor' | 'levels'> => structuredClone({
+// Persona cards and mentor guidance are prompts, so they stay on the server. So do security checks: the browser must not learn they exist.
+export const roster = (sc = SCENARIO): Pick<World, 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact'> => structuredClone({
   cast: Object.fromEntries(Object.entries(sc.cast).map(([id, { persona: _, ...p }]) => [id, p])), channels: sc.channels, player: sc.player, mentor: sc.mentor,
   levels: Object.fromEntries(Object.entries(sc.levels).map(([k, { mentorGuidance: _, ...l }]) => [k, l])),
+  deadline: sc.clock.deadline ? minutes(sc.clock.deadline) : null,
+  impact: { alarmPercent: sc.alarmPercent, checks: sc.checks.filter(c => c.share > 0).map(({ security: _, ...c }) => c), customers: sc.customers },
 })
 
 /** Makes room, preferring a shift nobody is watching. Its open streams reconnect and reload it. */
@@ -163,7 +165,7 @@ export async function create(level: Level, background: string, pace: number, ai:
   const { spec, version } = await store().pickScenario(SCENARIO)
   const id = randomUUID()
   const world: World = {
-    id, stage: 'sim', level, background, ai, aiProblem: aiProblem(), pace, simMin: START,
+    id, stage: 'sim', level, background, ai, aiProblem: aiProblem(), pace, simMin: minutes(spec.clock.start),
     ...roster(spec), ...structuredClone(spec.seed), typing: [],
     files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
     deploys: [], incident: null, demo: 'pending',

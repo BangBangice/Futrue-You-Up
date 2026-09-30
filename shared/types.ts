@@ -51,7 +51,8 @@ export interface TermLine { c: 'cmd' | 'ok' | 'err' | 'dim' | 'out'; t: string }
 export interface TimelineEv { time: string; text: string; tone: Tone }
 
 // ---------- production health ----------
-export type CheckId = 'password_login' | 'dashboard_fallthrough' | 'sso_after_refresh' | 'api_key' | 'rejects_expired' | 'rejects_missing' | 'rejects_tampered'
+/** An id from the scenario's checks. */
+export type CheckId = string
 export interface Check { id: CheckId; ok: boolean; reason: string }
 export interface Deploy { sha: string; at: number; by: PersonId; kind: 'deploy' | 'rollback'; checks: Check[] }
 export interface Incident { id: string; sha: string; startedAt: number; resolvedAt: number | null; failing: CheckId[] }
@@ -68,6 +69,10 @@ export interface World {
   id: string; stage: 'sim' | 'recap'; level: Level; background: string; ai: 'live' | 'stub'
   /** Who is in this scenario and which cast member the player is. Fixed for the shift. */
   cast: Cast; channels: Channels; player: PersonId; mentor: PersonId
+  /** When the demo is, in sim minutes, or null when the scenario has none. */
+  deadline: number | null
+  /** What failing checks cost. Only the checks customers can feel. */
+  impact: Impact
   /** How each starting level is described on the start page. Empty until the scenario has loaded. */
   levels: Partial<Record<Level, { label: string; blurb: string }>>
   /** Why AI calls are failing right now, or null while they work. */
@@ -83,15 +88,17 @@ export interface World {
 }
 export type Patch = Partial<World>
 
-export const START = 790 // 1:10 PM, in minutes since midnight
-export const DEMO = 900 // 3:00 PM
 export const RATE = 41 // revenue exposed per incident minute
-export const ALARM = 5 // 401 rate (%) that fires the alarm
 export const PACES: [number, string][] = [[2, 'Relaxed'], [4, 'Normal'], [12, 'Demo']]
 
 export const clock = (m: number) => {
   const h24 = Math.floor(m / 60) % 24, mm = m % 60, h = ((h24 + 11) % 12) + 1
   return h + ':' + String(mm).padStart(2, '0') + ' ' + (h24 >= 12 ? 'PM' : 'AM')
+}
+/** The inverse of clock: "1:10 PM" is 790. NaN for anything else. */
+export const minutes = (t: string) => {
+  const [, h, mm, ap] = /^(\d{1,2}):(\d{2}) ([AP]M)$/.exec(t) ?? []
+  return ap ? (Number(h) % 12) * 60 + Number(mm) + (ap === 'PM' ? 720 : 0) : NaN
 }
 export const money = (n: number) => '$' + Math.round(n).toLocaleString('en-US')
 export const dur = (n: number) => (n >= 60 ? Math.floor(n / 60) + 'h ' + (n % 60) + 'm' : n + 'm')
@@ -109,56 +116,57 @@ export const COLS: [TicketStatus, string][] = [['todo', 'To do'], ['progress', '
 export const PRIORITIES: Priority[] = ['Urgent', 'High', 'Medium', 'Low']
 
 // ---------- who is hurt when a login path breaks ----------
-/** Accounts by how their people sign in. `password` and `sso` are user counts. */
-export const CUSTOMERS = [
-  { name: 'Northwind Freight', arr: '$84k', password: 22, sso: 38, note: 'Renewal demo 3:00 PM' },
-  { name: 'Osprey Logistics', arr: '$31k', password: 67, sso: 0, note: '' },
-  { name: 'Brightline Dental', arr: '$18k', password: 41, sso: 12, note: '' },
-  { name: 'Juniper & Co.', arr: '$9k', password: 19, sso: 0, note: '' },
-]
-export const OTHER_ACCOUNTS = 214
-/** Share of auth-api traffic (%) that turns into 401s when a check fails. Security checks cost nothing here: that is the point. */
-export const SHARE: Record<CheckId, number> = {
-  password_login: 34, dashboard_fallthrough: 4, api_key: 7, sso_after_refresh: 1.5,
-  rejects_expired: 0, rejects_missing: 0, rejects_tampered: 0,
+export interface CheckInfo {
+  id: CheckId; label: string
+  /** Share of auth-api traffic (%) that turns into 401s when it fails. Security checks cost nothing here: that is the point. */
+  share: number
+  /** Whose users are locked out when it fails. */
+  locks?: 'password' | 'sso'
 }
-export const CHECK_LABEL: Record<CheckId, string> = {
-  password_login: 'Email + password login', dashboard_fallthrough: 'Dashboard users without an API key',
-  sso_after_refresh: 'SSO session after token refresh', api_key: 'API key requests',
-  rejects_expired: 'Expired tokens are rejected', rejects_missing: 'Requests without a token are rejected',
-  rejects_tampered: 'Tampered tokens are rejected',
+/** An account, by how its people sign in. `password` and `sso` are user counts. */
+export interface Customer { name: string; arr: string; password: number; sso: number; note: string }
+/** The scenario's figures for what a broken deploy costs. The scenario itself fits, and so does the World's browser-safe copy. */
+export interface Impact {
+  /** 401 rate (%) that fires the alarm. */
+  alarmPercent: number
+  checks: CheckInfo[]
+  customers: { named: Customer[]; otherAccounts: number; otherPasswordUsers: number }
 }
 export const failing = (checks: Check[]) => checks.filter(c => !c.ok).map(c => c.id)
-export const failRate = (checks: Check[]) => failing(checks).reduce((n, id) => n + SHARE[id], 0)
+export const failRate = (imp: Impact, checks: Check[]) => failing(checks).reduce((n, id) => n + (imp.checks.find(c => c.id === id)?.share ?? 0), 0)
 /** True when customers can feel it (as opposed to a silent security hole). */
-export const isOutage = (checks: Check[]) => failRate(checks) > ALARM
+export const isOutage = (imp: Impact, checks: Check[]) => failRate(imp, checks) > imp.alarmPercent
+/** Users of an account locked out by these failing checks. */
+const lost = (imp: Impact, broken: CheckId[]) => {
+  const locks = new Set(imp.checks.filter(c => c.locks && broken.includes(c.id)).map(c => c.locks))
+  return (c: Pick<Customer, 'password' | 'sso'>) => (locks.has('password') ? c.password : 0) + (locks.has('sso') ? c.sso : 0)
+}
+/** Everyone who signs in with a password, and on how many accounts. */
+export const passwordUsers = ({ customers: c }: Impact) => ({ users: c.named.reduce((n, x) => n + x.password, 0) + c.otherPasswordUsers, accounts: c.named.filter(x => x.password).length + c.otherAccounts })
 
 /** The deploy that was live at sim minute m. */
 export const liveAt = (deploys: Deploy[], m: number) => deploys.findLast(d => d.at <= m) ?? deploys[0]
 /** 401 error rate (%) on auth-api at sim minute m: baseline noise plus whatever the live deploy breaks, eased in over the rollout. */
-export function errAt(deploys: Deploy[], m: number) {
+export function errAt(imp: Impact, deploys: Deploy[], m: number) {
   const noise = 0.45 + 0.22 * Math.sin(m * 1.7) + 0.12 * Math.sin(m * 0.6)
   const i = deploys.findLastIndex(d => d.at <= m)
   if (i < 0) return Math.max(0.1, noise)
-  const now = failRate(deploys[i].checks), before = i > 0 ? failRate(deploys[i - 1].checks) : now
+  const now = failRate(imp, deploys[i].checks), before = i > 0 ? failRate(imp, deploys[i - 1].checks) : now
   const k = Math.min(1, Math.max(0, (m - deploys[i].at) / 2.2))
   const level = before + (now - before) * k
   return Math.max(0.1, noise + level * (1 + 0.04 * Math.sin(m * 2.3)))
 }
 /** People who cannot sign in at sim minute m. Grows as sessions expire, up to everyone on the broken paths. */
-export function lockedAt(deploys: Deploy[], m: number) {
+export function lockedAt(imp: Impact, deploys: Deploy[], m: number) {
   const d = liveAt(deploys, m)
-  if (!d || !isOutage(d.checks)) return 0
-  const broken = failing(d.checks)
-  const perAccount = (c: { password: number; sso: number }) => (broken.includes('password_login') ? c.password : 0) + (broken.includes('sso_after_refresh') ? c.sso : 0)
-  const cap = CUSTOMERS.reduce((n, c) => n + perAccount(c), 0) + (broken.includes('password_login') ? 1191 : 0)
+  if (!d || !isOutage(imp, d.checks)) return 0
+  const per = lost(imp, failing(d.checks))
+  const cap = imp.customers.named.reduce((n, c) => n + per(c), 0) + per({ password: imp.customers.otherPasswordUsers, sso: 0 })
   return Math.max(0, Math.min(cap, Math.round(46 * (m - d.at - 1))))
 }
 /** Users locked out per named customer, easing in with the same curve. */
-export function lockedFor(deploys: Deploy[], m: number, c: { password: number; sso: number }) {
+export function lockedFor(imp: Impact, deploys: Deploy[], m: number, c: Pick<Customer, 'password' | 'sso'>) {
   const d = liveAt(deploys, m)
-  if (!d || !isOutage(d.checks)) return 0
-  const broken = failing(d.checks)
-  const total = (broken.includes('password_login') ? c.password : 0) + (broken.includes('sso_after_refresh') ? c.sso : 0)
-  return Math.round(total * Math.min(1, Math.max(0, (m - d.at) / 10)))
+  if (!d || !isOutage(imp, d.checks)) return 0
+  return Math.round(lost(imp, failing(d.checks))(c) * Math.min(1, Math.max(0, (m - d.at) / 10)))
 }

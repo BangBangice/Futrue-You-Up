@@ -2,7 +2,7 @@
 // this store keeps a copy, adds what only the browser knows (windows, drafts, open files), and sends the player's actions.
 import { useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
-import { APP_NAMES, START } from '../../shared/types.ts'
+import { APP_NAMES } from '../../shared/types.ts'
 import type { AppId, Attachment, ChanId, Doc, Folder, Level, Patch, Priority, TermLine, Theme, Ticket, World } from '../../shared/types.ts'
 
 export interface Win { open: boolean; min: boolean; max: boolean; x: number; y: number; w: number; h: number; z: number }
@@ -42,7 +42,8 @@ const view = (): View => ({
   seen: [], spot: null, guideOpen: true,
 })
 const nowhere = (): Omit<World, 'stage'> => ({
-  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: START, cast: {}, channels: {}, player: '', mentor: '', levels: {},
+  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: 0, cast: {}, channels: {}, player: '', mentor: '', levels: {}, deadline: null,
+  impact: { alarmPercent: 0, checks: [], customers: { named: [], otherAccounts: 0, otherPasswordUsers: 0 } },
   emails: [], chats: {}, unread: {}, typing: [],
   tickets: [], docs: [], files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
   deploys: [], incident: null, demo: 'pending', timeline: [], recap: null,
@@ -107,7 +108,7 @@ class Store {
     try {
       const res = await fetch('/api/scenario')
       if (!res.ok) return
-      const cast = await res.json() as Pick<World, 'cast' | 'channels' | 'player' | 'mentor' | 'levels'>
+      const cast = await res.json() as Pick<World, 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact'>
       this.set(s => (s.stage === 'onboard' ? cast : null))
     } catch { /* the server is down; starting a shift will say so */ }
   }

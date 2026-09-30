@@ -25,6 +25,27 @@
       "mentorGuidance": "Career switcher. Brings real professional experience from another field and is new to software conventions. Use one analogy from their previous field. Hold a high bar on communication."
     }
   },
+  "clock": { "start": "1:10 PM", "deadline": "3:00 PM" },
+  "alarmPercent": 5,
+  "checks": [
+    { "id": "password_login", "label": "Email + password login", "share": 34, "locks": "password" },
+    { "id": "dashboard_fallthrough", "label": "Dashboard users without an API key", "share": 4 },
+    { "id": "sso_after_refresh", "label": "SSO session after token refresh", "share": 1.5, "locks": "sso" },
+    { "id": "api_key", "label": "API key requests", "share": 7 },
+    { "id": "rejects_expired", "label": "Expired tokens are rejected", "share": 0, "security": true },
+    { "id": "rejects_missing", "label": "Requests without a token are rejected", "share": 0, "security": true },
+    { "id": "rejects_tampered", "label": "Tampered tokens are rejected", "share": 0, "security": true }
+  ],
+  "customers": {
+    "named": [
+      { "name": "Northwind Freight", "arr": "$84k", "password": 22, "sso": 38, "note": "Renewal demo 3:00 PM" },
+      { "name": "Osprey Logistics", "arr": "$31k", "password": 67, "sso": 0 },
+      { "name": "Brightline Dental", "arr": "$18k", "password": 41, "sso": 12 },
+      { "name": "Juniper & Co.", "arr": "$9k", "password": 19, "sso": 0 }
+    ],
+    "otherAccounts": 214,
+    "otherPasswordUsers": 1191
+  },
   "cast": {
     "maya": {
       "name": "Maya Chen",

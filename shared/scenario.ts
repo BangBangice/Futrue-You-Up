@@ -1,8 +1,9 @@
 // The shape of a scenario file. Pure: the server validates with it, and a scenario editor can reuse it.
 // Data: the company, the cast with each AI colleague's persona card, the mentor and how they pitch to each level, the channels, the starting content and the scripted triggers.
-// Still code: the demo, the checks, the facts each persona is told, the mentor's rules and scripted fallback lines.
+// Also data: the clock, the production checks' labels and what each costs, and the customers.
+// Still code: what the checks test (server/acceptance.ts), the facts each persona is told, the mentor's rules and scripted fallback lines.
 import { z } from 'zod'
-import { APP_IDS, COLS, FOLDERS, PRIORITIES } from './types.ts'
+import { APP_IDS, COLS, FOLDERS, PRIORITIES, minutes } from './types.ts'
 
 const line = z.string().min(1)
 const key = z.string().regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes')
@@ -100,6 +101,16 @@ const persona = z.strictObject({
   internal: z.boolean(),
 })
 export type Persona = z.infer<typeof persona>
+const time = z.string().regex(/^(1[0-2]|[1-9]):[0-5]\d [AP]M$/, 'a time like "1:10 PM"')
+const check = z.strictObject({
+  id: z.string().regex(/^[a-z0-9_]+$/, 'lowercase letters, digits and underscores'), label: line,
+  /** Share of traffic (%) that fails when this check does. */
+  share: z.number().min(0, 'a share cannot be negative'),
+  /** Guards against letting the wrong people in. Its verdict never reaches the browser, and a failure is silent. */
+  security: z.boolean().optional(),
+  locks: z.enum(['password', 'sso']).optional(),
+})
+const customer = z.strictObject({ name: line, arr: line, password: z.number().int().min(0), sso: z.number().int().min(0), note: z.string().default('') })
 const level = z.strictObject({ label: line, blurb: line, mentorGuidance: line })
 
 export const Scenario = z.object({
@@ -113,6 +124,13 @@ export const Scenario = z.object({
   /** The cast member who coaches the player, in the DM channel that shares their id. */
   mentor: line,
   levels: z.strictObject({ newgrad: level, bootcamp: level, switcher: level }),
+  /** When the shift starts, and when the demo is. */
+  clock: z.strictObject({ start: time, deadline: time.optional() }),
+  /** 401 rate (%) that fires the alarm. */
+  alarmPercent: z.number().positive(),
+  /** Must match the ids server/acceptance.ts reports, in any order. */
+  checks: z.array(check).min(1),
+  customers: z.strictObject({ named: z.array(customer), otherAccounts: z.number().int().min(0), otherPasswordUsers: z.number().int().min(0) }),
   /** Only a member with a persona answers the player. */
   cast: z.record(key, z.object({ name: line, init: line, color: z.string().regex(/^#[0-9a-f]{6}$/i, 'a #rrggbb colour'), email: line, title: line, persona: persona.optional() })),
   /** A DM channel's id is the id of the person on the other end. */
@@ -176,6 +194,11 @@ export const Scenario = z.object({
   s.triggers.forEach((t, i) => { if (scoped(t.if) && t.when.on !== 'incident.opened') bad(['triggers', i, 'if'], '"incident": "still-open" only applies to triggers on incident.opened') })
   unique('trigger', s.triggers.map(t => t.id), ['triggers'])
   s.triggers.forEach((t, i) => { if (t.id === 'demo') bad(['triggers', i, 'id'], 'the id "demo" is reserved') })
+  unique('check', s.checks.map(c => c.id), ['checks'])
+  s.checks.forEach((c, i) => { if (c.security && c.share) bad(['checks', i, 'share'], 'a security check fails silently, so its share must be 0') })
+  if (s.clock.deadline && minutes(s.clock.deadline) <= minutes(s.clock.start)) bad(['clock', 'deadline'], 'the deadline must be after the start')
+  const demo = (c: Cond | undefined): boolean => !!c && (!!c.demo || !!c.all?.some(demo) || !!c.any?.some(demo) || demo(c.not))
+  s.triggers.forEach((t, i) => { if (!s.clock.deadline && (demo(t.if) || JSON.stringify(t.do).includes('{{timeToDemo}}'))) bad(['triggers', i], 'uses the demo, so the clock needs a deadline') })
   // Wiki pages link to each other as [text](doc:id).
   docs.forEach((d, i) => { for (const [, id] of d.body.matchAll(/\]\(doc:([^)\s]+)\)/g)) if (!docIds.has(id)) bad(['seed', 'docs', i, 'body'], `links to missing doc "${id}"`) })
 })

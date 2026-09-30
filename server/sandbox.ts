@@ -40,6 +40,15 @@ export const FAKE_HOME = '/Users/maya/ledgerly-api'
 export class Refusal extends Error {}
 export type Emit = (line: TermLine) => void
 export interface Verdict { build: 'ok' | 'broken'; error?: string; checks: Check[] }
+/** The harness is code and the scenario is data, so they can drift apart. A mismatch counts as a broken build rather than a verdict nobody can read. */
+export function conform(v: Verdict, ids: string[]): Verdict {
+  if (v.build !== 'ok') return v
+  const got = v.checks.map(c => c.id), missing = ids.filter(id => !got.includes(id)), extra = got.filter((id, i) => !ids.includes(id) || got.indexOf(id) !== i)
+  if (!missing.length && !extra.length) return v
+  const error = `the production checks do not match the scenario (${[missing.length && `missing ${missing.join(', ')}`, extra.length && `unexpected ${extra.join(', ')}`].filter(Boolean).join('; ')})`
+  console.error(`[acceptance] ${error}`)
+  return { build: 'broken', error, checks: [] }
+}
 
 const GIT_SUBCOMMANDS = ['status', 'diff', 'log', 'show', 'add', 'commit', 'restore', 'checkout', 'switch', 'branch', 'stash', 'reset', 'revert', 'rm', 'mv', 'blame']
 const GIT_FLAGS = /^(-[0-9]+|-m|-a|-am|-p|-A|-b|-B|-d|-D|-s|-sb|-u|-v|-q|-f|-r|-n|--|--staged|--cached|--stat|--oneline|--graph|--all|--amend|--no-edit|--hard|--soft|--mixed|--name-only|--name-status|--short|--branch|--patch|--decorate|--abbrev-commit|--force|--theirs|--ours|--worktree|--source|--include-untracked|--max-count=\d+|--(pretty|format)=[\w%:() ,.'-]+)$/
@@ -214,11 +223,11 @@ export class Workspace {
     return code
   }
 
-  /** Runs the hidden production checks against whatever is in the working tree. */
-  async accept(): Promise<Verdict> {
+  /** Runs the hidden production checks against whatever is in the working tree. `ids` are the checks the scenario declares. */
+  async accept(ids: string[]): Promise<Verdict> {
     const { out } = await this.node([ACCEPTANCE, this.root], [this.root, ACCEPTANCE], undefined, 12_000)
     const line = out.split('\n').findLast(l => l.startsWith('@@CHECKS@@'))
-    if (line) return JSON.parse(line.slice(10))
+    if (line) return conform(JSON.parse(line.slice(10)), ids)
     return { build: 'broken', error: out.split('\n').find(l => /Error|error/.test(l))?.trim().slice(0, 300) ?? 'the service did not start', checks: [] }
   }
 

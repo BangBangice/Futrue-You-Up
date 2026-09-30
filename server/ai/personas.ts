@@ -1,5 +1,5 @@
 // The people in the scenario. Each is a card from the scenario, a view of the facts they could plausibly know, and the things they are able to do.
-import { CHECK_LABEL, COLS, DEMO, PRIORITIES, clock, dur, errAt, failing, isOutage, lockedAt } from '../../shared/types.ts'
+import { COLS, PRIORITIES, clock, dur, errAt, failing, isOutage, lockedAt, minutes } from '../../shared/types.ts'
 import type { ChanId, Email, PersonId, TicketStatus } from '../../shared/types.ts'
 import type { ToolName } from '../../shared/scenario.ts'
 import type { Session } from '../world.ts'
@@ -20,9 +20,9 @@ const TOOLS: Record<ToolName, (who: PersonId, s: Session) => Tool> = {
 
 /** What is true right now, as far as this person could know. The single source every persona and the mentor draw on. */
 export function facts(s: Session, who: PersonId | 'mentor'): string {
-  const w = s.world, f = s.priv.f, m = w.simMin, live = w.deploys.at(-1)!
-  const out = [`Time now: ${clock(m)}, Tuesday. Northwind Freight renewal demo: ${w.demo === 'postponed' ? 'postponed to Thursday' : w.demo === 'held' ? 'went ahead at 3:00 PM' : `3:00 PM, in ${dur(Math.max(0, DEMO - m))}`}.`]
-  const outage = isOutage(live.checks), broken = failing(live.checks).filter(c => c !== 'sso_after_refresh').map(c => CHECK_LABEL[c].toLowerCase())
+  const w = s.world, f = s.priv.f, m = w.simMin, live = w.deploys.at(-1)!, sc = s.scenario, due = sc.clock.deadline
+  const out = [`Time now: ${clock(m)}, Tuesday.${due ? ` Northwind Freight renewal demo: ${w.demo === 'postponed' ? 'postponed to Thursday' : w.demo === 'held' ? `went ahead at ${due}` : `${due}, in ${dur(Math.max(0, minutes(due) - m))}`}.` : ''}`]
+  const outage = isOutage(sc, live.checks), broken = failing(live.checks).filter(c => c !== 'sso_after_refresh').map(c => sc.checks.find(x => x.id === c)!.label.toLowerCase())
 
   if (who === 'marta') {
     if (outage) out.push(`Since about ${clock(live.at + 1)} her finance contractors, who sign in with email and password, land back on the sign-in page. Her colleagues on SSO can still get in.`)
@@ -35,8 +35,8 @@ export function facts(s: Session, who: PersonId | 'mentor'): string {
   const me = s.world.cast[s.world.player]
   out.push(`${me.name}, ${me.title}. ${s.scenario.playerBrief} Priya assigned her LED-214 (${t.title}) at 1:10 PM. It is now "${COLS.find(c => c[0] === t.status)![1]}"${t.reopened ? ', reopened' : ''}.`)
   out.push(`Live in production: auth-api@${live.sha}, ${live.kind === 'rollback' ? 'rolled back' : 'deployed'} by ${w.cast[live.by].name} at ${clock(live.at)}.`)
-  out.push(`auth-api 401 error rate: ${errAt(w.deploys, m).toFixed(1)}% (alarm at 5%, normal about 0.5%).`)
-  if (outage) out.push(`Failing right now: ${broken.join('; ')}. About ${lockedAt(w.deploys, m).toLocaleString('en-US')} people cannot sign in, including Northwind’s 22 finance contractors. SSO and API-key users ${broken.some(b => b.includes('api key')) ? 'are partly affected' : 'are fine'}.`)
+  out.push(`auth-api 401 error rate: ${errAt(sc, w.deploys, m).toFixed(1)}% (alarm at ${sc.alarmPercent}%, normal about 0.5%).`)
+  if (outage) out.push(`Failing right now: ${broken.join('; ')}. About ${lockedAt(sc, w.deploys, m).toLocaleString('en-US')} people cannot sign in, including Northwind’s 22 finance contractors. SSO and API-key users ${broken.some(b => b.includes('api key')) ? 'are partly affected' : 'are fine'}.`)
   if (w.incident) out.push(w.incident.resolvedAt ? `${w.incident.id} was opened automatically by the CloudWatch alarm at ${clock(w.incident.startedAt)} and resolved at ${clock(w.incident.resolvedAt)} (${w.incident.resolvedAt - w.incident.startedAt} min).` : `${w.incident.id} was opened automatically by the CloudWatch alarm at ${clock(w.incident.startedAt)} and is still open (${m - w.incident.startedAt} min). Owner: Maya.`)
   else out.push('No incident today so far.')
   if (w.incident && !w.incident.resolvedAt) out.push(f.ackAt !== undefined ? `Maya acknowledged the incident at ${clock(f.ackAt)}.` : 'Maya has not acknowledged the incident anywhere yet.')

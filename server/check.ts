@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { Scenario } from '../shared/scenario.ts'
 import { errAt, isOutage } from '../shared/types.ts'
 import * as director from './director.ts'
+import { conform } from './sandbox.ts'
 import { loadScenario } from './scenarios.ts'
 import { create } from './world.ts'
 
@@ -37,7 +38,8 @@ assert.equal(s.world.code.branch, 'maya/led-214-sso-expiry')
 assert.ok(s.world.files.includes(vs))
 assert.deepEqual(s.world.deploys[0].checks.filter(c => !c.ok).map(c => c.id), ['sso_after_refresh'], 'production starts with the LED-214 bug and nothing else')
 assert.ok(!s.world.deploys[0].checks.some(c => c.id.startsWith('rejects')), 'security verdicts are never sent to the browser')
-assert.ok(!isOutage(s.world.deploys[0].checks))
+assert.ok(!JSON.stringify(s.world.impact).includes('rejects'), 'nor are the security checks themselves')
+assert.ok(!isOutage(s.scenario, s.world.deploys[0].checks))
 
 ticks(3)
 assert.equal(s.world.chats.team.at(-1)!.who, 'daniel', 'Daniel warns about verifySession at +1')
@@ -93,7 +95,7 @@ assert.equal(incident(), null, 'the alarm takes two minutes to fire')
 ticks(2)
 assert.equal(incident()?.id, 'INC-37')
 assert.equal(s.world.tickets[0].id, 'INC-37')
-assert.ok(errAt(s.world.deploys, s.world.simMin + 3) > 30, 'error rate spikes')
+assert.ok(errAt(s.scenario, s.world.deploys, s.world.simMin + 3) > 30, 'error rate spikes')
 assert.ok(s.world.emails.some(e => e.who === 'jira' && e.subject.includes('INC-37')), 'Jira notifies by email')
 
 // ---- the mentor steps in at once, with facts, and then coaches
@@ -119,7 +121,7 @@ ticks(2)
 assert.ok(incident()!.resolvedAt, 'the incident resolves once the rollback has rolled out')
 assert.equal(ticket('INC-37').status, 'done')
 ticks(6)
-assert.ok(errAt(s.world.deploys, s.world.simMin) < 5, 'error rate recovers')
+assert.ok(errAt(s.scenario, s.world.deploys, s.world.simMin) < 5, 'error rate recovers')
 await settle(120)
 assert.match(daniel().map(m => m.text).join('\n'), /Rolling back first was the right call/)
 
@@ -196,8 +198,20 @@ assert.deepEqual(broken(c => { c.cast.leo.persona.can = ['send_teams_message'] }
 assert.deepEqual(broken(c => { c.cast.leo.persona.rooms.push('random') }), ['no channel with id "random"'])
 assert.deepEqual(broken(c => { c.mentor = 'nobody' }), ['no cast member with id "nobody"'])
 assert.deepEqual(broken(c => { c.mentor = 'sam' }), ['the mentor needs a DM channel with id "sam"'])
+assert.deepEqual(broken(c => { c.checks[1].id = 'password_login' }), ['duplicate check id "password_login"'])
+assert.deepEqual(broken(c => { c.checks[0].share = -1 }), ['a share cannot be negative'])
+assert.deepEqual(broken(c => { c.checks[4].share = 2 }), ['a security check fails silently, so its share must be 0'])
+assert.deepEqual(broken(c => { c.clock.deadline = '1:00 PM' }), ['the deadline must be after the start'])
+assert.deepEqual(broken(c => { c.clock.start = '13:10' }), ['a time like "1:10 PM"'])
+assert.deepEqual(broken(c => { delete c.clock.deadline }), ['uses the demo, so the clock needs a deadline', 'uses the demo, so the clock needs a deadline'])
+// The hidden harness is code: if it and the scenario disagree about which checks exist, the build counts as broken.
+const ids = good.checks.map(c => c.id), verdict = { build: 'ok' as const, checks: ids.map(id => ({ id, ok: true, reason: '' })) }
+assert.equal(conform(verdict, ids), verdict)
+assert.match(conform(verdict, [...ids.slice(1), 'new_check']).error ?? '', /missing new_check; unexpected password_login/)
 // Versions stored before personas were data must not parse, so runs fall back to the file rather than lose every AI colleague.
 assert.ok(broken(c => { delete c.mentor }).length)
+// Nor those stored before the clock, checks and customers were, so they fall back to the file too.
+assert.ok(broken(c => { delete c.checks; delete c.customers }).length)
 
 s.stop()
 console.log(`server check passed · ${s.priv.events.length} events · ${events.length} stream messages`)
