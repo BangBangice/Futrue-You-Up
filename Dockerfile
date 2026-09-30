@@ -17,7 +17,9 @@ COPY server ./server
 COPY shared ./shared
 COPY scenarios ./scenarios
 COPY workspace-template ./workspace-template
-# Player code runs in child processes, so the whole server runs unprivileged.
+COPY docker-entrypoint.sh ./
+# Player code runs in child processes, so the whole server runs unprivileged. The entrypoint starts as root only to
+# hand a mounted volume at .data to the node user, then drops to it (docker-entrypoint.sh).
 RUN mkdir .data && chown node:node .data
-USER node
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["node", "--no-warnings", "--experimental-strip-types", "server/index.ts"]
