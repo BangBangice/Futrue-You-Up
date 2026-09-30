@@ -67,7 +67,7 @@ const postgres: RunStore = {
     db().insert(runEvents).values({ runId: s.world.id, seq: s.priv.events.length, simMin: t, type, data })
       .catch(err => console.warn(`[runs] ${s.world.id}: event not logged`, err))
   },
-  async loadRun(id) {
+  async loadRun(id, _dir, file) {
     const [row] = await db().select({ run: runs, spec: scenarioVersions.spec }).from(runs)
       .innerJoin(scenarioVersions, eq(runs.scenarioVersionId, scenarioVersions.id)).where(eq(runs.id, id))
     if (!row) return null
@@ -75,7 +75,10 @@ const postgres: RunStore = {
     const logged = await db().select().from(runEvents).where(eq(runEvents.runId, id)).orderBy(asc(runEvents.seq))
     // Events are written as they happen, the rest on a debounce, so the table can be ahead of priv.
     if (logged.length > priv.events.length) priv.events = logged.map(e => ({ ...(e.data as object), t: e.simMin, type: e.type }))
-    return { world: row.run.world as World, priv, scenario: Scenario.parse(row.spec), rev: row.run.version }
+    // A run pinned to a version written for an older schema keeps going on the current file rather than failing to load.
+    const spec = Scenario.safeParse(row.spec)
+    if (!spec.success) console.warn(`[runs] ${id}: its scenario version no longer matches the schema, using ${file.id}.json`)
+    return { world: row.run.world as World, priv, scenario: spec.success ? spec.data : file, rev: row.run.version }
   },
 }
 
