@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { bigserial, boolean, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 const at = (name: string) => timestamp(name, { withTimezone: true }).notNull().defaultNow()
@@ -5,9 +6,14 @@ const at = (name: string) => timestamp(name, { withTimezone: true }).notNull().d
 export const scenarios = pgTable('scenarios', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
+  /** Null for a built-in lesson; set null too if its author deletes their account, so the lesson outlives them. */
+  authorId: text('author_id').references(() => users.id, { onDelete: 'set null' }),
+  visibility: text('visibility', { enum: ['private', 'unlisted', 'public'] }).notNull().default('private'),
+  tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+  summary: text('summary'),
   createdAt: at('created_at'),
   updatedAt: at('updated_at'),
-})
+}, t => [index().using('gin', t.tags)])
 
 export const scenarioVersions = pgTable('scenario_versions', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -9,6 +9,7 @@ import { Refusal } from './sandbox.ts'
 import { authEnabled, googleEnabled, me } from './auth.ts'
 import type { Me } from './auth.ts'
 import { mailReady } from './mail.ts'
+import { lessonTags, listLessons } from './lessons.ts'
 import { listRuns } from './runs.ts'
 import { DEFAULT_SCENARIO, catalog, scenarioFile } from './scenarios.ts'
 import { create, find, roster, valid } from './world.ts'
@@ -60,6 +61,9 @@ api.get('/scenario', (req, res) => {
   if (!sc) throw new Missing('No such scenario.')
   res.json(roster(sc))
 })
+// The library is browsable before signing in, like a shop window.
+api.get('/lessons', async (req, res) => { res.json(await listLessons(req.query)) })
+api.get('/lessons/tags', async (_req, res) => { res.json(await lessonTags()) })
 
 api.get('/auth-config', (_req, res) => {
   const on = authEnabled()
