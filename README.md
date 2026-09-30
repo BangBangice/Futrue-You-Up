@@ -45,6 +45,17 @@ npm run db:seed-scenarios         # publishes scenarios/*.json that changed
 
 On Railway, `railway.json` runs `db:migrate` and `db:seed-scenarios` before each deploy, so edited scenario files reach new shifts without a manual step.
 
+#### Accounts
+
+Only with a database. Without `DATABASE_URL` there are no accounts and the old gate applies (this machine only, `APP_PASSWORD` or `PUBLIC_ACCESS=1`). With it, [Better Auth](https://www.better-auth.com) (`server/auth.ts`, mounted at `/api/auth`) replaces that gate: players sign in, as a guest for now, and each shift belongs to whoever started it. Someone else's shift answers 404.
+
+| Variable | |
+|---|---|
+| `BETTER_AUTH_SECRET` | Signs sessions and encrypts the JWT signing keys. Required in production (`openssl rand -base64 32`). Changing it breaks the stored keys: clear the `jwks` table when you do |
+| `BETTER_AUTH_URL` | The address players use, e.g. `https://larp.owsome.org` |
+
+Other services can check a player with a JWT from `GET /api/auth/token` against the keys at `GET /api/auth/jwks`. Admins are promoted by hand: `update users set role = 'admin' where email = '...'`. `npm run check:auth` checks sign-in and ownership against a running database.
+
 ### What you can do in a shift
 
 | App | What is real |
