@@ -14,7 +14,8 @@
     "llm:smoke": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/ai/llm.ts"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@monaco-editor/react": "^4.7.0",

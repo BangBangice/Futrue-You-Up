@@ -1,10 +1,12 @@
 // Plays a whole shift against the real server code, with the model stubbed out. Run with: npm run check
-// Covers: the three code outcomes, the incident, the mentor, mail and chat, tickets and docs, and the sandbox guards.
+// Covers: the three code outcomes, the incident, the mentor, mail and chat, tickets and docs, the sandbox guards, and scenario validation.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { Scenario } from '../shared/scenario.ts'
 import { errAt, isOutage } from '../shared/types.ts'
 import * as director from './director.ts'
+import { loadScenario } from './scenarios.ts'
 import { create } from './world.ts'
 
 process.env.LLM = 'stub'
@@ -165,6 +167,15 @@ assert.ok(recap.happened.some(l => /Rolled production back/.test(l)) && recap.ha
 assert.ok(!JSON.stringify(s.world).includes('must-never-reach'), 'the key is not in the world')
 assert.equal(execFileSync('git', ['check-ignore', '.env', '.data'], { cwd: new URL('..', import.meta.url).pathname }).toString().trim(), '.env\n.data')
 assert.ok(!readFileSync(new URL('../.data/sessions/' + s.world.id + '/events.jsonl', import.meta.url), 'utf8').includes('must-never-reach'))
+
+// ---- scenario files: broken references are refused before a shift can start
+const good = loadScenario('ledgerly-day2')
+const broken = (edit: (s: any) => void) => { const c = structuredClone(good) as any; edit(c); const r = Scenario.safeParse(c); return r.success ? [] : r.error.issues.map(i => i.message) }
+assert.deepEqual(broken(() => {}), [])
+assert.deepEqual(broken(c => { c.seed.emails[0].files[0].id = 'LED-999' }), ['no ticket with id "LED-999"'])
+assert.deepEqual(broken(c => { c.seed.docs[0].body += ' [x](doc:nope)' }), ['links to missing doc "nope"'])
+assert.deepEqual(broken(c => { c.seed.tickets[1].id = 'LED-214' }), ['duplicate ticket id "LED-214"'])
+assert.ok(broken(c => { c.seed.emails[0].who = 'nobody' }).length === 1, 'unknown people are refused')
 
 s.stop()
 console.log(`server check passed · ${s.priv.events.length} events · ${events.length} stream messages`)
