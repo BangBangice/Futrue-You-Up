@@ -3,7 +3,7 @@
 // The opening steps are scenario data (shared/guide.ts evaluates them); the phases after the first deploy are still here.
 import { NEW, done, stepsFor } from '../../shared/guide.ts'
 import type { ShowMe } from '../../shared/guide.ts'
-import { clock, firstName } from '../../shared/types.ts'
+import { clock, firstName, their } from '../../shared/types.ts'
 import type { AppId, ChanId, Email, PersonId } from '../../shared/types.ts'
 import { live, sim } from './store.ts'
 import type { State } from './store.ts'
@@ -100,7 +100,7 @@ export function guide(s: State): Guide {
       steps: [
         { id: 'update', text: 'Tell #incidents that service is restored', done: saidIn('incidents', lastAlert('ok')), show: inChat('incidents') },
         ...mentor(lastAlert('fire')),
-        ...(pm ? [{ id: 'pm', text: `Send ${call(pm.who)} a short postmortem`, done: pmDone, hint: 'Reply to her email, or write it as a page in Confluence. The template is there too.', show: inMail(pm, true) }] : []),
+        ...(pm ? [{ id: 'pm', text: `Send ${call(pm.who)} a short postmortem`, done: pmDone, hint: `Reply to ${their(s.cast[pm.who] ?? {})} email, or write it as a page in Confluence. The template is there too.`, show: inMail(pm, true) }] : []),
         ...(fixed ? [] : ship(true)),
         ...replies().filter(x => !x.done),
       ],

@@ -1,5 +1,5 @@
 // The people in the scenario. Each is a card from the scenario, a view of the facts they could plausibly know, and the things they are able to do.
-import { COLS, PRIORITIES, clock, dur, errAt, failing, firstName, isOutage, lockedAt, minutes, shortName } from '../../shared/types.ts'
+import { COLS, PRIORITIES, clock, dur, errAt, failing, firstName, isOutage, lockedAt, minutes, shortName, their } from '../../shared/types.ts'
 import type { ChanId, Email, PersonId, TicketStatus } from '../../shared/types.ts'
 import { clientOf } from '../../shared/scenario.ts'
 import type { ToolName } from '../../shared/scenario.ts'
@@ -22,13 +22,14 @@ const TOOLS: Record<ToolName, (who: PersonId, s: Session) => Tool> = {
 /** What is true right now, as far as this person could know. The single source every persona and the mentor draw on. */
 export function facts(s: Session, who: PersonId | 'mentor'): string {
   const w = s.world, f = s.priv.f, m = w.simMin, live = w.deploys.at(-1)!, sc = s.scenario, due = sc.clock.deadline, story = sc.story, client = clientOf(sc)
-  const out = [`Time now: ${clock(m)}, Tuesday.${due ? ` ${client.name} ${story.deadline}: ${w.demo === 'postponed' ? `postponed to ${story.movedTo}` : w.demo === 'held' ? `went ahead at ${due}` : `${due}, in ${dur(Math.max(0, minutes(due) - m))}`}.` : ''}`]
+  const out = [`Time now: ${clock(m)}, ${story.weekday}.${due ? ` ${client.name} ${story.deadline}: ${w.demo === 'postponed' ? `postponed to ${story.movedTo}` : w.demo === 'held' ? `went ahead at ${due}` : `${due}, in ${dur(Math.max(0, minutes(due) - m))}`}.` : ''}`]
   const outage = isOutage(sc, live.checks), broken = failing(live.checks).filter(c => c !== 'sso_after_refresh').map(c => sc.checks.find(x => x.id === c)!.label.toLowerCase())
 
   if (who === story.client) {
-    if (outage) out.push(`Since about ${clock(live.at + 1)} her ${story.staff}, who sign in with email and password, land back on the sign-in page. Her colleagues on SSO can still get in.`)
-    else if (w.incident?.resolvedAt) out.push(`Her ${story.staff} could not sign in from about ${clock(w.incident.startedAt)} to ${clock(w.incident.resolvedAt)}. They can sign in again now.`)
-    else out.push('Nothing is visibly wrong from her side today.')
+    const hers = their(w.cast[who]), Hers = hers[0].toUpperCase() + hers.slice(1)
+    if (outage) out.push(`Since about ${clock(live.at + 1)} ${hers} ${story.staff}, who sign in with email and password, land back on the sign-in page. ${Hers} colleagues on SSO can still get in.`)
+    else if (w.incident?.resolvedAt) out.push(`${Hers} ${story.staff} could not sign in from about ${clock(w.incident.startedAt)} to ${clock(w.incident.resolvedAt)}. They can sign in again now.`)
+    else out.push(`Nothing is visibly wrong from ${hers} side today.`)
     return out.map(l => '- ' + l).join('\n')
   }
 

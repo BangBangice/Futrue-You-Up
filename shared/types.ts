@@ -10,11 +10,18 @@ export interface Person {
   name: string; init: string; color: string; email: string; title: string
   /** What colleagues call them, when not the first word of their name. */
   short?: string
+  /** How the engine's own lines refer to them. They/their when not given. */
+  pronouns?: 'she' | 'he' | 'they'
 }
 export interface Channel { label: string; topic: string; dm?: boolean }
 export type Cast = Record<PersonId, Person>
 /** What colleagues call someone: `short` if set, else the first word of their name. */
 export const firstName = (p: Pick<Person, 'name' | 'short'>) => p.short ?? p.name.split(' ')[0]
+const PRONOUNS = { she: ['she', 'her'], he: ['he', 'his'], they: ['they', 'their'] } as const
+/** "she", "he" or "they", as the scenario gives them. */
+export const they = (p: Pick<Person, 'pronouns'>) => PRONOUNS[p.pronouns ?? 'they'][0]
+/** "her", "his" or "their", as the scenario gives them. */
+export const their = (p: Pick<Person, 'pronouns'>) => PRONOUNS[p.pronouns ?? 'they'][1]
 /** Up to two letters for an avatar: "Maya Chen" is MC. */
 export const initials = (name: string) => name.trim().split(/\s+/).map(w => [...w][0] ?? '').join('').slice(0, 2).toUpperCase() || '?'
 /** Their username on the work laptop and in branch names, like "maya". */
