@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ArrowRight, Bug, ChartColumn, Check, ClipboardList, Cloud, LayoutDashboard, LoaderCircle, Server, TriangleAlert } from 'lucide-react'
 import { LEVELS } from '../../shared/types.ts'
+import { useAccount } from '../sim/auth.ts'
 import { sim, useSim } from '../sim/store.ts'
 import { Avatar, Brand, EASE, Segmented, ThemeToggle, rise, stagger } from './bits.tsx'
 
@@ -15,12 +16,15 @@ export function Onboarding() {
   const error = useSim(s => s.error)
   const aiProblem = useSim(s => s.aiProblem)
   const player = useSim(s => s.player), me = useSim(s => s.cast[s.player])
+  const account = useAccount()
   useEffect(() => { void sim.checkAi(); void sim.loadCast() }, [])
   return (
     <div className="page">
       <header className="topbar">
         <Brand />
-        <div className="topbar-right"><ThemeToggle />{me && <><span>{me.name}</span><Avatar who={player} size={28} /></>}</div>
+        <div className="topbar-right">
+          {account && <><span>{account.name}</span><button className="btn sm btn-chip" onClick={() => void account.signOut()}>Sign out</button></>}
+          <ThemeToggle />{me && <><span>{me.name}</span><Avatar who={player} size={28} /></>}</div>
       </header>
       <motion.main className="onboard" variants={stagger(0.07, 0.05)} initial="hidden" animate="show">
         <section className="hero">

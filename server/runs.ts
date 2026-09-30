@@ -7,10 +7,10 @@ import { Scenario } from '../shared/scenario.ts'
 import type { World } from '../shared/types.ts'
 import { db, dbEnabled } from './db/index.ts'
 import { publish } from './db/publish.ts'
-import { runEvents, runs, scenarioVersions } from './db/schema.ts'
+import { runEvents, runs, scenarioVersions, scenarios } from './db/schema.ts'
 import type { Event, Priv, Session } from './world.ts'
 
-export interface Saved { world: World; priv: Priv; scenario: Scenario; rev: number }
+export interface Saved { world: World; priv: Priv; scenario: Scenario; rev: number; userId: string | null }
 export interface RunStore {
   /** The scenario a new run plays, and the version row it is pinned to. */
   pickScenario(file: Scenario): Promise<{ spec: Scenario; version?: string }>
@@ -29,7 +29,7 @@ const files: RunStore = {
   async loadRun(_id, dir, file) {
     const path = join(dir, 'session.json')
     if (!existsSync(path)) return null
-    return { ...JSON.parse(await readFile(path, 'utf8')), scenario: file, rev: 0 }
+    return { ...JSON.parse(await readFile(path, 'utf8')), scenario: file, rev: 0, userId: null }
   },
 }
 
@@ -44,7 +44,7 @@ const postgres: RunStore = {
     return { spec: file, version: (await publish(file)).id }
   },
   async createRun(s, version) {
-    await db().insert(runs).values({ id: s.world.id, scenarioVersionId: version!, level: s.world.level, world: s.world, priv: s.priv })
+    await db().insert(runs).values({ id: s.world.id, userId: s.userId, scenarioVersionId: version!, level: s.world.level, world: s.world, priv: s.priv })
   },
   async saveRun(s) {
     const ended = s.world.stage === 'recap'
@@ -78,10 +78,18 @@ const postgres: RunStore = {
     // A run pinned to a version written for an older schema keeps going on the current file rather than failing to load.
     const spec = Scenario.safeParse(row.spec)
     if (!spec.success) console.warn(`[runs] ${id}: its scenario version no longer matches the schema, using ${file.id}.json`)
-    return { world: row.run.world as World, priv, scenario: spec.success ? spec.data : file, rev: row.run.version }
+    return { world: row.run.world as World, priv, scenario: spec.success ? spec.data : file, rev: row.run.version, userId: row.run.userId }
   },
 }
 
 // Chosen on first use, so a script can drop DATABASE_URL before any run starts.
 let chosen: RunStore | undefined
 export const store = () => (chosen ??= dbEnabled() ? postgres : files)
+
+/** A player's shifts, newest first. Postgres only: without it there are no accounts. */
+export const listRuns = (userId: string) => db()
+  .select({ id: runs.id, scenarioId: scenarios.id, title: scenarios.title, level: runs.level, status: runs.status, startedAt: runs.startedAt, updatedAt: runs.updatedAt })
+  .from(runs).innerJoin(scenarioVersions, eq(runs.scenarioVersionId, scenarioVersions.id)).innerJoin(scenarios, eq(scenarioVersions.scenarioId, scenarios.id))
+  .where(eq(runs.userId, userId)).orderBy(desc(runs.startedAt))
+
+export const moveRuns = (from: string, to: string) => db().update(runs).set({ userId: to }).where(eq(runs.userId, from))

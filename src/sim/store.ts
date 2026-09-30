@@ -112,8 +112,15 @@ class Store {
     } catch { /* the server is down; starting a shift will say so */ }
   }
   leave() { this.stream?.close(); this.stream = null }
-  /** Picks up a shift that was already running, for instance after a reload. */
-  resume() { const id = sessionStorage.getItem(KEY); if (id) this.connect(id) }
+  /** Picks up a shift that was already running: this tab's, or with an account the newest one still going. */
+  resume = async (accounts: boolean) => {
+    const id = sessionStorage.getItem(KEY)
+    if (id) return this.connect(id)
+    if (!accounts) return
+    const runs = await fetch('/api/me/runs').then(r => (r.ok ? r.json() as Promise<{ id: string; status: string }[]> : []), () => [])
+    const run = runs.find(r => r.status === 'active')
+    if (run && !this.state.id) this.connect(run.id)
+  }
   private connect(id: string) {
     this.stream?.close()
     sessionStorage.setItem(KEY, id)
@@ -141,9 +148,11 @@ class Store {
       this.set({ online: false })
       if (es.readyState !== EventSource.CLOSED || this.stream !== es) return // the browser is retrying by itself
       // Closed for good. Either the server no longer knows this shift, or it is briefly unreachable.
-      const gone = await fetch(`/api/sessions/${id}/file?path=package.json`).then(r => r.status === 404, () => false)
+      const status = await fetch(`/api/sessions/${id}/file?path=package.json`).then(r => r.status, () => 0)
       if (this.stream !== es) return
-      if (gone) this.replay()
+      // Signed out elsewhere, or the session expired: reloading goes back to the sign-in page.
+      if (status === 401) location.reload()
+      else if (status === 404) this.replay()
       else setTimeout(() => { if (this.stream === es) this.connect(id) }, 2000)
     }
   }
@@ -322,7 +331,6 @@ export const sim = new Store()
 export const wallpaperName = new URLSearchParams(location.search).get('wallpaper') ?? 'Dusk'
 // Leaving the page is not an error: close the stream first so it is not mistaken for one.
 addEventListener('pagehide', () => sim.leave())
-sim.resume()
 
 /** Subscribe to a slice of the shift. Select existing state, not freshly built objects. */
 export function useSim<T>(select: (s: State) => T): T {

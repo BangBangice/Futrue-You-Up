@@ -10,7 +10,7 @@ import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, Person
 import { aiProblem, onAiProblem } from './ai/llm.ts'
 import { Workspace } from './sandbox.ts'
 import type { Verdict } from './sandbox.ts'
-import { store } from './runs.ts'
+import { moveRuns, store } from './runs.ts'
 import { loadScenario } from './scenarios.ts'
 
 export const DATA = join(dirname(fileURLToPath(import.meta.url)), '..', '.data', 'sessions')
@@ -48,6 +48,8 @@ export class Session {
   timeScale = 1
   /** The run's row version in the store, for optimistic locking. */
   rev = 0
+  /** Who owns the run. Kept out of the world, which goes to the browser. Null without accounts. */
+  userId: string | null = null
   private saving: ReturnType<typeof setTimeout> | undefined
   private writing = Promise.resolve(true)
   readonly dir: string
@@ -152,7 +154,7 @@ async function evict() {
   await drop(s.world.id)
 }
 
-export async function create(level: Level, background: string, pace: number, ai: World['ai']) {
+export async function create(level: Level, background: string, pace: number, ai: World['ai'], userId: string | null = null) {
   await evict()
   const { spec, version } = await store().pickScenario(SCENARIO)
   const id = randomUUID()
@@ -164,6 +166,7 @@ export async function create(level: Level, background: string, pace: number, ai:
     timeline: [{ time: '12:02 PM', text: 'Deploy billing-api@e0c3a18 (Daniel)', tone: 'dim' }], recap: null,
   }
   const s = new Session(world, { uid: 100, beats: [], verdicts: {}, attempts: 0, aiCalls: 0, events: [], f: { seen: [], praised: [], reviewed: [] } }, spec)
+  s.userId = userId
   await mkdir(s.dir, { recursive: true })
   s.ws = await Workspace.open(s.dir)
   await store().createRun(s, version)
@@ -184,6 +187,7 @@ async function load(id: string) {
   // Shifts saved before the cast moved into the world have none of their own.
   const s = new Session({ ...roster(saved.scenario), ...saved.world, aiProblem: aiProblem(), typing: [], code: { ...saved.world.code, busy: null } }, saved.priv, saved.scenario)
   s.rev = saved.rev
+  s.userId = saved.userId
   await mkdir(s.dir, { recursive: true })
   s.ws = await Workspace.open(s.dir)
   sessions.set(id, s)
@@ -196,4 +200,9 @@ export async function drop(id: string) {
   await s?.stop()
 }
 export const all = () => [...sessions.values()]
+/** Hands a guest's runs to the account they linked to, in the store and in the cache. */
+export async function adopt(from: string, to: string) {
+  await moveRuns(from, to)
+  all().forEach(s => { if (s.userId === from) s.userId = to })
+}
 onAiProblem(p => all().forEach(s => s.set({ aiProblem: p })))

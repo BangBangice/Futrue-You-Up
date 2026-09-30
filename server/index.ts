@@ -1,10 +1,12 @@
 // One process, one port: the API, and the UI (through Vite while developing, from dist/ once built).
 import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
+import { toNodeHandler } from 'better-auth/node'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mode } from './ai/llm.ts'
 import { closeDb, dbEnabled, migrateDb } from './db/index.ts'
+import { auth, authEnabled } from './auth.ts'
 import { api, errors } from './routes.ts'
 import { all } from './world.ts'
 
@@ -15,10 +17,13 @@ const PUBLIC = process.env.PUBLIC_ACCESS === '1'
 const app = express()
 app.disable('x-powered-by')
 
-// This server runs the player's code. Locally it only answers to this machine; once hosted
-// publicly (APP_PASSWORD set), a shared password stands in for that instead. PUBLIC_ACCESS=1 lets
-// anyone in with no login, leaning on the sandbox's guards and the per-shift AI call limits.
-if (PUBLIC) {
+// This server runs the player's code. With a database, accounts decide who gets in (routes.ts).
+// Without one it only answers to this machine; once hosted publicly (APP_PASSWORD set), a shared
+// password stands in for that instead. PUBLIC_ACCESS=1 lets anyone in with no login, leaning on
+// the sandbox's guards and the per-shift AI call limits.
+if (authEnabled()) {
+  console.log('Accounts are on: every shift belongs to a signed-in user (guests included).')
+} else if (PUBLIC) {
   console.warn('PUBLIC_ACCESS=1: anyone with the URL can use this server, no login.')
 } else if (APP_PASSWORD) {
   app.use((req: Request, res: Response, next: NextFunction) => {
@@ -40,6 +45,8 @@ const jsonOnly = (req: Request, res: Response, next: NextFunction) => {
 }
 // Nothing under /api may be cached, even by a CDN told to cache everything: it is all per-shift state.
 app.use('/api', (_req: Request, res: Response, next: NextFunction) => { res.set('Cache-Control', 'no-store'); next() })
+// Better Auth reads its own request bodies, so it goes before express.json.
+if (authEnabled()) app.all('/api/auth/{*path}', toNodeHandler(auth()))
 app.use('/api', jsonOnly, express.json({ limit: '300kb' }), api)
 app.use('/api', errors)
 

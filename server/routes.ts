@@ -6,6 +6,8 @@ import type { Attachment, Level } from '../shared/types.ts'
 import { mode, probe } from './ai/llm.ts'
 import * as director from './director.ts'
 import { Refusal } from './sandbox.ts'
+import { authEnabled, me } from './auth.ts'
+import { listRuns } from './runs.ts'
 import { create, find, roster, valid } from './world.ts'
 
 class Bad extends Error { status = 400 }
@@ -34,10 +36,11 @@ function attachments(v: unknown): Attachment[] {
     return []
   })
 }
-async function session(req: Request) {
+// Someone else's shift is missing, not forbidden, so its id is not confirmed to exist.
+async function session(req: Request, res: Response) {
   const id = req.params.id
   const s = valid(id) ? await find(id) : null
-  if (!s) throw new Missing('That shift no longer exists.')
+  if (!s || s.userId !== (res.locals.me?.id ?? null)) throw new Missing('That shift no longer exists.')
   return s
 }
 
@@ -51,16 +54,39 @@ api.get('/health', async (_req, res) => {
 // The start page shows who you will be before a shift exists.
 api.get('/scenario', (_req, res) => { res.json(roster()) })
 
+api.get('/auth-config', (_req, res) => {
+  const on = authEnabled()
+  res.json({ enabled: on, guest: on, email: false, google: false })
+})
+
+// Everything below needs a signed-in user (a guest counts) once accounts are on.
+api.use(async (req, res, next) => {
+  if (!authEnabled()) return next()
+  const who = await me(req.headers)
+  if (!who) return void res.status(401).json({ error: 'Sign in first.' })
+  res.locals.me = who
+  next()
+})
+
+api.get('/me', (_req, res) => {
+  if (!res.locals.me) throw new Missing('Accounts are off on this server.')
+  res.json(res.locals.me)
+})
+api.get('/me/runs', async (_req, res) => {
+  if (!res.locals.me) throw new Missing('Accounts are off on this server.')
+  res.json(await listRuns(res.locals.me.id))
+})
+
 api.post('/sessions', async (req, res) => {
   const level = pick(req.body?.level, LEVELS, 'level')
   const speed = PACES.map(p => p[0]).includes(req.body?.pace) ? req.body.pace : 4
-  const s = await create(level, maybe(req.body?.background, 400).trim(), speed, mode())
+  const s = await create(level, maybe(req.body?.background, 400).trim(), speed, mode(), res.locals.me?.id ?? null)
   await director.start(s)
   res.status(201).json({ id: s.world.id })
 })
 
 api.get('/sessions/:id/events', async (req, res) => {
-  const s = await session(req)
+  const s = await session(req, res)
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
   res.write(`event: snapshot\ndata: ${JSON.stringify({ seq: s.seq, world: s.world })}\n\n`)
   s.clients.add(res)
@@ -74,19 +100,19 @@ api.get('/sessions/:id/events', async (req, res) => {
 })
 
 api.get('/sessions/:id/file', async (req, res) => {
-  const s = await session(req), path = text(req.query.path, 300, 'path')
+  const s = await session(req, res), path = text(req.query.path, 300, 'path')
   res.json({ path, text: await s.ws.read(path, req.query.rev === 'HEAD' ? 'HEAD' : undefined) })
   if (req.query.rev !== 'HEAD') director.seen(s, 'file:' + path)
 })
 api.put('/sessions/:id/file', async (req, res) => {
-  const s = await session(req)
+  const s = await session(req, res)
   if (typeof req.body?.text !== 'string') throw new Bad('text is required')
   await director.saveFile(s, text(req.body.path, 300, 'path'), req.body.text)
   res.json({ ok: true })
 })
 
 api.post('/sessions/:id/act', async (req, res) => {
-  const s = await session(req), a = req.body ?? {}
+  const s = await session(req, res), a = req.body ?? {}
   if (s.world.stage !== 'sim') throw new Bad('This shift has ended.')
   const files = attachments(a.files)
   switch (a.type) {
