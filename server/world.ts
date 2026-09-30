@@ -12,13 +12,11 @@ import { aiProblem, onAiProblem } from './ai/llm.ts'
 import { Workspace } from './sandbox.ts'
 import type { Verdict } from './sandbox.ts'
 import { deleteRuns, moveRuns, store } from './runs.ts'
-import { loadScenario } from './scenarios.ts'
+import { DEFAULT_SCENARIO, scenarioFile } from './scenarios.ts'
 
 export const DATA = join(dirname(fileURLToPath(import.meta.url)), '..', '.data', 'sessions')
 // A cache of live shifts, not the record of them: an evicted shift is saved first and reloads on its next request.
 const MAX_SESSIONS = 32, MAX_TERM = 400
-// Loaded once at startup, so a broken scenario file stops the server instead of a shift.
-const SCENARIO = loadScenario('ledgerly-day2')
 
 export interface Beat { at: number; kind: string; inc?: string }
 export interface Event { t: number; type: string; [k: string]: unknown }
@@ -147,7 +145,7 @@ const sessions = new Map<string, Session>()
 const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
 // Persona cards and mentor guidance are prompts, so they stay on the server. So do security checks: the browser must not learn they exist.
-export const roster = (sc = SCENARIO): Pick<World, 'company' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
+export const roster = (sc: Scenario): Pick<World, 'company' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
   company: sc.company.name,
   cast: Object.fromEntries(Object.entries(sc.cast).map(([id, { persona: _, ...p }]) => [id, p])), channels: sc.channels, player: sc.player, mentor: sc.mentor,
   levels: Object.fromEntries(Object.entries(sc.levels).map(([k, { mentorGuidance: _, ...l }]) => [k, l])),
@@ -164,10 +162,12 @@ async function evict() {
   await drop(s.world.id)
 }
 
-/** `who` is the person playing. Without accounts the scenario's own player is used. */
-export async function create(level: Level, background: string, pace: number, ai: World['ai'], userId: string | null = null, who?: { name: string; short?: string }) {
+/** `who` is the person playing. Without accounts the scenario's own player is used. `scenario` is an id from the catalog. */
+export async function create(level: Level, background: string, pace: number, ai: World['ai'], userId: string | null = null, who?: { name: string; short?: string }, scenario = DEFAULT_SCENARIO) {
+  const file = scenarioFile(scenario)
+  if (!file) throw new Error(`No scenario "${scenario}".`)
   await evict()
-  const { spec: picked, version } = await store().pickScenario(SCENARIO)
+  const { spec: picked, version } = await store().pickScenario(file)
   const spec = personalize(picked, who ?? picked.cast[picked.player])
   const id = randomUUID()
   const world: World = {
@@ -193,7 +193,7 @@ export async function find(id: string): Promise<Session | null> {
   return loading.get(id)!
 }
 async function load(id: string) {
-  const saved = await store().loadRun(id, join(DATA, id), SCENARIO)
+  const saved = await store().loadRun(id, join(DATA, id))
   if (!saved) return null
   await evict()
   // Shifts saved before the cast moved into the world have none of their own.

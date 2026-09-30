@@ -7,6 +7,7 @@ import { Scenario } from '../shared/scenario.ts'
 import type { World } from '../shared/types.ts'
 import { db, dbEnabled } from './db/index.ts'
 import { publish } from './db/publish.ts'
+import { DEFAULT_SCENARIO, scenarioFile } from './scenarios.ts'
 import { runEvents, runs, scenarioVersions, scenarios } from './db/schema.ts'
 import type { Event, Priv, Session } from './world.ts'
 
@@ -18,18 +19,23 @@ export interface RunStore {
   /** False when another writer got there first. */
   saveRun(s: Session): Promise<boolean>
   appendEvent(s: Session, e: Event): void
-  loadRun(id: string, dir: string, file: Scenario): Promise<Saved | null>
+  loadRun(id: string, dir: string): Promise<Saved | null>
 }
+
+/** The file a saved run plays on: its own scenario's, or the default's once that file is gone. */
+const fileFor = (id: string) => scenarioFile(id) ?? scenarioFile(DEFAULT_SCENARIO)!
 
 const files: RunStore = {
   pickScenario: async file => ({ spec: file }),
   createRun: async () => {},
-  saveRun: s => writeFile(join(s.dir, 'session.json'), JSON.stringify({ world: s.world, priv: s.priv })).then(() => true, () => false),
+  saveRun: s => writeFile(join(s.dir, 'session.json'), JSON.stringify({ scenario: s.scenario.id, world: s.world, priv: s.priv })).then(() => true, () => false),
   appendEvent: (s, e) => { appendFile(join(s.dir, 'events.jsonl'), JSON.stringify(e) + '\n').catch(() => {}) },
-  async loadRun(_id, dir, file) {
+  async loadRun(_id, dir) {
     const path = join(dir, 'session.json')
     if (!existsSync(path)) return null
-    return { ...JSON.parse(await readFile(path, 'utf8')), scenario: file, rev: 0, userId: null }
+    // Runs saved before scenarios were picked per run have no id: they all played the default.
+    const { scenario = DEFAULT_SCENARIO, world, priv } = JSON.parse(await readFile(path, 'utf8'))
+    return { world, priv, scenario: fileFor(scenario), rev: 0, userId: null }
   },
 }
 
@@ -67,8 +73,8 @@ const postgres: RunStore = {
     db().insert(runEvents).values({ runId: s.world.id, seq: s.priv.events.length, simMin: t, type, data })
       .catch(err => console.warn(`[runs] ${s.world.id}: event not logged`, err))
   },
-  async loadRun(id, _dir, file) {
-    const [row] = await db().select({ run: runs, spec: scenarioVersions.spec }).from(runs)
+  async loadRun(id) {
+    const [row] = await db().select({ run: runs, spec: scenarioVersions.spec, scenarioId: scenarioVersions.scenarioId }).from(runs)
       .innerJoin(scenarioVersions, eq(runs.scenarioVersionId, scenarioVersions.id)).where(eq(runs.id, id))
     if (!row) return null
     const priv = row.run.priv as Priv
@@ -76,7 +82,7 @@ const postgres: RunStore = {
     // Events are written as they happen, the rest on a debounce, so the table can be ahead of priv.
     if (logged.length > priv.events.length) priv.events = logged.map(e => ({ ...(e.data as object), t: e.simMin, type: e.type }))
     // A run pinned to a version written for an older schema keeps going on the current file rather than failing to load.
-    const spec = Scenario.safeParse(row.spec)
+    const spec = Scenario.safeParse(row.spec), file = fileFor(row.scenarioId)
     if (!spec.success) console.warn(`[runs] ${id}: its scenario version no longer matches the schema, using ${file.id}.json`)
     return { world: row.run.world as World, priv, scenario: spec.success ? spec.data : file, rev: row.run.version, userId: row.run.userId }
   },

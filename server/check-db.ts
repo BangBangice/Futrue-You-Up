@@ -2,16 +2,17 @@
 import assert from 'node:assert/strict'
 import { eq } from 'drizzle-orm'
 import { closeDb, db, dbEnabled, migrateDb } from './db/index.ts'
-import { runEvents, runs } from './db/schema.ts'
+import { runEvents, runs, scenarioVersions } from './db/schema.ts'
 import * as director from './director.ts'
 import { store } from './runs.ts'
+import { scenarioFile } from './scenarios.ts'
 import { create, drop, find } from './world.ts'
 
 process.env.LLM = 'stub'
 if (!dbEnabled()) throw new Error('Set DATABASE_URL to run this check.')
 await migrateDb()
 
-const s = await create('bootcamp', 'Ten years in logistics', 4, 'stub')
+const s = await create('bootcamp', 'Ten years in logistics', 4, 'stub', null, undefined, 'ledgerly-day2')
 s.timeScale = 0.001
 await director.start(s)
 for (let i = 0; i < 4; i++) director.tick(s)
@@ -36,12 +37,19 @@ const logged = await db().select().from(runEvents).where(eq(runEvents.runId, id)
 assert.deepEqual(logged.map(e => e.seq).sort((a, b) => a - b), priv.events.map((_: unknown, i: number) => i + 1), 'every event is in run_events')
 
 // Two copies of one run: the second writer is refused rather than overwriting the first.
-const other = (await store().loadRun(id, back.dir, back.scenario))!
+const other = (await store().loadRun(id, back.dir))!
 back.set({ pace: 8 })
 assert.equal(await back.flush(), true)
 const stale = { world: other.world, priv: other.priv, rev: other.rev, dir: back.dir } as typeof back
 assert.equal(await store().saveRun(stale), false, 'a stale version is refused')
 assert.equal(((await db().select().from(runs).where(eq(runs.id, id)))[0].world as { pace: number }).pace, 8)
+
+// A run pinned to a version that no longer parses falls back to its own scenario's file.
+const [junk] = await db().insert(scenarioVersions).values({ scenarioId: 'ledgerly-day2', version: -Date.now() % 2e9, spec: {} }).returning({ id: scenarioVersions.id })
+await db().update(runs).set({ scenarioVersionId: junk.id }).where(eq(runs.id, id))
+assert.deepEqual((await store().loadRun(id, back.dir))!.scenario, scenarioFile('ledgerly-day2'))
+await db().update(runs).set({ scenarioVersionId: row.scenarioVersionId }).where(eq(runs.id, id))
+await db().delete(scenarioVersions).where(eq(scenarioVersions.id, junk.id))
 
 await director.end(back)
 assert.equal(await back.flush(), true)
