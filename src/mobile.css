@@ -89,6 +89,14 @@
   .guide-head { height: var(--guide-h); padding: 0 14px; }
   .guide-head b { font-size: 14px; }
   .guide-track { margin: 0 14px 10px; }
+  .guide-road { margin: -6px 14px 4px; }
+  .gseg { padding: 6px 0; }
+  .guide-where { margin: -2px 8px 4px; padding: 5px 6px; font-size: 12.5px; }
+  .guide-map { margin: 0 8px 8px; }
+  .gsec { padding: 7px 8px; font-size: 13.5px; }
+  .guide-peek > b { padding: 0 14px 6px; font-size: 14px; }
+  .guide-peek-head { padding-right: 8px; }
+  .guide-back { padding: 6px 8px; font-size: 13px; }
   .guide-sub { padding: 0 14px 8px; font-size: 13px; }
   .guide-steps { padding: 0 8px 8px; }
   .gstep { gap: 10px; padding: 8px 8px 8px 9px; font-size: 14px; }
@@ -104,6 +112,9 @@
   .guide[data-folded] .guide-next { order: 1; flex: 1; min-width: 0; padding: 0 0 0 14px; font-size: 13.5px; }
   .guide[data-folded] .guide-next::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
   .guide[data-folded] .guide-track { position: absolute; inset: auto 0 0; height: 2px; margin: 0; border-radius: 0; }
+  .guide[data-folded] .guide-road { position: absolute; inset: auto 0 0; gap: 2px; margin: 0; pointer-events: none; }
+  .guide[data-folded] .gseg { padding: 0; }
+  .guide[data-folded] .gseg > span { height: 2px; border-radius: 0; }
 
   /* ───────── App chrome ───────── */
   .titlebar, .brandbar { gap: 10px; padding: 0 12px; }

@@ -245,6 +245,38 @@ img { display: block; user-select: none; }
 .guide-fold.shut { transform: rotate(-90deg); }
 .guide-track { flex: none; margin: 0 12px 10px; }
 .guide-track i { transition: width 0.5s var(--ease); }
+.guide-road { flex: none; display: flex; gap: 3px; margin: -5px 12px 5px; }
+/* A tall button round a thin bar, so a segment is easy to hit. */
+.gseg { flex: 1 1 0; min-width: 0; padding: 5px 0; }
+.gseg > span { display: block; height: 4px; border-radius: 3px; background: var(--track); overflow: hidden; transition: box-shadow 0.15s; }
+.gseg i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.5s var(--ease); }
+/* May never happen: shorter, and dashed. */
+.gseg.iffy { flex-grow: 0.6; }
+.gseg.iffy > span { background: repeating-linear-gradient(90deg, var(--track) 0 4px, transparent 4px 7px); }
+.gseg:hover > span { box-shadow: 0 0 0 1px var(--edge); }
+.gseg.peek > span { box-shadow: 0 0 0 1.5px var(--accent); }
+.guide[data-folded] .gseg > span { box-shadow: none; }
+.guide-where { flex: none; display: flex; align-items: center; gap: 4px; margin: -2px 6px 4px; padding: 3px 6px; border-radius: 6px; font-size: 11.5px; color: var(--sub); text-align: left; }
+.guide-where > span:first-child { flex: none; font-weight: 600; color: var(--ink); }
+.guide-where:hover { background: var(--hover); }
+.guide-where .guide-fold { margin-left: auto; }
+.guide-map { flex: none; list-style: none; margin: 0 6px 6px; padding: 2px 0; border-radius: 8px; background: var(--chip); }
+.gsec { width: 100%; display: flex; align-items: center; gap: 7px; padding: 4px 8px; border-radius: 6px; font-size: 12px; text-align: left; color: var(--sub); }
+.gsec:hover { background: var(--hover); color: var(--ink); }
+.gsec.current { font-weight: 600; color: var(--ink); }
+.gsec.peek { background: var(--sel); color: var(--ink); }
+.gsec-mark { width: 12px; flex: none; text-align: center; font-size: 11px; }
+.gsec.past .gsec-mark { color: var(--good-ink); }
+.gsec.current .gsec-mark { color: var(--accent); }
+.gsec small { flex: none; margin-left: auto; padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 600; box-shadow: inset 0 0 0 1px var(--edge); }
+.guide-peek { display: flex; flex-direction: column; }
+.guide-peek-head { display: flex; align-items: center; justify-content: space-between; padding-right: 6px; }
+.guide-peek-head .guide-label { padding-top: 2px; }
+.guide-peek > b { padding: 0 12px 6px; font-size: 13px; }
+.gstep.ghost .gtext > span { color: var(--sub); }
+.gstep.ghost .gmark { box-shadow: inset 0 0 0 1.5px var(--edge); opacity: 0.7; }
+.guide-back { flex: none; display: flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--accent); }
+.guide-back:hover { background: var(--hover); }
 .guide-body { min-height: 0; display: flex; flex-direction: column; overflow: hidden auto; }
 .guide-sub { padding: 0 12px 8px; font-size: 12px; line-height: 1.4; color: var(--sub); }
 .guide-label { padding: 8px 12px 2px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; color: var(--sub); }

@@ -243,6 +243,14 @@ export function plan(s: Facts, phases: Phase[], level: Level): Plan {
   return { phase: p.id, title: fill(s, p.title), sub: fill(s, sub), steps, ready: steps.some(x => x.showMe.finish && !x.done), map }
 }
 
+/** A phase as the road map previews it, before or after the player is in it: its usual `sub`, and its steps filled in, without the
+ * ones that wait on something happening (an `if`), and a step with `each` once, for whoever it turns out to be. No ticks, no side
+ * steps. Null for a phase the lesson does not have. */
+export function preview(s: Facts, phases: Phase[], level: Level, id: string): { sub: string; steps: { id: string; text: string }[] } | null {
+  const p = phases.find(x => x.id === id)
+  return p ? { sub: fill(s, p.sub), steps: stepsFor(p.steps, level).filter(x => !x.if).map(x => ({ id: x.id, text: fill(s, x.text, x.each ? 'someone' : '') })) } : null
+}
+
 /** The steps that decide whether a lesson with a goal is finished: every step without an `if`, in every phase that is not optional. */
 export const required = (s: Facts, phases: Phase[], level: Level) => phases.filter(p => !p.optional).flatMap(p => expand(s, p.steps.filter(x => !x.if), level, false))
 /** Every required step this level sees is done. What a lesson with a goal needs before it counts as finished. */
