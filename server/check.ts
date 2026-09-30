@@ -1,15 +1,20 @@
 // Plays a whole shift against the real server code, with the model stubbed out. Run with: npm run check
-// Covers: the three code outcomes, the incident, the mentor, mail and chat, tickets and docs, the sandbox guards, and scenario validation.
+// Covers: the three code outcomes, the incident, the mentor, mail and chat, tickets and docs, the sandbox guards, scenario validation, and picking the scenario per run.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { once } from 'node:events'
+import type { AddressInfo } from 'node:net'
+import express from 'express'
 import { done, stepsFor } from '../shared/guide.ts'
 import { Scenario, personalize } from '../shared/scenario.ts'
 import { errAt, isOutage } from '../shared/types.ts'
 import * as director from './director.ts'
+import { api, errors } from './routes.ts'
+import { store } from './runs.ts'
 import { conform } from './sandbox.ts'
 import { loadScenario } from './scenarios.ts'
-import { create } from './world.ts'
+import { create, drop, find, roster } from './world.ts'
 
 process.env.LLM = 'stub'
 // This check reads .data/ directly. npm run check:db covers Postgres.
@@ -239,6 +244,36 @@ assert.equal(guest.seed.emails.find(e => e.id === 'e1')!.body[0], 'Hi Happy Mang
 assert.equal(named.seed.emails.find(e => e.id === 'e1')!.body[0], 'Hi Jimmy,')
 assert.match(named.cast.daniel.persona!.knows, /Jimmy’s mentor/)
 assert.ok(!JSON.stringify(named).includes('{{player}}') && !/Maya/.test(JSON.stringify({ ...named, cast: { ...named.cast, maya: null } })), 'no Maya left once someone else plays')
+
+// ---- the scenario is picked per run, by id, and a reloaded run keeps its own
+await assert.rejects(create('newgrad', '', 4, 'stub', null, undefined, 'nope'), /No scenario "nope"/)
+const picked = await create('bootcamp', '', 4, 'stub', null, undefined, 'ledgerly-day2')
+assert.equal(picked.scenario.id, 'ledgerly-day2')
+assert.equal(await picked.flush(), true)
+const saved = new URL('../.data/sessions/' + picked.world.id + '/session.json', import.meta.url)
+assert.equal(JSON.parse(readFileSync(saved, 'utf8')).scenario, 'ledgerly-day2', 'the file store saves the scenario id')
+await drop(picked.world.id)
+const reloaded = (await find(picked.world.id))!
+assert.notEqual(reloaded, picked, 'reloaded, not the cached object')
+assert.deepEqual(reloaded.scenario, picked.scenario, 'the run reloads on its own scenario')
+// Runs saved before the id was, or whose scenario file has since gone, play the default.
+const { world: w0, priv: p0 } = JSON.parse(readFileSync(saved, 'utf8'))
+for (const scenario of [undefined, 'gone']) {
+  writeFileSync(saved, JSON.stringify({ scenario, world: w0, priv: p0 }))
+  assert.equal((await store().loadRun(picked.world.id, reloaded.dir))!.scenario.id, 'ledgerly-day2')
+}
+await drop(picked.world.id)
+// The routes check the id before anything starts.
+const server = express().use(express.json(), api, errors).listen(0)
+await once(server, 'listening')
+const base = `http://localhost:${(server.address() as AddressInfo).port}`
+assert.deepEqual(await (await fetch(base + '/scenario')).json(), JSON.parse(JSON.stringify(roster(good))), 'the default scenario without an id')
+assert.deepEqual(await (await fetch(base + '/scenario?id=ledgerly-day2')).json(), JSON.parse(JSON.stringify(roster(good))))
+assert.equal((await fetch(base + '/scenario?id=nope')).status, 404)
+const refused = await fetch(base + '/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ level: 'newgrad', scenario: 'nope' }) })
+assert.equal(refused.status, 400)
+assert.match((await refused.json()).error, /scenario must be one of: .*ledgerly-day2/)
+server.close()
 
 s.stop()
 console.log(`server check passed · ${s.priv.events.length} events · ${events.length} stream messages`)

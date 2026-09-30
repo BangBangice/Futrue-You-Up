@@ -10,6 +10,7 @@ import { authEnabled, googleEnabled, me } from './auth.ts'
 import type { Me } from './auth.ts'
 import { mailReady } from './mail.ts'
 import { listRuns } from './runs.ts'
+import { DEFAULT_SCENARIO, catalog, scenarioFile } from './scenarios.ts'
 import { create, find, roster, valid } from './world.ts'
 
 class Bad extends Error { status = 400 }
@@ -54,7 +55,11 @@ api.get('/health', async (_req, res) => {
 })
 
 // The start page shows who you will be before a shift exists.
-api.get('/scenario', (_req, res) => { res.json(roster()) })
+api.get('/scenario', (req, res) => {
+  const sc = scenarioFile(typeof req.query.id === 'string' ? req.query.id : DEFAULT_SCENARIO)
+  if (!sc) throw new Missing('No such scenario.')
+  res.json(roster(sc))
+})
 
 api.get('/auth-config', (_req, res) => {
   const on = authEnabled()
@@ -82,10 +87,11 @@ api.get('/me/runs', async (_req, res) => {
 api.post('/sessions', async (req, res) => {
   const level = pick(req.body?.level, LEVELS, 'level')
   const speed = PACES.map(p => p[0]).includes(req.body?.pace) ? req.body.pace : 4
+  const scenario = req.body?.scenario === undefined ? DEFAULT_SCENARIO : pick(req.body.scenario, catalog().map(c => c.id), 'scenario')
   const user = res.locals.me as Me | undefined
   // The player takes the account's name. A guest's made-up name ("Happy Mango") has no first name to shorten to.
   const who = user && { name: user.name, short: user.isAnonymous ? user.name : undefined }
-  const s = await create(level, maybe(req.body?.background, 400).trim(), speed, mode(), user?.id ?? null, who)
+  const s = await create(level, maybe(req.body?.background, 400).trim(), speed, mode(), user?.id ?? null, who, scenario)
   await director.start(s)
   res.status(201).json({ id: s.world.id })
 })
