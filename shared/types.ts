@@ -121,7 +121,6 @@ export interface World {
 }
 export type Patch = Partial<World>
 
-export const RATE = 41 // revenue exposed per incident minute
 export const PACES: [number, string][] = [[2, 'Relaxed'], [4, 'Normal'], [12, 'Demo']]
 
 export const clock = (m: number, sec?: number) => {
@@ -133,7 +132,6 @@ export const minutes = (t: string) => {
   const [, h, mm, ap] = /^(\d{1,2}):(\d{2}) ([AP]M)$/.exec(t) ?? []
   return ap ? (Number(h) % 12) * 60 + Number(mm) + (ap === 'PM' ? 720 : 0) : NaN
 }
-export const money = (n: number) => '$' + Math.round(n).toLocaleString('en-US')
 export const dur = (n: number) => (n >= 60 ? Math.floor(n / 60) + 'h ' + (n % 60) + 'm' : n + 'm')
 
 export const personByName = (cast: Cast, text: string) => {

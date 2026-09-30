@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { Undo2 } from 'lucide-react'
-import { RATE, clock, dayBefore, errAt, lockedAt, lockedFor, money } from '../../../shared/types.ts'
+import { clock, dayBefore, errAt, lockedAt, lockedFor } from '../../../shared/types.ts'
 import { live, sim, useSim } from '../../sim/store.ts'
 import { LOGOS, SPRING } from '../bits.tsx'
 import { DragBar, Lights } from '../Window.tsx'
@@ -84,7 +84,6 @@ export function Monitor() {
                 <dl>
                   <dt>Started</dt><dd>{clock(incident.startedAt)}</dd>
                   <dt>Duration</dt><dd>{end - incident.startedAt} min</dd>
-                  <dt>Revenue exposed</dt><dd>{money((end - incident.startedAt) * RATE)}</dd>
                   <dt>Owner</dt><dd>{owner}</dd>
                 </dl>
                 {on && prod?.sha === incident.sha && <div className="recover"><button className="btn btn-danger" data-guide="rollback" disabled={!!busy} onClick={() => sim.exec('ldg rollback auth-api')}><Undo2 size={14} strokeWidth={2.4} />Roll back release</button></div>}
