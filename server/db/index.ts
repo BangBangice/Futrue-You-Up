@@ -21,7 +21,18 @@ export function db() {
   return instance
 }
 
-export const migrateDb = () => migrate(db(), { migrationsFolder: MIGRATIONS })
+// Two containers starting together (a deploy overlapping the old one, or a pre-deploy step and the app) must not migrate at once.
+const MIGRATION_LOCK = 725_311
+export async function migrateDb() {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL })
+  await client.connect()
+  try {
+    await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK])
+    await migrate(drizzle(client), { migrationsFolder: MIGRATIONS })
+  } finally {
+    await client.end()
+  }
+}
 
 export async function closeDb() {
   await pool?.end()

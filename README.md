@@ -43,6 +43,8 @@ npm run db:seed-scenarios         # publishes scenarios/*.json that changed
 
 `docker compose up` runs the database and the app together on http://localhost:5183, with scripted colleagues unless `LLM=live`. After changing `server/db/schema.ts`, run `npm run db:generate` and commit the new migration.
 
+On Railway, `railway.json` runs `db:migrate` and `db:seed-scenarios` before each deploy, so edited scenario files reach new shifts without a manual step.
+
 ### What you can do in a shift
 
 | App | What is real |
