@@ -13,7 +13,7 @@ import { generateApi } from './generate.ts'
 import type { Me } from './auth.ts'
 import { mailReady } from './mail.ts'
 import { adminApi, removed, reportRoute } from './moderation.ts'
-import { lessonTags, listLessons } from './lessons.ts'
+import { getLesson, lessonTags, listLessons } from './lessons.ts'
 import { listRuns } from './runs.ts'
 import { DEFAULT_SCENARIO, catalog, scenarioFile } from './scenarios.ts'
 import { MAX_UPLOAD, disposition, filename, get as uploaded, isId, limitLabel, newId, put as storeUpload } from './uploads.ts'
@@ -87,6 +87,13 @@ api.get('/scenario', async (req, res) => {
 // The library is browsable before signing in, like a shop window.
 api.get('/lessons', async (req, res) => { res.json(await listLessons(req.query)) })
 api.get('/lessons/tags', async (_req, res) => { res.json(await lessonTags()) })
+// One lesson's page, which an unlisted link or the author's own private lesson reaches too. After /tags, which it would swallow.
+api.get('/lessons/:id', async (req, res) => {
+  const id = req.params.id, userId = !scenarioFile(id) && authEnabled() ? (await me(req.headers))?.id ?? null : null
+  const found = await getLesson(id, userId)
+  if (!found) throw new Missing('No such lesson.')
+  res.json(found)
+})
 
 api.get('/auth-config', (_req, res) => {
   const on = authEnabled()

@@ -104,6 +104,8 @@ try {
   // Unpublish: out of the library and its tags, can't be started or served, its reports resolved. The author keeps it, marked removed.
   assert.ok(await playable(one, bob))
   assert.equal((await call('', 'GET', `/api/scenario?id=${one}`)).status, 200)
+  assert.equal((await call('', 'GET', `/api/lessons/${one}`)).body.title, one, 'a lesson opens by id')
+  assert.ok(Array.isArray((await call('', 'GET', '/api/lessons/tags')).body), '/lessons/tags is not taken for an id')
   assert.equal((await call(admin, 'POST', `/admin/lessons/${one}/unpublish`, {}, 'admin')).status, 400, 'a reason is required')
   assert.equal((await call(admin, 'POST', `/admin/lessons/${one}/unpublish`, { reason: 'Offensive content.' }, 'admin')).status, 200)
   assert.deepEqual(await listed(), [two])
@@ -112,6 +114,7 @@ try {
   assert.equal(await playable(one, bob), null, 'no new shifts')
   assert.equal(await playable(one, alice), null, 'not even for its author')
   assert.equal((await call('', 'GET', `/api/scenario?id=${one}`)).status, 404)
+  assert.deepEqual(await call('', 'GET', `/api/lessons/${one}`), { status: 404, body: { error: 'No such lesson.' } })
   assert.equal((await call(guest, 'POST', `/lessons/${one}/report`, { reason: 'spam' })).status, 404, 'a removed lesson is not there to report')
   assert.ok((await db().select().from(lessonReports).where(eq(lessonReports.scenarioId, one))).every(r => r.status === 'resolved'))
   const authorView = (await call(alice, 'GET', '/my/lessons')).body.find((l: { id: string }) => l.id === one)
