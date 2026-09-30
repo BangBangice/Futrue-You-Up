@@ -27,8 +27,8 @@ export type State = Omit<World, 'stage'> & View
 const win = (x: number, y: number, w: number, h: number, open: boolean, z: number): Win => ({ open, min: false, max: false, x, y, w, h, z })
 const LAYOUT: Record<AppId, [number, number, number, number]> = { mail: [0.04, 44, 1060, 620], docs: [0.12, 52, 1000, 640], chat: [0.3, 64, 900, 580], code: [0.06, 40, 1180, 700], tracker: [0.14, 58, 1040, 600], monitor: [0.17, 42, 1020, 660] }
 const NO_DRAFT = { compose: null, mailDraft: '', mailFiles: [] as Attachment[] }
-const KEY = 'onshift.session'
-const SEEN = 'onshift.seen'
+const KEY = 'larp.session'
+const SEEN = 'larp.seen'
 const TEST = /^\s*(npm (test|t|run test)\b|node --test)/
 
 const view = (): View => ({

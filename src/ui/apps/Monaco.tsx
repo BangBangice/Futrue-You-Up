@@ -10,7 +10,7 @@ self.MonacoEnvironment = { getWorker: (_, label) => (label === 'typescript' || l
 loader.config({ monaco })
 // The workspace runs on Node with no type packages installed. Flag syntax errors, not missing types.
 monaco.typescript.typescriptDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: false })
-monaco.editor.defineTheme('onshift', { base: 'vs-dark', inherit: true, rules: [], colors: { 'editor.background': '#1e2028', 'editorGutter.background': '#1e2028', 'diffEditor.insertedTextBackground': '#2ea04333', 'diffEditor.removedTextBackground': '#f8514933' } })
+monaco.editor.defineTheme('larp', { base: 'vs-dark', inherit: true, rules: [], colors: { 'editor.background': '#1e2028', 'editorGutter.background': '#1e2028', 'diffEditor.insertedTextBackground': '#2ea04333', 'diffEditor.removedTextBackground': '#f8514933' } })
 
 const LANG: Record<string, string> = { ts: 'typescript', js: 'javascript', json: 'json', md: 'markdown' }
 const language = (path: string) => LANG[path.split('.').at(-1)!] ?? 'plaintext'
@@ -24,7 +24,7 @@ export function Code({ path, value, onChange, onSave }: { path: string; value: s
   save.current = onSave
   return (
     <Editor
-      theme="onshift" path={path} language={language(path)} value={value} options={OPTIONS}
+      theme="larp" path={path} language={language(path)} value={value} options={OPTIONS}
       onChange={v => onChange(v ?? '')}
       onMount={editor => editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => save.current())}
     />
@@ -32,5 +32,5 @@ export function Code({ path, value, onChange, onSave }: { path: string; value: s
 }
 
 export function Diff({ path, before, after }: { path: string; before: string; after: string }) {
-  return <DiffEditor keepCurrentOriginalModel keepCurrentModifiedModel theme="onshift" language={language(path)} original={before} modified={after} options={{ ...OPTIONS, readOnly: true, renderSideBySide: true, originalEditable: false }} />
+  return <DiffEditor keepCurrentOriginalModel keepCurrentModifiedModel theme="larp" language={language(path)} original={before} modified={after} options={{ ...OPTIONS, readOnly: true, renderSideBySide: true, originalEditable: false }} />
 }
