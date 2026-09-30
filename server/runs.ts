@@ -93,3 +93,6 @@ export const listRuns = (userId: string) => db()
   .where(eq(runs.userId, userId)).orderBy(desc(runs.startedAt))
 
 export const moveRuns = (from: string, to: string) => db().update(runs).set({ userId: to }).where(eq(runs.userId, from))
+/** Deletes a player's shifts, their event logs with them, and says which. */
+export const deleteRuns = async (userId: string) =>
+  (await db().delete(runs).where(eq(runs.userId, userId)).returning({ id: runs.id })).map(r => r.id)

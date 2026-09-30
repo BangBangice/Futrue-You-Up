@@ -49,7 +49,7 @@ On Railway, `railway.json` runs `db:migrate` and `db:seed-scenarios` before each
 
 Only with a database. Without `DATABASE_URL` there are no accounts and the old gate applies (this machine only, `APP_PASSWORD` or `PUBLIC_ACCESS=1`). With it, [Better Auth](https://www.better-auth.com) (`server/auth.ts`, mounted at `/api/auth`) replaces that gate: players sign in with email and password, with Google, or as a guest, and each shift belongs to whoever started it. Someone else's shift answers 404.
 
-Email accounts confirm their address before they can sign in; the link signs them in. A guest who registers or signs in with Google keeps their shifts: they move to the account on its first sign-in, even when the confirmation link is opened in another browser. Password reset links work for an hour and sign the account out everywhere.
+Email accounts confirm their address before they can sign in; the link signs them in. A guest who creates an account, by email or with Google, keeps their shifts: they move to the new account on its first sign-in, even when the confirmation link is opened in another browser. Shifts never move into an account that already existed: a guest who signs in to one starts it without them, and the guest and its shifts are deleted. Password reset links work for an hour and sign the account out everywhere.
 
 | Variable | |
 |---|---|

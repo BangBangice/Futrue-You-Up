@@ -1,5 +1,5 @@
 // One running shift: the world the browser sees, the private facts it does not, and the stream that keeps them in step.
-import { mkdir } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,7 +11,7 @@ import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, Person
 import { aiProblem, onAiProblem } from './ai/llm.ts'
 import { Workspace } from './sandbox.ts'
 import type { Verdict } from './sandbox.ts'
-import { moveRuns, store } from './runs.ts'
+import { deleteRuns, moveRuns, store } from './runs.ts'
 import { loadScenario } from './scenarios.ts'
 
 export const DATA = join(dirname(fileURLToPath(import.meta.url)), '..', '.data', 'sessions')
@@ -216,5 +216,10 @@ export const all = () => [...sessions.values()]
 export async function adopt(from: string, to: string) {
   await moveRuns(from, to)
   all().forEach(s => { if (s.userId === from) s.userId = to })
+}
+/** Ends a player's runs for good: out of the cache, the store and the disk. */
+export async function discard(userId: string) {
+  await Promise.all(all().filter(s => s.userId === userId).map(s => drop(s.world.id)))
+  await Promise.all((await deleteRuns(userId)).map(id => rm(join(DATA, id), { recursive: true, force: true })))
 }
 onAiProblem(p => all().forEach(s => s.set({ aiProblem: p })))
