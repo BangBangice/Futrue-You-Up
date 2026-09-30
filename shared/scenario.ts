@@ -3,7 +3,9 @@
 // Also data: the clock, the production checks' labels and what each costs, and the customers.
 // Still code: what the checks test (server/acceptance.ts), the facts each persona is told, the mentor's rules and scripted fallback lines.
 import { z } from 'zod'
-import { APP_IDS, COLS, FOLDERS, PRIORITIES, minutes } from './types.ts'
+import { DONE_KEYS, NEW, SHOW_KEYS } from './guide.ts'
+import type { Done, GuideStep } from './guide.ts'
+import { APP_IDS, COLS, FOLDERS, LEVELS, PRIORITIES, minutes } from './types.ts'
 
 const line = z.string().min(1)
 const key = z.string().regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes')
@@ -111,6 +113,24 @@ const check = z.strictObject({
   locks: z.enum(['password', 'sso']).optional(),
 })
 const customer = z.strictObject({ name: line, arr: line, password: z.number().int().min(0), sso: z.number().int().min(0), note: z.string().default('') })
+const done: z.ZodType<Done> = z.lazy(() => z.strictObject({
+  all: z.array(done).min(1).optional(), any: z.array(done).min(1).optional(), not: done.optional(),
+  mailRead: line.optional(), mailReplied: line.optional(),
+  ticket: z.strictObject({ id: line, status: z.array(z.enum(COLS.map(c => c[0]))).min(1) }).optional(),
+  posted: z.strictObject({ chan, who: person }).optional(), channelRead: chan.optional(),
+  openedDoc: line.optional(), openedFile: line.optional(),
+  code: z.enum(['changed', 'tested', 'committed']).optional(), deployed: z.boolean().optional(),
+}).superRefine(one(DONE_KEYS, 'a step condition')))
+const showMe = z.strictObject({
+  mail: line.optional(), reply: line.optional(), ticket: line.optional(), chat: chan.optional(), doc: line.optional(),
+  file: line.optional(), edit: line.optional(), vscode: z.enum(['run-tests', 'commit', 'deploy']).optional(),
+}).superRefine(one(SHOW_KEYS, 'a show-me target'))
+const guideStep: z.ZodType<GuideStep> = z.strictObject({
+  id: key, text: line, hint: line.optional(),
+  levels: z.array(z.enum(LEVELS, { error: i => `no level "${String(i.input)}"` })).min(1).optional(),
+  doneWhen: done, showMe: showMe.optional(),
+})
+
 const level = z.strictObject({ label: line, blurb: line, mentorGuidance: line })
 
 export const Scenario = z.object({
@@ -145,6 +165,8 @@ export const Scenario = z.object({
   }),
   /** Scripted things that happen on schedule. Order matters for triggers due in the same minute. */
   triggers: z.array(trigger).default([]),
+  /** The step list the player starts with, in order. Later phases (after a deploy, during an incident) are still code in src/sim/guide.ts. */
+  guide: z.array(guideStep).default([]),
 }).superRefine((s, ctx) => {
   const bad = (path: (string | number)[], message: string) => ctx.addIssue({ code: 'custom', path, message })
   const unique = (what: string, ids: (string | number)[], path: string[]) => ids.forEach((id, i) => { if (ids.indexOf(id) !== i) bad([...path, i, 'id'], `duplicate ${what} id "${id}"`) })
@@ -172,6 +194,7 @@ export const Scenario = z.object({
   unique('ticket', tickets.map(t => t.id), ['seed', 'tickets'])
   unique('doc', docs.map(d => d.id), ['seed', 'docs'])
   unique('chat message', Object.values(chats).flat().map(m => m.id), ['seed', 'chats'])
+  for (const [c, msgs] of Object.entries(chats)) msgs.forEach((m, i) => { if (m.id >= NEW) bad(['seed', 'chats', c, i, 'id'], `seed message ids must be below ${NEW}`) })
 
   const docIds = new Set(docs.map(d => d.id)), ticketIds = new Set(tickets.map(t => t.id))
   const check = (files: z.infer<typeof attachment>[] | undefined, path: (string | number)[]) => files?.forEach((a, i) => {
@@ -199,6 +222,23 @@ export const Scenario = z.object({
   if (s.clock.deadline && minutes(s.clock.deadline) <= minutes(s.clock.start)) bad(['clock', 'deadline'], 'the deadline must be after the start')
   const demo = (c: Cond | undefined): boolean => !!c && (!!c.demo || !!c.all?.some(demo) || !!c.any?.some(demo) || demo(c.not))
   s.triggers.forEach((t, i) => { if (!s.clock.deadline && (demo(t.if) || JSON.stringify(t.do).includes('{{timeToDemo}}'))) bad(['triggers', i], 'uses the demo, so the clock needs a deadline') })
+  const emailIds = new Set(emails.map(e => e.id)), chanIds = new Set(Object.keys(s.channels)), castIds = new Set(Object.keys(s.cast))
+  const refs = (path: (string | number)[], pairs: [string, string | undefined, Set<string>][]) => {
+    for (const [what, id, ids] of pairs) if (id !== undefined && !ids.has(id)) bad(path, `no ${what} with id "${id}"`)
+  }
+  const cond = (c: Done, path: (string | number)[]) => {
+    c.all?.forEach((x, i) => cond(x, [...path, 'all', i]))
+    c.any?.forEach((x, i) => cond(x, [...path, 'any', i]))
+    if (c.not) cond(c.not, [...path, 'not'])
+    refs(path, [['email', c.mailRead, emailIds], ['email', c.mailReplied, emailIds], ['ticket', c.ticket?.id, ticketIds], ['doc', c.openedDoc, docIds],
+      ['channel', c.channelRead, chanIds], ['channel', c.posted?.chan, chanIds], ['cast member', c.posted?.who, castIds]])
+  }
+  s.guide.forEach((g, i) => {
+    cond(g.doneWhen, ['guide', i, 'doneWhen'])
+    const m = g.showMe
+    if (m) refs(['guide', i, 'showMe'], [['email', m.mail, emailIds], ['email', m.reply, emailIds], ['ticket', m.ticket, ticketIds], ['doc', m.doc, docIds], ['channel', m.chat, chanIds]])
+  })
+  unique('guide step', s.guide.map(g => g.id), ['guide'])
   // Wiki pages link to each other as [text](doc:id).
   docs.forEach((d, i) => { for (const [, id] of d.body.matchAll(/\]\(doc:([^)\s]+)\)/g)) if (!docIds.has(id)) bad(['seed', 'docs', i, 'body'], `links to missing doc "${id}"`) })
 })

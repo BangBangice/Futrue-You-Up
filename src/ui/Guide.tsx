@@ -35,7 +35,7 @@ export function Guide() {
           <span className="guide-count">{done}/{main.length}</span>
           <ChevronDown size={14} strokeWidth={2.4} className={'guide-fold' + (open ? '' : ' shut')} />
         </button>
-        <div className="track guide-track"><i className="accent" style={{ width: (done / main.length) * 100 + '%' }} /></div>
+        <div className="track guide-track"><i className="accent" style={{ width: (main.length ? (done / main.length) * 100 : 0) + '%' }} /></div>
         <AnimatePresence initial={false} mode="popLayout">
           {open ? (
             <motion.div key={'list' + g.phase} className="guide-body" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.24, ease: EASE }}>

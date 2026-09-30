@@ -870,5 +870,42 @@
         }
       ]
     }
+  ],
+  "guide": [
+    { "id": "read", "text": "Read Priya’s email about LED-214", "doneWhen": { "mailRead": "e1" }, "showMe": { "mail": "e1" } },
+    { "id": "ack", "text": "Reply to Priya so she knows you’ve picked it up", "doneWhen": { "mailReplied": "e1" }, "showMe": { "reply": "e1" } },
+    {
+      "id": "ticket", "text": "Move LED-214 to In progress in Jira", "hint": "Change Status on the ticket, or drag the card.",
+      "doneWhen": { "ticket": { "id": "LED-214", "status": ["progress", "review", "done"] } }, "showMe": { "ticket": "LED-214" }
+    },
+    {
+      "id": "team", "text": "Read Daniel’s heads-up in #team",
+      "doneWhen": { "all": [{ "posted": { "chan": "team", "who": "daniel" } }, { "channelRead": "team" }] }, "showMe": { "chat": "team" }
+    },
+    { "id": "wiki", "text": "Read “Auth service: login paths” in Confluence", "levels": ["newgrad"], "doneWhen": { "openedDoc": "auth" }, "showMe": { "doc": "auth" } },
+    {
+      "id": "password", "text": "Open passwordLogin.ts and see what it sends", "levels": ["newgrad"],
+      "doneWhen": { "openedFile": "src/auth/passwordLogin.ts" }, "showMe": { "file": "src/auth/passwordLogin.ts" }
+    },
+    {
+      "id": "open", "text": "Open verifySession.ts in VS Code",
+      "doneWhen": { "any": [{ "openedFile": "src/auth/verifySession.ts" }, { "code": "changed" }] }, "showMe": { "file": "src/auth/verifySession.ts" }
+    },
+    {
+      "id": "edit", "text": "Make your change and save it (⌘S)",
+      "doneWhen": { "any": [{ "code": "changed" }, { "code": "committed" }] }, "showMe": { "edit": "src/auth/verifySession.ts" }
+    },
+    {
+      "id": "test", "text": "Run the tests", "hint": "Run tests at the top of VS Code, or type npm test in the terminal.",
+      "doneWhen": { "code": "tested" }, "showMe": { "vscode": "run-tests" }
+    },
+    {
+      "id": "commit", "text": "Commit your change", "hint": "Source control, on the left of VS Code. Write what you changed and why.",
+      "doneWhen": { "all": [{ "code": "committed" }, { "not": { "code": "changed" } }] }, "showMe": { "vscode": "commit" }
+    },
+    {
+      "id": "deploy", "text": "Deploy to production", "hint": "Deploy at the top of VS Code, or ldg deploy auth-api --env prod.",
+      "doneWhen": { "deployed": true }, "showMe": { "vscode": "deploy" }
+    }
   ]
 }

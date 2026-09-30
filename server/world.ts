@@ -145,11 +145,12 @@ const sessions = new Map<string, Session>()
 const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
 // Persona cards and mentor guidance are prompts, so they stay on the server. So do security checks: the browser must not learn they exist.
-export const roster = (sc = SCENARIO): Pick<World, 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact'> => structuredClone({
+export const roster = (sc = SCENARIO): Pick<World, 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide'> => structuredClone({
   cast: Object.fromEntries(Object.entries(sc.cast).map(([id, { persona: _, ...p }]) => [id, p])), channels: sc.channels, player: sc.player, mentor: sc.mentor,
   levels: Object.fromEntries(Object.entries(sc.levels).map(([k, { mentorGuidance: _, ...l }]) => [k, l])),
   deadline: sc.clock.deadline ? minutes(sc.clock.deadline) : null,
   impact: { alarmPercent: sc.alarmPercent, checks: sc.checks.filter(c => c.share > 0).map(({ security: _, ...c }) => c), customers: sc.customers },
+  guide: sc.guide,
 })
 
 /** Makes room, preferring a shift nobody is watching. Its open streams reconnect and reload it. */
