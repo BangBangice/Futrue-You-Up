@@ -28,6 +28,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: npm test
       # LLM=stub is set inside check.ts, so this never calls the model and needs no secrets.
       - run: npm run check
 
