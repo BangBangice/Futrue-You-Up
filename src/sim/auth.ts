@@ -18,3 +18,8 @@ export function useAuthConfig() {
 
 export const AccountContext = createContext<Account | null>(null)
 export const useAccount = () => useContext(AccountContext)
+
+/** Who is on the page, for the routes: signed in or not, and whether the first check is still out. Pages outside a shift don't need an account. */
+export interface Who { config: AuthConfig; userId: string | null; loading: boolean }
+export const WhoContext = createContext<Who>({ config: OFF, userId: null, loading: false })
+export const useWho = () => useContext(WhoContext)
