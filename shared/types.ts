@@ -29,6 +29,8 @@ export const login = (p: Pick<Person, 'name' | 'short'>) => firstName(p).normali
 export type Channels = Record<ChanId, Channel>
 export const LEVELS = ['newgrad', 'bootcamp', 'switcher'] as const
 export type Level = typeof LEVELS[number]
+/** What the start page calls each level until a lesson names them its own way. */
+export const LEVEL_LABELS: Record<Level, string> = { newgrad: 'New grad', bootcamp: 'Bootcamp grad', switcher: 'Career switcher' }
 export type Theme = 'light' | 'dark'
 export const FOLDERS = ['inbox', 'alerts', 'sent', 'archive', 'deleted'] as const
 export type Folder = typeof FOLDERS[number]

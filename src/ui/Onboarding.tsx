@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ArrowRight, LoaderCircle, TriangleAlert } from 'lucide-react'
-import { LEVELS, initials } from '../../shared/types.ts'
+import { LEVELS, LEVEL_LABELS, initials } from '../../shared/types.ts'
 import { useAccount } from '../sim/auth.ts'
 import { sim, useSim } from '../sim/store.ts'
 import { Avatar, Brand, Segmented, ThemeToggle, rise, stagger } from './bits.tsx'
@@ -46,7 +46,7 @@ export function Onboarding() {
         <motion.section variants={rise} className="card setup">
           <div className="field">
             <div className="field-label">Where you are starting from</div>
-            <Segmented id="level" grow value={level} options={LEVELS.map(k => [k, levels[k]?.label ?? ''])} onChange={v => sim.set({ level: v })} />
+            <Segmented id="level" grow value={level} options={LEVELS.map(k => [k, levels[k]?.label ?? LEVEL_LABELS[k]])} onChange={v => sim.set({ level: v })} />
             <div className="level-note">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div key={level} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }}>
