@@ -100,13 +100,18 @@ function Terminal() {
   const [line, setLine] = useState('')
   const history = useRef<string[]>([]), at = useRef(0)
   const scroller = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null)
+  // The prompt is swapped for "running…" while a command runs, which takes the focus with it. Give it back, so the next
+  // command can be typed straight away, as in a real terminal.
+  const typing = useRef(false)
   useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight }) }, [term, shown, busy])
+  useEffect(() => { if (!busy && typing.current) { typing.current = false; input.current?.focus() } }, [busy])
 
   const run = (e: FormEvent) => {
     e.preventDefault()
     if (!line.trim() || busy) return
     history.current.push(line)
     at.current = history.current.length
+    typing.current = true
     void sim.exec(line)
     setLine('')
   }
@@ -122,7 +127,7 @@ function Terminal() {
       <div className="term-out" ref={scroller}>
         {term.map((l, i) => <div key={i} className={'tl ' + l.c}>{l.c === 'cmd' && <span className="prompt">{prompt}</span>}{l.t || ' '}</div>)}
         {busy ? <div className="tl dim"><LoaderCircle size={11} className="spin" /> running {busy}…</div> : (
-          <form className="tl cmd term-line" onSubmit={run}>
+          <form className="tl cmd term-line" data-guide="terminal" onSubmit={run}>
             <span className="prompt">{prompt}</span>
             <input ref={input} value={line} onChange={e => setLine(e.target.value)} onKeyDown={recall} spellCheck={false} autoCapitalize="off" autoComplete="off" aria-label="Terminal input" />
           </form>
@@ -144,7 +149,9 @@ export function Code() {
   const outage = useSim(s => live(s))
   const player = useSim(s => s.player)
   const repo = useSim(s => s.workspace.repo)
-  const prod = deploys.at(-1)
+  // A lesson with its own goal has no production: no deploy button, banner or live version.
+  const goal = useSim(s => !!s.goal)
+  const prod = goal ? undefined : deploys.at(-1)
   const dirty = (p: string) => !!buffers[p] && buffers[p].text !== buffers[p].saved
   const banner = !prod || prod.by !== player ? '' : prod.kind === 'rollback' ? `Production was rolled back to ${prod.sha} at ${clock(prod.at)}. Your change is no longer live.` : `auth-api@${prod.sha} has been live in production since ${clock(prod.at)}.`
 
@@ -173,7 +180,7 @@ export function Code() {
               {diff && <div className="tab on"><GitCompare size={13} className="ic-json" /><span>{name(diff.path)} (changes)</span><button aria-label="Close comparison" onClick={() => sim.set({ diff: null })}><X size={12} strokeWidth={2.4} /></button></div>}
             </div>
             <button className="btn btn-ghost sm" data-guide="run-tests" disabled={!!code.busy} onClick={() => sim.exec('npm test')}><Play size={12} strokeWidth={2.6} />Run tests</button>
-            {outage
+            {goal ? null : outage
               ? <button className="btn btn-danger sm" data-guide="rollback-code" disabled={!!code.busy} onClick={() => sim.exec('ldg rollback auth-api')}><Undo2 size={13} strokeWidth={2.4} />Roll back</button>
               : <button className="btn btn-go sm" data-guide="deploy" disabled={!!code.busy} onClick={() => sim.exec('ldg deploy auth-api --env prod')}><Rocket size={13} strokeWidth={2.2} />Deploy</button>}
           </div>
@@ -191,7 +198,7 @@ export function Code() {
           <Terminal />
         </div>
       </div>
-      <div className="statusbar"><span><GitBranch size={12} strokeWidth={2.4} />{code.branch}</span><span>{code.head}</span><span>{code.changes.length ? `${code.changes.length} changed` : 'clean'}</span><div className="grow" /><span>prod: {prod?.sha}</span><span>TypeScript</span><span>UTF-8</span></div>
+      <div className="statusbar"><span><GitBranch size={12} strokeWidth={2.4} />{code.branch}</span><span>{code.head}</span><span>{code.changes.length ? `${code.changes.length} changed` : 'clean'}</span><div className="grow" />{prod && <span>prod: {prod.sha}</span>}<span>TypeScript</span><span>UTF-8</span></div>
     </div>
   )
 }

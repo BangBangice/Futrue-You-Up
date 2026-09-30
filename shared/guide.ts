@@ -13,6 +13,8 @@ export interface Done {
   mailReplied?: string
   /** The ticket has one of these statuses. */
   ticket?: { id: string; status: TicketStatus[] }
+  /** The player has commented on this ticket. */
+  commented?: string
   /** `who` has posted in `chan` since the shift started. */
   posted?: { chan: ChanId; who: PersonId }
   /** Nothing unread in the channel. */
@@ -23,8 +25,13 @@ export interface Done {
   code?: 'changed' | 'tested' | 'committed'
   /** Whether the player has deployed (a rollback does not count). */
   deployed?: boolean
+  /** Git milestones, which stay done once reached. branched: a branch of their own exists (not main). staged: they have staged
+   * a change (or committed one). committed: they have made a commit. pushed: they have pushed a branch of their own to origin. */
+  git?: 'branched' | 'staged' | 'committed' | 'pushed'
+  /** They have run this in the terminal: the command, or the command with more after it. "git diff" counts "git diff --staged". */
+  ran?: string
 }
-export const DONE_KEYS = ['all', 'any', 'not', 'mailRead', 'mailReplied', 'ticket', 'posted', 'channelRead', 'openedDoc', 'openedFile', 'code', 'deployed'] as const
+export const DONE_KEYS = ['all', 'any', 'not', 'mailRead', 'mailReplied', 'ticket', 'commented', 'posted', 'channelRead', 'openedDoc', 'openedFile', 'code', 'deployed', 'git', 'ran'] as const
 
 /** Where "Show me" points. Exactly one key. */
 export interface ShowMe {
@@ -40,13 +47,17 @@ export interface ShowMe {
   file?: string
   /** Opens the file in the editor. */
   edit?: string
-  vscode?: 'run-tests' | 'commit' | 'deploy'
+  vscode?: 'run-tests' | 'commit' | 'deploy' | 'terminal'
 }
 export const SHOW_KEYS = ['mail', 'reply', 'ticket', 'chat', 'doc', 'file', 'edit', 'vscode'] as const
 
 export interface GuideStep { id: string; text: string; hint?: string; levels?: Level[]; doneWhen: Done; showMe?: ShowMe }
 
-export type Facts = Pick<World, 'emails' | 'tickets' | 'chats' | 'unread' | 'code' | 'deploys' | 'player'> & { seen: string[] }
+export type Facts = Pick<World, 'emails' | 'tickets' | 'chats' | 'unread' | 'code' | 'deploys' | 'player'> & Partial<Pick<World, 'ran'>> & { seen: string[] }
+
+/** A terminal command as the guide compares it: single spaces, no quotes. */
+export const normalize = (cmd: string) => cmd.trim().replace(/["']/g, '').replace(/\s+/g, ' ')
+const own = (b: string) => b !== 'main' && b !== 'master'
 
 export function done(s: Facts, c: Done): boolean {
   if (c.all) return c.all.every(x => done(s, x))
@@ -55,6 +66,7 @@ export function done(s: Facts, c: Done): boolean {
   if (c.mailRead) return !!s.emails.find(e => e.id === c.mailRead)?.read
   if (c.mailReplied) return !!s.emails.find(e => e.id === c.mailReplied)?.thread.length
   if (c.ticket) { const t = s.tickets.find(x => x.id === c.ticket!.id); return !!t && c.ticket.status.includes(t.status) }
+  if (c.commented) return !!s.tickets.find(x => x.id === c.commented)?.comments.some(m => m.who === s.player)
   if (c.posted) { const { chan, who } = c.posted; return !!s.chats[chan]?.some(m => m.who === who && m.id > NEW) }
   if (c.channelRead) return !s.unread[c.channelRead]
   if (c.openedDoc) return s.seen.includes('doc:' + c.openedDoc)
@@ -62,7 +74,17 @@ export function done(s: Facts, c: Done): boolean {
   if (c.code === 'changed') return s.code.changes.length > 0
   if (c.code === 'tested') return s.seen.includes('tested@' + s.deploys.length)
   if (c.code === 'committed') return !!s.code.head && !s.deploys.some(d => d.sha === s.code.head)
+  if (c.git) {
+    const g = s.code, mine = g.mine ?? 0
+    if (c.git === 'branched') return (g.branches ?? [g.branch]).some(own)
+    if (c.git === 'staged') return !!g.staged || mine > 0
+    if (c.git === 'committed') return mine > 0
+    return (g.remote ?? []).some(own)
+  }
+  if (c.ran) { const want = normalize(c.ran); return (s.ran ?? []).some(r => r === want || r.startsWith(want + ' ')) }
   return s.deploys.some(d => d.by === s.player && d.kind === 'deploy') === c.deployed
 }
 
 export const stepsFor = (steps: GuideStep[], level: Level) => steps.filter(x => !x.levels || x.levels.includes(level))
+/** Every step this level sees is done. What a lesson with a goal needs before it counts as finished. */
+export const allDone = (s: Facts, steps: GuideStep[], level: Level) => stepsFor(steps, level).every(x => done(s, x.doneWhen))

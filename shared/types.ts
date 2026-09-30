@@ -80,6 +80,14 @@ export interface CodeState {
   branch: string; head: string; subject: string; changes: GitFile[]
   /** What the terminal is busy with, if anything. */
   busy: string | null
+  /** Local branches. */
+  branches?: string[]
+  /** Something is staged for the next commit. */
+  staged?: boolean
+  /** Commits the player has made, on any branch. */
+  mine?: number
+  /** Branches on origin, for a workspace that has a remote. */
+  remote?: string[]
 }
 export interface Recap {
   ready: boolean; happened: string[]; corrected: string[]; next: string[]; note: string
@@ -116,6 +124,10 @@ export interface World {
   levels: Partial<Record<Level, { label: string; blurb: string }>>
   /** The scenario's opening steps, for the step guide. */
   guide: GuideStep[]
+  /** What the lesson is for, when it sets its own goal. Null for the incident shift, whose goal is fixing LED-214 in production. */
+  goal: Goal | null
+  /** Terminal commands the player has run, as the guide compares them (see normalize in guide.ts). */
+  ran: string[]
   /** Why AI calls are failing right now, or null while they work. */
   aiProblem: string | null
   /** Simulated minutes per real minute. */
@@ -128,6 +140,8 @@ export interface World {
   timeline: TimelineEv[]; recap: Recap | null
 }
 export type Patch = Partial<World>
+/** A lesson's own goal: the heading of its step list. */
+export interface Goal { title: string; summary: string }
 
 export const PACES: [number, string][] = [[2, 'Relaxed'], [4, 'Normal'], [12, 'Demo']]
 

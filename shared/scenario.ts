@@ -123,14 +123,15 @@ const customer = z.strictObject({
 const done: z.ZodType<Done> = z.lazy(() => z.strictObject({
   all: z.array(done).min(1).optional(), any: z.array(done).min(1).optional(), not: done.optional(),
   mailRead: line.optional(), mailReplied: line.optional(),
-  ticket: z.strictObject({ id: line, status: z.array(z.enum(COLS.map(c => c[0]))).min(1) }).optional(),
+  ticket: z.strictObject({ id: line, status: z.array(z.enum(COLS.map(c => c[0]))).min(1) }).optional(), commented: line.optional(),
   posted: z.strictObject({ chan, who: person }).optional(), channelRead: chan.optional(),
   openedDoc: line.optional(), openedFile: line.optional(),
   code: z.enum(['changed', 'tested', 'committed']).optional(), deployed: z.boolean().optional(),
+  git: z.enum(['branched', 'staged', 'committed', 'pushed']).optional(), ran: line.optional(),
 }).superRefine(one(DONE_KEYS, 'a step condition')))
 const showMe = z.strictObject({
   mail: line.optional(), reply: line.optional(), ticket: line.optional(), chat: chan.optional(), doc: line.optional(),
-  file: line.optional(), edit: line.optional(), vscode: z.enum(['run-tests', 'commit', 'deploy']).optional(),
+  file: line.optional(), edit: line.optional(), vscode: z.enum(['run-tests', 'commit', 'deploy', 'terminal']).optional(),
 }).superRefine(one(SHOW_KEYS, 'a show-me target'))
 const guideStep: z.ZodType<GuideStep> = z.strictObject({
   id: key, text: line, hint: line.optional(),
@@ -154,6 +155,10 @@ const level = z.strictObject({ label: line, blurb: line, mentorGuidance: line })
 export const Scenario = z.object({
   id: key,
   title: line,
+  /** What the player is here to practise, as the heading of their step list. A lesson with a goal is done when its guide steps
+   * are, and has no production to break: no deploys, alarm or incident, and none of the incident's cast or story is needed.
+   * Without one, the lesson is the incident shift the engine was built for: fix LED-214 and ship it. */
+  goal: z.strictObject({ title: line.max(80), summary: line.max(200) }).optional(),
   /** One line for the lesson library. */
   summary: line.max(200).optional(),
   /** What the library filters by. Stored cleaned, so older specs without tags still parse. */
@@ -168,28 +173,29 @@ export const Scenario = z.object({
   levels: z.strictObject({ newgrad: level, bootcamp: level, switcher: level }),
   /** When the shift starts, and when the demo is. */
   clock: z.strictObject({ start: time, deadline: time.optional() }),
-  /** 401 rate (%) that fires the alarm. */
-  alarmPercent: z.number().positive(),
+  /** 401 rate (%) that fires the alarm. Production only: a lesson with a goal leaves this and the next two out. */
+  alarmPercent: z.number().positive().default(5),
   /** Must match the ids server/acceptance.ts reports, in any order. */
-  checks: z.array(check).min(1),
-  customers: z.strictObject({ named: z.array(customer), otherAccounts: z.number().int().min(0), otherPasswordUsers: z.number().int().min(0) }),
+  checks: z.array(check).default([]),
+  customers: z.strictObject({ named: z.array(customer), otherAccounts: z.number().int().min(0), otherPasswordUsers: z.number().int().min(0) }).default(() => ({ named: [], otherAccounts: 0, otherPasswordUsers: 0 })),
   workspace: z.strictObject({
     /** The repository's name: VS Code's title, the terminal prompt and pwd, npm test's banner. */
     repo: key,
     /** The work laptop's name, in the menu bar. The terminal prompt drops its first word. */
     host: key,
   }).default(() => ({ ...WORKSPACE })),
+  /** The outage's words are Ledgerly's unless given; a lesson with a goal only needs the weekday, date and day. */
   story: z.strictObject({
     /** Cast id of the client contact, who escalates when their people are locked out. */
-    client: person,
+    client: person.default(STORY.client),
     /** The client's company: the name of one of customers.named. */
-    customer: line,
+    customer: line.default(STORY.customer),
     /** Who there signs in with a password, as in "Northwind’s 22 finance contractors". */
-    staff: line,
+    staff: line.default(STORY.staff),
     /** What happens at the clock's deadline, as in "Northwind Freight renewal demo". */
-    deadline: line,
+    deadline: line.default(STORY.deadline),
     /** When it moves to if production is down at the deadline. */
-    movedTo: line,
+    movedTo: line.default(STORY.movedTo),
     /** The day the shift happens, as the colleagues know it. */
     weekday: line.default(STORY.weekday),
     /** The shift's date as the menu bar shows it, month and day, as in "Sep 29". */
@@ -197,9 +203,9 @@ export const Scenario = z.object({
     /** Which day of the five-day placement the shift is. */
     day: z.number().int().min(1).max(DAYS).default(STORY.day),
     /** What breaks for API-key customers, as in "Osprey’s nightly export". */
-    integrations: z.array(line),
+    integrations: z.array(line).default(() => [...STORY.integrations]),
     /** The email sent when production is down at the deadline. */
-    postponed: z.strictObject({ who: person, subject: text.min(1), body: z.array(text).min(1) }),
+    postponed: z.strictObject({ who: person, subject: text.min(1), body: z.array(text).min(1) }).default(() => structuredClone(STORY.postponed)),
   }).default(() => structuredClone(STORY)),
   /** Only a member with a persona answers the player. */
   cast: z.record(key, z.object({ name: line, short: line.optional(), pronouns: z.enum(['she', 'he', 'they']).optional(), init: line, color: z.string().regex(/^#[0-9a-f]{6}$/i, 'a #rrggbb colour'), email: line, title: line, persona: persona.optional() })),
@@ -225,9 +231,16 @@ export const Scenario = z.object({
   const who = (id: string | null, path: (string | number)[]) => { if (id !== null && !Object.hasOwn(s.cast, id)) bad(path, `no cast member with id "${id}"`) }
   who(s.player, ['player'])
   who(s.mentor, ['mentor'])
-  who(s.story.client, ['story', 'client'])
-  who(s.story.postponed.who, ['story', 'postponed', 'who'])
-  if (!s.customers.named.some(c => c.name === s.story.customer)) bad(['story', 'customer'], `no customer named "${s.story.customer}"`)
+  // The story tells the outage, which a lesson with a goal never has.
+  if (!s.goal) {
+    who(s.story.client, ['story', 'client'])
+    who(s.story.postponed.who, ['story', 'postponed', 'who'])
+    if (!s.customers.named.some(c => c.name === s.story.customer)) bad(['story', 'customer'], `no customer named "${s.story.customer}"`)
+  }
+  if (s.goal && s.guide.length === 0) bad(['guide'], 'a lesson with a goal needs guide steps: finishing them is how the player finishes it')
+  if (!s.goal && s.checks.length === 0) bad(['checks'], 'the incident shift needs its production checks')
+  // Nothing opens an incident in a lesson with a goal, so only the start schedules anything.
+  if (s.goal) s.triggers.forEach((t, i) => { if (t.when.on !== 'start') bad(['triggers', i, 'when', 'on'], 'a lesson with a goal has no incident, so its triggers run "on": "start"') })
   if (Object.hasOwn(s.cast, s.mentor) && !s.channels[s.mentor]?.dm) bad(['mentor'], `the mentor needs a DM channel with id "${s.mentor}"`)
   if (Object.hasOwn(s.cast, s.mentor) && !s.cast[s.mentor].persona) bad(['mentor'], 'the mentor needs a persona')
   for (const [id, { persona: p }] of Object.entries(s.cast)) {
@@ -283,7 +296,7 @@ export const Scenario = z.object({
     c.all?.forEach((x, i) => cond(x, [...path, 'all', i]))
     c.any?.forEach((x, i) => cond(x, [...path, 'any', i]))
     if (c.not) cond(c.not, [...path, 'not'])
-    refs(path, [['email', c.mailRead, emailIds], ['email', c.mailReplied, emailIds], ['ticket', c.ticket?.id, ticketIds], ['doc', c.openedDoc, docIds],
+    refs(path, [['email', c.mailRead, emailIds], ['email', c.mailReplied, emailIds], ['ticket', c.ticket?.id, ticketIds], ['ticket', c.commented, ticketIds], ['doc', c.openedDoc, docIds],
       ['channel', c.channelRead, chanIds], ['channel', c.posted?.chan, chanIds], ['cast member', c.posted?.who, castIds]])
   }
   s.guide.forEach((g, i) => {

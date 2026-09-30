@@ -53,7 +53,7 @@ const view = (): View => ({
   scenario: '',
 })
 const nowhere = (): Omit<World, 'stage'> => ({
-  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: 0, lesson: { id: '', title: '', summary: null }, company: '', workspace: { repo: '', host: '' }, calendar: { weekday: '', date: '', day: 0, start: 0 }, cast: {}, channels: {}, player: '', mentor: '', levels: {}, deadline: null, guide: [],
+  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: 0, lesson: { id: '', title: '', summary: null }, company: '', workspace: { repo: '', host: '' }, calendar: { weekday: '', date: '', day: 0, start: 0 }, cast: {}, channels: {}, player: '', mentor: '', levels: {}, deadline: null, guide: [], goal: null, ran: [],
   impact: { alarmPercent: 0, checks: [], customers: { named: [], otherAccounts: 0, otherPasswordUsers: 0 } },
   emails: [], chats: {}, unread: {}, typing: [],
   tickets: [], docs: [], files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
@@ -173,6 +173,10 @@ export class Store {
       const fresh = this.state.id !== world.id
       this.remember(world)
       this.set({ ...(fresh ? { ...view(), seen: this.recall(world.id) } : {}), theme: this.state.theme, desk: this.state.desk, scenario: this.state.scenario, ...world, online: true, starting: false })
+      // The view opens on #team and LED-214, which only the incident shift has. Anything else opens on what it does have.
+      const { chan, ticketSel } = this.state
+      if (!world.channels[chan]) this.set({ chan: world.channels.team ? 'team' : world.mentor in world.channels ? world.mentor : Object.keys(world.channels)[0] ?? chan })
+      if (!world.tickets.some(t => t.id === ticketSel) && world.tickets[0]) this.set({ ticketSel: world.tickets[0].id })
       if (fresh) this.fit(this.state.desk.W, this.state.desk.H)
       // Only on a touch device: a narrow laptop window gets the phone layout too, but it is still a laptop.
       if (fresh && phone() && matchMedia('(pointer: coarse)').matches) this.toast({ title: 'Best on a laptop', body: 'LARP is built for a bigger screen. It works on your phone too, with less room.', go: () => {} })
@@ -257,7 +261,9 @@ export class Store {
     this.set(s => { const z = s.topZ + 1; return { wins: { ...s.wins, [app]: { ...s.wins[app], open: true, min: false, z } }, topZ: z, focus: app } })
     const s = this.state
     if (app === 'chat' && s.unread[s.chan] && this.watching(s.chan)) void this.act({ type: 'seen', what: 'chan:' + s.chan })
-    if (app === 'code' && !s.codeFile && s.files.length) void this.openFile(s.files.includes('src/auth/verifySession.ts') ? 'src/auth/verifySession.ts' : s.files[0])
+    // The incident shift opens on the file with the bug. A lesson with its own goal opens on the README, where a repository starts.
+    const first = s.goal ? 'README.md' : 'src/auth/verifySession.ts'
+    if (app === 'code' && !s.codeFile && s.files.length) void this.openFile(s.files.includes(first) ? first : s.files[0])
     if (app === 'docs') { this.mark('doc:' + s.docPage); void this.act({ type: 'seen', what: 'doc:' + s.docPage }) }
     if (app === 'monitor') this.mark('monitor@' + s.deploys.length)
   }

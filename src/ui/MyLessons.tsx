@@ -57,7 +57,7 @@ function Gate({ children }: { children: () => ReactNode }) {
   if (!config.enabled) return <Note title="Writing lessons needs accounts.">This server runs without them.</Note>
   if (!userId) return <div className="screen"><SignIn config={config} start="register" onDone={() => {}} /></div>
   if (account?.isAnonymous) {
-    return <Note title="Sign up to create lessons.">You're playing as a guest. Make an account and confirm your email, and you can write your own shifts.{account.save && <div><button className="btn btn-ink" onClick={account.save}>Sign up</button></div>}</Note>
+    return <Note title="Sign up to create lessons.">You're playing as a guest. Make an account and confirm your email, and you can write your own lessons.{account.save && <div><button className="btn btn-ink" onClick={account.save}>Sign up</button></div>}</Note>
   }
   if (!account?.verified) return <Note title="Confirm your email to create lessons.">We sent a link when you signed up. Open it, then come back here.</Note>
   return <Shell>{children()}</Shell>
@@ -137,13 +137,13 @@ function List() {
     <>
       <motion.section variants={rise} className="library-head">
         <div className="eyebrow">MY LESSONS</div>
-        <h1>Write a shift for others to practise.</h1>
-        <p className="lede">Describe the day and the AI drafts it: the company, the people, what lands in the inbox and when. Play it through yourself, then publish it.</p>
+        <h1>Write a lesson for others to practise.</h1>
+        <p className="lede">Describe the skill and who it's for, and the AI drafts the lesson: the task and its steps, the mentor, and what lands in the inbox. Play it through yourself, then publish it.</p>
       </motion.section>
       <motion.section variants={rise} className="author-card">
         <div className="field-label">New lesson</div>
-        <Ask label="Generate" placeholder="A fintech startup on the Friday before a release. The PM keeps changing priorities and a big client emails about a login bug…" onDone={l => navigate(`/my/lessons/${encodeURIComponent(l.id)}`)} />
-        <div className="sub small">For now every lesson runs on the same built-in codebase, an auth service, so the bug to fix stays the same. Everything around it is yours.</div>
+        <Ask label="Generate" placeholder="Git basics for a new developer: make a branch, commit a small change and push it, with a senior engineer coaching…" onDone={l => navigate(`/my/lessons/${encodeURIComponent(l.id)}`)} />
+        <div className="sub small">Lessons run on a built-in codebase, an invoicing API, with git, a terminal, email, chat, tickets and a wiki. Teach any skill that fits: git, reading code, testing, code review, writing to a client, handling an incident.</div>
       </motion.section>
       {error ? <div className="cta-note bad" role="alert">{error}</div> : lessons && (lessons.length === 0
         ? <div className="library-empty sub">No lessons yet. Describe one above.</div>
@@ -224,15 +224,15 @@ function Editor() {
         <div className="sub small">
           {lesson.removed ? 'Moderators took this lesson down, so it can’t be played or published. You can still revise it.'
             : lesson.status === 'published' ? `Version ${lesson.version} is live. Revising or editing it makes a new draft; players keep this version until you publish that.`
-            : lesson.tested ? `You finished a shift on version ${lesson.version}. It's ready to publish.`
-            : `Publishing opens once you've tested version ${lesson.version}: play it, ship the fix so every check passes, then end the shift.`}
+            : lesson.tested ? `You finished version ${lesson.version}. It's ready to publish.`
+            : `Publishing opens once you've tested version ${lesson.version}: play it through, finish every step, then press Finish lesson.`}
         </div>
       </motion.section>
 
       <motion.section variants={rise} className="author-card">
         <div className="field-label">Revise with AI</div>
         {lesson.prompt && <div className="sub small">Last asked: “{lesson.prompt}”</div>}
-        <Ask lessonId={lesson.id} label="Revise" placeholder="Make the manager more impatient, and have the client email arrive earlier…" onDone={setLesson} />
+        <Ask lessonId={lesson.id} label="Revise" placeholder="Add a step where they undo a mistake with git restore, and make the mentor more hands-off…" onDone={setLesson} />
       </motion.section>
 
       {error && <pre className="gen-error" role="alert">{error}</pre>}
@@ -269,6 +269,11 @@ function Outline({ s }: { s: Scenario }) {
         <div className="sub small">{s.company.name}, {s.company.description} · {s.clock.start}{s.clock.deadline ? ` to ${s.clock.deadline}` : ''}</div>
       </div>
       <div className="field">
+        <div className="field-label">The goal</div>
+        {s.goal ? <div><b>{s.goal.title}</b><div className="sub">{s.goal.summary}</div></div>
+          : <div className="sub">Fix LED-214, the SSO bug in the code, and ship it to production without breaking anything else.</div>}
+      </div>
+      <div className="field">
         <div className="field-label">Cast</div>
         <ul className="outline-list cast-list">
           {cast.map(([id, c]) => (
@@ -296,7 +301,7 @@ function Outline({ s }: { s: Scenario }) {
       )}
       {s.guide.length > 0 && (
         <div className="field">
-          <div className="field-label">The player's first steps</div>
+          <div className="field-label">{s.goal ? 'The steps' : "The player's first steps"}</div>
           <ol className="outline-steps">{s.guide.map(g => <li key={g.id}>{g.text}</li>)}</ol>
         </div>
       )}

@@ -65,7 +65,7 @@ try {
   // Not tested yet, so it can't be published. Nobody else may play a private draft, or edit it.
   const refused = await call(alice, 'POST', `/${id}/publish`, { visibility: 'public' })
   assert.equal(refused.status, 409)
-  assert.match(refused.body.error, /ship the fix/)
+  assert.match(refused.body.error, /Finish lesson/)
   assert.equal(await playable(id, bob), null)
   assert.equal(await playable(id, null), null)
   for (const [m, p, b] of [['GET', `/${id}`], ['PUT', `/${id}`, { spec }], ['PATCH', `/${id}`, { visibility: 'public' }], ['POST', `/${id}/publish`, { visibility: 'public' }]] as const) {
