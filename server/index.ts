@@ -36,12 +36,18 @@ const jsonOnly = (req: Request, res: Response, next: NextFunction) => {
   if (['POST', 'PUT'].includes(req.method) && !req.is('application/json')) res.status(415).json({ error: 'Send JSON.' })
   else next()
 }
+// Nothing under /api may be cached, even by a CDN told to cache everything: it is all per-shift state.
+app.use('/api', (_req: Request, res: Response, next: NextFunction) => { res.set('Cache-Control', 'no-store'); next() })
 app.use('/api', jsonOnly, express.json({ limit: '300kb' }), api)
 app.use('/api', errors)
 
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(join(ROOT, 'dist')))
-  app.get('/{*path}', (_req: Request, res: Response) => { res.sendFile(join(ROOT, 'dist', 'index.html')) })
+  // Built assets carry a content hash in their names, so browsers and the CDN can keep them for good.
+  // A missing one is a 404, never index.html, or an old tab would get HTML where it asked for a script.
+  app.use('/assets', express.static(join(ROOT, 'dist', 'assets'), { immutable: true, maxAge: '1y', fallthrough: false }))
+  // index.html names the current hashes, so it is checked with the server on every load.
+  app.use(express.static(join(ROOT, 'dist'), { setHeaders: res => res.set('Cache-Control', 'no-cache') }))
+  app.get('/{*path}', (_req: Request, res: Response) => { res.set('Cache-Control', 'no-cache').sendFile(join(ROOT, 'dist', 'index.html')) })
 } else {
   const { createServer } = await import('vite')
   // The player's workspaces live under .data. Vite must not treat their files as part of this app.
