@@ -162,12 +162,14 @@ async function evict() {
   await drop(s.world.id)
 }
 
-/** `who` is the person playing. Without accounts the scenario's own player is used. `scenario` is an id from the catalog. */
-export async function create(level: Level, background: string, pace: number, ai: World['ai'], userId: string | null = null, who?: { name: string; short?: string }, scenario = DEFAULT_SCENARIO) {
-  const file = scenarioFile(scenario)
-  if (!file) throw new Error(`No scenario "${scenario}".`)
+/** `who` is the person playing. Without accounts the scenario's own player is used. `scenario` is an id from the catalog,
+ * or a lesson's spec with the version row it is pinned to (see authoring.ts). */
+export async function create(level: Level, background: string, pace: number, ai: World['ai'], userId: string | null = null, who?: { name: string; short?: string },
+  scenario: string | { spec: Scenario; version: string } = DEFAULT_SCENARIO) {
+  const file = typeof scenario === 'string' ? scenarioFile(scenario) : undefined
+  if (typeof scenario === 'string' && !file) throw new Error(`No scenario "${scenario}".`)
   await evict()
-  const { spec: picked, version } = await store().pickScenario(file)
+  const { spec: picked, version } = file ? await store().pickScenario(file) : scenario as { spec: Scenario; version: string }
   const spec = personalize(picked, who ?? picked.cast[picked.player])
   const id = randomUUID()
   const world: World = {

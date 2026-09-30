@@ -7,6 +7,7 @@ import { mode, probe } from './ai/llm.ts'
 import * as director from './director.ts'
 import { Refusal } from './sandbox.ts'
 import { authEnabled, googleEnabled, me } from './auth.ts'
+import { lessonsApi, playable } from './authoring.ts'
 import type { Me } from './auth.ts'
 import { mailReady } from './mail.ts'
 import { lessonTags, listLessons } from './lessons.ts'
@@ -55,11 +56,18 @@ api.get('/health', async (_req, res) => {
   res.json({ ai: mode(), problem: await probe() })
 })
 
-// The start page shows who you will be before a shift exists.
-api.get('/scenario', (req, res) => {
-  const sc = scenarioFile(typeof req.query.id === 'string' ? req.query.id : DEFAULT_SCENARIO)
-  if (!sc) throw new Missing('No such scenario.')
-  res.json(roster(sc))
+/** A built-in's id, or a lesson from the database this player may play (see authoring.ts). */
+async function lesson(id: unknown, userId: string | null, missing: Error) {
+  const found = typeof id === 'string' && (scenarioFile(id) ? id : await playable(id, userId))
+  if (!found) throw missing
+  return found
+}
+// The start page shows who you will be before a shift exists. Built before sign-in, so a session is read only for a lesson from the database.
+api.get('/scenario', async (req, res) => {
+  const id = typeof req.query.id === 'string' ? req.query.id : DEFAULT_SCENARIO
+  const userId = !scenarioFile(id) && authEnabled() ? (await me(req.headers))?.id ?? null : null
+  const found = await lesson(id, userId, new Missing('No such scenario.'))
+  res.json(roster(typeof found === 'string' ? scenarioFile(found)! : found.spec))
 })
 // The library is browsable before signing in, like a shop window.
 api.get('/lessons', async (req, res) => { res.json(await listLessons(req.query)) })
@@ -87,12 +95,14 @@ api.get('/me/runs', async (_req, res) => {
   if (!res.locals.me) throw new Missing('Accounts are off on this server.')
   res.json(await listRuns(res.locals.me.id))
 })
+api.use('/my/lessons', lessonsApi)
 
 api.post('/sessions', async (req, res) => {
   const level = pick(req.body?.level, LEVELS, 'level')
   const speed = PACES.map(p => p[0]).includes(req.body?.pace) ? req.body.pace : 4
-  const scenario = req.body?.scenario === undefined ? DEFAULT_SCENARIO : pick(req.body.scenario, catalog().map(c => c.id), 'scenario')
   const user = res.locals.me as Me | undefined
+  const scenario = req.body?.scenario === undefined ? DEFAULT_SCENARIO : await lesson(req.body.scenario, user?.id ?? null,
+    new Bad(`scenario must be one of: ${catalog().map(c => c.id).join(', ')}, or a lesson you can play`))
   // The player takes the account's name. A guest's made-up name ("Happy Mango") has no first name to shorten to.
   const who = user && { name: user.name, short: user.isAnonymous ? user.name : undefined }
   const s = await create(level, maybe(req.body?.background, 400).trim(), speed, mode(), user?.id ?? null, who, scenario)
