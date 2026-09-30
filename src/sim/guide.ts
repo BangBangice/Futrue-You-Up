@@ -1,7 +1,6 @@
 // The step list in the top-left corner: what to do next, worked out from the state of the shift.
 // Steps say what to do and where. They never say what the bug is: finding that out is the lesson.
 // New grads also get the checks a senior would make first.
-import { PEOPLE } from '../../shared/types.ts'
 import type { AppId, ChanId, Email } from '../../shared/types.ts'
 import { live, sim } from './store.ts'
 import type { State } from './store.ts'
@@ -41,16 +40,16 @@ export function guide(s: State): Guide {
   const fixed = s.tickets.find(t => t.id === 'LED-214')?.status === 'done'
   const committed = !!s.code.head && !s.deploys.some(d => d.sha === s.code.head)
   const watched = s.seen.includes('monitor@' + n) || (s.wins.monitor.open && !s.wins.monitor.min)
-  const saidIn = (chan: ChanId, after: number) => s.chats[chan].some(m => m.who === 'maya' && m.id > after)
+  const saidIn = (chan: ChanId, after: number) => s.chats[chan].some(m => m.who === s.player && m.id > after)
   const lastAlert = (kind: 'fire' | 'ok' | 'info') => s.chats.incidents.findLast(m => m.alert === kind && m.id > NEW)?.id ?? NEW
   const pm = s.emails.find(e => e.kind === 'pm')
-  const pmDone = !!pm?.thread.length || s.docs.some(d => d.owner === 'maya' && /post-?mortem/i.test(d.title))
+  const pmDone = !!pm?.thread.length || s.docs.some(d => d.owner === s.player && /post-?mortem/i.test(d.title))
 
   const watch = (text: string): Step => ({ id: 'watch', text, done: watched, hint: 'A deploy takes about two minutes to show up.', show: inApp('monitor', 'error-rate') })
   const daniel = (after: number, side = false): Step[] => s.chats.daniel.some(m => m.who === 'daniel' && m.id > after)
     ? [{ id: 'daniel', text: 'Read Daniel’s message in Teams', done: !s.unread.daniel, side, show: inChat('daniel') }] : []
   const replies = (): Step[] => s.emails.filter(e => e.kind === 'client' || e.kind === 'support' || e.kind === 'sam')
-    .map(e => ({ id: e.id, text: `Reply to ${PEOPLE[e.who].name}`, done: e.thread.length > 0, side: true, show: inMail(e, true) }))
+    .map(e => ({ id: e.id, text: `Reply to ${s.cast[e.who].name}`, done: e.thread.length > 0, side: true, show: inMail(e, true) }))
   const ship = (again: boolean): Step[] => [
     { id: 'edit', text: again ? 'Change the code and save (⌘S)' : 'Make your change and save it (⌘S)', done: s.code.changes.length > 0 || committed, show: () => { void sim.openCode(VERIFY); sim.spotlight(['editor'], 'dock:code') } },
     { id: 'test', text: 'Run the tests', done: s.seen.includes('tested@' + n), hint: 'Run tests at the top of VS Code, or type npm test in the terminal.', show: inCode('files', 'run-tests') },
@@ -101,7 +100,7 @@ export function guide(s: State): Guide {
   }
 
   // ---------- deployed, but the ticket is still open ----------
-  if (s.deploys.some(d => d.by === 'maya' && d.kind === 'deploy')) {
+  if (s.deploys.some(d => d.by === s.player && d.kind === 'deploy')) {
     return {
       phase: 'retry:' + n, title: 'Your deploy is live', sub: 'Jira still shows LED-214 as open. See what production says.',
       steps: [watch('Watch the 401 rate in CloudWatch'), ...daniel(lastAlert('info')), ...ship(true)],

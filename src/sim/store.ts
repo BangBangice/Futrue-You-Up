@@ -2,7 +2,7 @@
 // this store keeps a copy, adds what only the browser knows (windows, drafts, open files), and sends the player's actions.
 import { useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
-import { APP_NAMES, CHANS, PEOPLE, START } from '../../shared/types.ts'
+import { APP_NAMES, START } from '../../shared/types.ts'
 import type { AppId, Attachment, ChanId, Doc, Folder, Level, Patch, Priority, TermLine, Theme, Ticket, World } from '../../shared/types.ts'
 
 export interface Win { open: boolean; min: boolean; max: boolean; x: number; y: number; w: number; h: number; z: number }
@@ -42,8 +42,8 @@ const view = (): View => ({
   seen: [], spot: null, guideOpen: true,
 })
 const nowhere = (): Omit<World, 'stage'> => ({
-  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: START,
-  emails: [], chats: { team: [], incidents: [], priya: [], daniel: [], leo: [] }, unread: { team: 0, incidents: 0, priya: 0, daniel: 0, leo: 0 }, typing: [],
+  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: START, cast: {}, channels: {}, player: '',
+  emails: [], chats: {}, unread: {}, typing: [],
   tickets: [], docs: [], files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
   deploys: [], incident: null, demo: 'pending', timeline: [], recap: null,
 })
@@ -102,6 +102,15 @@ class Store {
       this.set(s => (s.stage === 'onboard' ? { ai, aiProblem: problem } : null))
     } catch { /* the server is down; starting a shift will say so */ }
   }
+  /** Who the player will be, for the start page. The shift's own snapshot replaces it. */
+  loadCast = async () => {
+    try {
+      const res = await fetch('/api/scenario')
+      if (!res.ok) return
+      const cast = await res.json() as Pick<World, 'cast' | 'channels' | 'player'>
+      this.set(s => (s.stage === 'onboard' ? cast : null))
+    } catch { /* the server is down; starting a shift will say so */ }
+  }
   leave() { this.stream?.close(); this.stream = null }
   /** Picks up a shift that was already running, for instance after a reload. */
   resume() { const id = sessionStorage.getItem(KEY); if (id) this.connect(id) }
@@ -148,10 +157,10 @@ class Store {
     this.set(patch as Partial<State>)
     const s = this.state
     // Announce what is new, unless the player is already looking at it.
-    for (const e of patch.emails ?? []) if (!this.known.has(e.id) && e.who !== 'maya') this.toast({ app: 'mail', title: PEOPLE[e.who].name, body: e.subject, go: () => this.openMail(e.id) })
+    for (const e of patch.emails ?? []) if (!this.known.has(e.id) && e.who !== s.player) this.toast({ app: 'mail', title: s.cast[e.who].name, body: e.subject, go: () => this.openMail(e.id) })
     for (const [chan, msgs] of Object.entries(patch.chats ?? {}) as [ChanId, World['chats'][ChanId]][]) for (const m of msgs) {
-      if (this.known.has('c' + m.id) || m.who === 'maya') continue
-      if (!(this.watching(chan) && s.focus === 'chat')) this.toast({ app: 'chat', title: PEOPLE[m.who].name + (CHANS[chan].dm ? '' : ' in ' + CHANS[chan].label), body: m.text, go: () => this.openChat(chan) })
+      if (this.known.has('c' + m.id) || m.who === s.player) continue
+      if (!(this.watching(chan) && s.focus === 'chat')) this.toast({ app: 'chat', title: s.cast[m.who].name + (s.channels[chan].dm ? '' : ' in ' + s.channels[chan].label), body: m.text, go: () => this.openChat(chan) })
     }
     this.remember(s)
     if (patch.unread && this.watching(s.chan) && s.unread[s.chan]) void this.act({ type: 'seen', what: 'chan:' + s.chan })

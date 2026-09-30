@@ -1,8 +1,14 @@
 // Types, constants and pure helpers used by both the server and the browser. No I/O here.
 
 export type AppId = 'mail' | 'chat' | 'code' | 'tracker' | 'docs' | 'monitor'
-export type PersonId = 'maya' | 'priya' | 'daniel' | 'leo' | 'sam' | 'hana' | 'marta' | 'people' | 'cloudwatch' | 'jira'
-export type ChanId = 'team' | 'incidents' | 'priya' | 'daniel' | 'leo'
+/** A key of the scenario's cast. The scenario schema checks references; the compiler cannot. */
+export type PersonId = string
+/** A key of the scenario's channels. A DM channel shares its id with the person on the other end. */
+export type ChanId = string
+export interface Person { name: string; init: string; color: string; email: string; title: string }
+export interface Channel { label: string; topic: string; dm?: boolean }
+export type Cast = Record<PersonId, Person>
+export type Channels = Record<ChanId, Channel>
 export type Level = 'newgrad' | 'bootcamp' | 'switcher'
 export type Theme = 'light' | 'dark'
 export const FOLDERS = ['inbox', 'alerts', 'sent', 'archive', 'deleted'] as const
@@ -59,6 +65,8 @@ export interface Recap { ready: boolean; happened: string[]; corrected: string[]
 /** Everything the server owns. The browser holds a read-only copy kept current by patches. */
 export interface World {
   id: string; stage: 'sim' | 'recap'; level: Level; background: string; ai: 'live' | 'stub'
+  /** Who is in this scenario and which cast member the player is. Fixed for the shift. */
+  cast: Cast; channels: Channels; player: PersonId
   /** Why AI calls are failing right now, or null while they work. */
   aiProblem: string | null
   /** Simulated minutes per real minute. */
@@ -85,31 +93,10 @@ export const clock = (m: number) => {
 export const money = (n: number) => '$' + Math.round(n).toLocaleString('en-US')
 export const dur = (n: number) => (n >= 60 ? Math.floor(n / 60) + 'h ' + (n % 60) + 'm' : n + 'm')
 
-export const PEOPLE: Record<PersonId, { name: string; init: string; color: string; email: string; title: string }> = {
-  maya: { name: 'Maya Chen', init: 'MC', color: '#2f6fde', email: 'maya.chen@ledgerly.io', title: 'Junior Backend Developer' },
-  priya: { name: 'Priya Raman', init: 'PR', color: '#c2542d', email: 'priya@ledgerly.io', title: 'Engineering Manager' },
-  daniel: { name: 'Daniel Okafor', init: 'DO', color: '#1f7a6d', email: 'daniel@ledgerly.io', title: 'Senior Engineer' },
-  leo: { name: 'Leo Martins', init: 'LM', color: '#7a4fd6', email: 'leo@ledgerly.io', title: 'Engineer' },
-  sam: { name: 'Sam Whitfield', init: 'SW', color: '#a86a12', email: 'sam@ledgerly.io', title: 'Account Manager' },
-  hana: { name: 'Hana Ito', init: 'HI', color: '#b83a78', email: 'hana@ledgerly.io', title: 'Support Lead' },
-  marta: { name: 'Marta Lindqvist', init: 'ML', color: '#3d4a5c', email: 'marta.lindqvist@northwindfreight.com', title: 'Head of Finance Ops, Northwind Freight' },
-  people: { name: 'People Ops', init: 'PO', color: '#6b7280', email: 'people@ledgerly.io', title: 'People Ops' },
-  cloudwatch: { name: 'CloudWatch', init: 'CW', color: '#e2661b', email: 'alarms@cloudwatch.ledgerly.io', title: 'Monitoring' },
-  jira: { name: 'Jira', init: 'J', color: '#0052cc', email: 'jira@ledgerly.atlassian.net', title: 'Issue tracker' },
-}
-export const personByName = (text: string) => {
+export const personByName = (cast: Cast, text: string) => {
   const t = text.trim().toLowerCase()
-  return (Object.keys(PEOPLE) as PersonId[]).find(k => PEOPLE[k].name.toLowerCase() === t || PEOPLE[k].email === t)
+  return Object.keys(cast).find(k => cast[k].name.toLowerCase() === t || cast[k].email === t)
 }
-
-export const CHANS: Record<ChanId, { label: string; topic: string; dm?: boolean }> = {
-  team: { label: '# team', topic: 'Backend team · 6 members' },
-  incidents: { label: '# incidents', topic: 'Production alerts and incident comms' },
-  priya: { label: 'Priya Raman', dm: true, topic: 'Engineering Manager' },
-  daniel: { label: 'Daniel Okafor', dm: true, topic: 'Senior Engineer · your mentor' },
-  leo: { label: 'Leo Martins', dm: true, topic: 'Engineer' },
-}
-export const CHAN_IDS = Object.keys(CHANS) as ChanId[]
 
 export const APP_IDS: AppId[] = ['mail', 'chat', 'code', 'tracker', 'docs', 'monitor']
 export const APP_NAMES: Record<AppId, string> = {

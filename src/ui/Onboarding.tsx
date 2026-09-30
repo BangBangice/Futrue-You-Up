@@ -14,12 +14,13 @@ export function Onboarding() {
   const starting = useSim(s => s.starting)
   const error = useSim(s => s.error)
   const aiProblem = useSim(s => s.aiProblem)
-  useEffect(() => { void sim.checkAi() }, [])
+  const player = useSim(s => s.player), me = useSim(s => s.cast[s.player])
+  useEffect(() => { void sim.checkAi(); void sim.loadCast() }, [])
   return (
     <div className="page">
       <header className="topbar">
         <Brand />
-        <div className="topbar-right"><ThemeToggle /><span>Maya Chen</span><Avatar who="maya" size={28} /></div>
+        <div className="topbar-right"><ThemeToggle />{me && <><span>{me.name}</span><Avatar who={player} size={28} /></>}</div>
       </header>
       <motion.main className="onboard" variants={stagger(0.07, 0.05)} initial="hidden" animate="show">
         <section className="hero">

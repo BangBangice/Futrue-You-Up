@@ -1,12 +1,12 @@
 // The API. Every request body is checked here before it reaches the director.
 import { Router } from 'express'
 import type { NextFunction, Request, Response } from 'express'
-import { APP_IDS, CHAN_IDS, COLS, FOLDERS, PACES, PEOPLE, PRIORITIES } from '../shared/types.ts'
-import type { Attachment, Level, PersonId } from '../shared/types.ts'
+import { APP_IDS, COLS, FOLDERS, PACES, PRIORITIES } from '../shared/types.ts'
+import type { Attachment, Level } from '../shared/types.ts'
 import { mode, probe } from './ai/llm.ts'
 import * as director from './director.ts'
 import { Refusal } from './sandbox.ts'
-import { create, find, valid } from './world.ts'
+import { create, find, roster, valid } from './world.ts'
 
 class Bad extends Error { status = 400 }
 class Missing extends Error { status = 404 }
@@ -47,6 +47,9 @@ export const api = Router()
 api.get('/health', async (_req, res) => {
   res.json({ ai: mode(), problem: await probe() })
 })
+
+// The start page shows who you will be before a shift exists.
+api.get('/scenario', (_req, res) => { res.json(roster()) })
 
 api.post('/sessions', async (req, res) => {
   const level = pick(req.body?.level, LEVELS, 'level')
@@ -89,7 +92,7 @@ api.post('/sessions/:id/act', async (req, res) => {
   switch (a.type) {
     case 'chat':
       if (!files.length) text(a.text, 4000, 'message')
-      director.chat(s, pick(a.chan, CHAN_IDS, 'chan'), maybe(a.text, 4000).trim(), files)
+      director.chat(s, pick(a.chan, Object.keys(s.world.channels), 'chan'), maybe(a.text, 4000).trim(), files)
       break
     case 'mail':
       if (!files.length) text(a.text, 20_000, 'message')
@@ -107,7 +110,7 @@ api.post('/sessions/:id/act', async (req, res) => {
       res.json({ ok: true, id: director.saveTicket(s, a.id ? text(a.id, 20, 'id') : undefined, {
         ...(typeof a.title === 'string' && { title: text(a.title, 160, 'title') }), ...(typeof a.desc === 'string' && { desc: a.desc.slice(0, 4000) }),
         ...(optional(a.status, COLS.map(c => c[0])) && { status: a.status }), ...(optional(a.pri, PRIORITIES) && { pri: a.pri }),
-        ...(a.who === null ? { who: null } : optional(a.who, Object.keys(PEOPLE) as PersonId[]) && { who: a.who }),
+        ...(a.who === null ? { who: null } : optional(a.who, Object.keys(s.world.cast)) && { who: a.who }),
       }) })
       return
     case 'comment': director.comment(s, text(a.id, 20, 'id'), text(a.text, 2000, 'comment')); break

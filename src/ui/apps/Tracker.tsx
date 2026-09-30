@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { DragEvent, FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Plus, SendHorizontal } from 'lucide-react'
-import { COLS, PEOPLE, PRIORITIES } from '../../../shared/types.ts'
+import { COLS, PRIORITIES } from '../../../shared/types.ts'
 import type { PersonId, Priority, Ticket, TicketStatus } from '../../../shared/types.ts'
 import { sim, useSim } from '../../sim/store.ts'
 import { Avatar, EASE, LOGOS, SPRING } from '../bits.tsx'
@@ -24,6 +24,7 @@ function Editable({ value, onSave, multiline, label }: { value: string; onSave: 
 
 function Detail({ tk }: { tk: Ticket }) {
   const [tab, setTab] = useState<'comments' | 'activity'>('comments')
+  const cast = useSim(s => s.cast)
   const locked = tk.id.startsWith('INC') // incidents follow production, not the board
   const comment = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -38,7 +39,7 @@ function Detail({ tk }: { tk: Ticket }) {
         <dt>Status</dt>
         <dd><select className="select" data-guide="ticket-status" value={tk.status} disabled={locked} aria-label="Status" onChange={e => sim.saveTicket(tk.id, { status: e.target.value as TicketStatus })}>{COLS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select></dd>
         <dt>Assignee</dt>
-        <dd className="assignee">{tk.who && <Avatar who={tk.who} size={18} />}<select className="select" value={tk.who ?? ''} aria-label="Assignee" onChange={e => sim.saveTicket(tk.id, { who: (e.target.value || null) as PersonId | null })}><option value="">Unassigned</option>{TEAM.map(p => <option key={p} value={p}>{PEOPLE[p].name}</option>)}</select></dd>
+        <dd className="assignee">{tk.who && <Avatar who={tk.who} size={18} />}<select className="select" value={tk.who ?? ''} aria-label="Assignee" onChange={e => sim.saveTicket(tk.id, { who: (e.target.value || null) as PersonId | null })}><option value="">Unassigned</option>{TEAM.map(p => <option key={p} value={p}>{cast[p].name}</option>)}</select></dd>
         <dt>Priority</dt>
         <dd><select className="select" value={tk.pri} aria-label="Priority" onChange={e => sim.saveTicket(tk.id, { pri: e.target.value as Priority })}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</select></dd>
         <dt>Estimate</dt><dd>{tk.pts ? tk.pts + ' pts' : '—'}</dd>
@@ -59,7 +60,7 @@ function Detail({ tk }: { tk: Ticket }) {
             {tk.comments.map((c, i) => (
               <motion.div key={i} className="comment" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
                 <Avatar who={c.who} size={24} />
-                <div><div className="comment-head"><b>{PEOPLE[c.who].name}</b><time>{c.time}</time></div><p><Rich text={c.text} /></p></div>
+                <div><div className="comment-head"><b>{cast[c.who].name}</b><time>{c.time}</time></div><p><Rich text={c.text} /></p></div>
               </motion.div>
             ))}
           </AnimatePresence>

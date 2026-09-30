@@ -1,5 +1,5 @@
 // The people at Ledgerly. Each is a card, a view of the facts they could plausibly know, and the things they are able to do.
-import { CHANS, CHECK_LABEL, COLS, DEMO, PEOPLE, PRIORITIES, clock, dur, errAt, failing, isOutage, lockedAt } from '../../shared/types.ts'
+import { CHECK_LABEL, COLS, DEMO, PRIORITIES, clock, dur, errAt, failing, isOutage, lockedAt } from '../../shared/types.ts'
 import type { ChanId, Email, TicketStatus } from '../../shared/types.ts'
 import type { Session } from '../world.ts'
 import { aiProblem, ask, oneOf, str } from './llm.ts'
@@ -72,7 +72,7 @@ export function facts(s: Session, who: Persona | 'mentor'): string {
 
   const t = w.tickets.find(x => x.id === 'LED-214')!
   out.push(`Maya Chen is a junior backend developer on her second day. Priya assigned her LED-214 (${t.title}) at 1:10 PM. It is now "${COLS.find(c => c[0] === t.status)![1]}"${t.reopened ? ', reopened' : ''}.`)
-  out.push(`Live in production: auth-api@${live.sha}, ${live.kind === 'rollback' ? 'rolled back' : 'deployed'} by ${PEOPLE[live.by].name} at ${clock(live.at)}.`)
+  out.push(`Live in production: auth-api@${live.sha}, ${live.kind === 'rollback' ? 'rolled back' : 'deployed'} by ${w.cast[live.by].name} at ${clock(live.at)}.`)
   out.push(`auth-api 401 error rate: ${errAt(w.deploys, m).toFixed(1)}% (alarm at 5%, normal about 0.5%).`)
   if (outage) out.push(`Failing right now: ${broken.join('; ')}. About ${lockedAt(w.deploys, m).toLocaleString('en-US')} people cannot sign in, including Northwind’s 22 finance contractors. SSO and API-key users ${broken.some(b => b.includes('api key')) ? 'are partly affected' : 'are fine'}.`)
   if (w.incident) out.push(w.incident.resolvedAt ? `${w.incident.id} was opened automatically by the CloudWatch alarm at ${clock(w.incident.startedAt)} and resolved at ${clock(w.incident.resolvedAt)} (${w.incident.resolvedAt - w.incident.startedAt} min).` : `${w.incident.id} was opened automatically by the CloudWatch alarm at ${clock(w.incident.startedAt)} and is still open (${m - w.incident.startedAt} min). Owner: Maya.`)
@@ -86,7 +86,7 @@ export function facts(s: Session, who: Persona | 'mentor'): string {
   return out.map(l => '- ' + l).join('\n')
 }
 
-const system = (who: Persona) => `You are ${PEOPLE[who].name}, ${PEOPLE[who].title}${INTERNAL.includes(who) ? ' at Ledgerly, a 40-person invoicing software company' : ''}.
+const system = (s: Session, who: Persona) => `You are ${s.world.cast[who].name}, ${s.world.cast[who].title}${INTERNAL.includes(who) ? ' at Ledgerly, a 40-person invoicing software company' : ''}.
 How you write: ${CARDS[who].voice}
 What you know: ${CARDS[who].knows}
 What you want: ${CARDS[who].wants}
@@ -143,14 +143,14 @@ export async function reply(s: Session, who: Persona, via: { room: ChanId | null
   const { room, mail } = via
   if (!(who in CARDS)) return
   const thread = mail
-    ? [`[${mail.time}] ${PEOPLE[mail.who].name}: ${mail.subject}\n${mail.body.join('\n')}`, ...mail.thread.map(r => `[${r.time}] Maya: ${r.text}`)].join('\n')
-    : s.world.chats[room!].slice(-12).map(m => `[${m.time}] ${m.who === 'maya' ? 'Maya' : PEOPLE[m.who].name}: ${m.text}`).join('\n')
-  const where = mail ? 'email' : CHANS[room!].dm ? 'a direct message with Maya in Teams' : `${CHANS[room!].label} in Teams`
+    ? [`[${mail.time}] ${s.world.cast[mail.who].name}: ${mail.subject}\n${mail.body.join('\n')}`, ...mail.thread.map(r => `[${r.time}] Maya: ${r.text}`)].join('\n')
+    : s.world.chats[room!].slice(-12).map(m => `[${m.time}] ${m.who === s.world.player ? 'Maya' : s.world.cast[m.who].name}: ${m.text}`).join('\n')
+  const where = mail ? 'email' : s.world.channels[room!].dm ? 'a direct message with Maya in Teams' : `${s.world.channels[room!].label} in Teams`
   const budget = s.priv.aiCalls++ < 80
   const calls = budget ? await ask({
-    priority: 1, timeoutMs: 75_000, system: system(who),
+    priority: 1, timeoutMs: 75_000, system: system(s, who),
     tools: CARDS[who].can.map(n => TOOLS[n](who, s)),
-    user: `FACTS\n${facts(s, who)}\n\nCONVERSATION (${where})\n${thread}\n\nMAYA WROTE\n"""${said.slice(0, 2000)}"""\n\nReply as ${PEOPLE[who].name}${room ? `. To answer in Teams use the channel "${room}"` : ', by email'}.`,
+    user: `FACTS\n${facts(s, who)}\n\nCONVERSATION (${where})\n${thread}\n\nMAYA WROTE\n"""${said.slice(0, 2000)}"""\n\nReply as ${s.world.cast[who].name}${room ? `. To answer in Teams use the channel "${room}"` : ', by email'}.`,
   }) : null
   if (s.world.stage !== 'sim') return
   if (calls && apply(s, who, calls, room)) return
