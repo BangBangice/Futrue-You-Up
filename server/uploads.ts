@@ -99,8 +99,9 @@ function choose(): 'disk' | 's3' {
   if (want === 'disk') return 'disk'
   const fields = ['bucket', 'endpoint', 'key', 'secret'] as const
   const missing = fields.filter(f => !env(VAR[f]))
-  // Without STORAGE, only a bucket someone actually started configuring is taken as one.
-  if (!want && missing.length === fields.length) return 'disk'
+  // Without STORAGE, only a named bucket is taken as a request for one: generic AWS credentials in a host's environment
+  // say nothing about where these files should go.
+  if (!want && !env(VAR.bucket)) return 'disk'
   if (missing.length) throw new Error(`an S3 bucket needs ${missing.map(f => VAR[f][0]).join(', ')}; set STORAGE=disk to keep files on this server instead`)
   return 's3'
 }
