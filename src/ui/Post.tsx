@@ -1,13 +1,14 @@
 // After the shift: what happened, what you put right, and what to practise next. No score.
 import { motion } from 'motion/react'
 import { ArrowRight, Check, Footprints, LoaderCircle } from 'lucide-react'
-import { PEOPLE, clock } from '../../shared/types.ts'
+import { clock } from '../../shared/types.ts'
 import { sim, useSim } from '../sim/store.ts'
 import { Avatar, Brand, ThemeToggle, rise, stagger } from './bits.tsx'
 
 export function Post() {
   const recap = useSim(s => s.recap)
   const end = useSim(s => s.simMin)
+  const mentor = useSim(s => s.cast.daniel)
   if (!recap) return null
   return (
     <>
@@ -28,7 +29,7 @@ export function Post() {
           <motion.section variants={rise} className="panel mentor-note">
             <Avatar who="daniel" size={40} />
             <div>
-              <div className="comment-head"><b>{PEOPLE.daniel.name}</b><span className="sub small">{PEOPLE.daniel.title} · your mentor</span></div>
+              <div className="comment-head"><b>{mentor.name}</b><span className="sub small">{mentor.title} · your mentor</span></div>
               {recap.ready ? recap.note.split('\n').filter(Boolean).map((p, i) => <p key={i}>{p}</p>) : <p className="sub writing"><LoaderCircle size={14} className="spin" />Daniel is writing to you. What happened today is below in the meantime.</p>}
             </div>
           </motion.section>

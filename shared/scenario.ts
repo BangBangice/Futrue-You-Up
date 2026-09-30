@@ -1,12 +1,13 @@
 // The shape of a scenario file. Pure: the server validates with it, and a scenario editor can reuse it.
-// This first version covers the starting content only; the cast, timeline and checks are still code.
+// It covers the cast, the channels and the starting content; personas, the timeline and checks are still code.
 import { z } from 'zod'
-import { APP_IDS, CHAN_IDS, COLS, FOLDERS, PEOPLE, PRIORITIES } from './types.ts'
-import type { PersonId } from './types.ts'
+import { APP_IDS, COLS, FOLDERS, PRIORITIES } from './types.ts'
 
-const person = z.enum(Object.keys(PEOPLE) as PersonId[])
-const chan = z.enum(CHAN_IDS)
 const line = z.string().min(1)
+const key = z.string().regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes')
+// Checked against the cast and channels in superRefine below.
+const person = line
+const chan = line
 
 const attachment = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('code'), path: line }),
@@ -37,8 +38,13 @@ const ticket = z.object({
 const doc = z.object({ id: line, title: line, group: line, owner: person, updated: line, body: z.string(), version: z.number().int().positive().default(1) })
 
 export const Scenario = z.object({
-  id: z.string().regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes'),
+  id: key,
   title: line,
+  /** The cast member the player plays. */
+  player: line,
+  cast: z.record(key, z.object({ name: line, init: line, color: z.string().regex(/^#[0-9a-f]{6}$/i, 'a #rrggbb colour'), email: line, title: line })),
+  /** A DM channel's id is the id of the person on the other end. */
+  channels: z.record(key, z.object({ label: line, topic: z.string(), dm: z.boolean().optional() })),
   seed: z.object({
     emails: z.array(email),
     chats: z.record(chan, z.array(chatMsg)),
@@ -50,7 +56,19 @@ export const Scenario = z.object({
 }).superRefine((s, ctx) => {
   const bad = (path: (string | number)[], message: string) => ctx.addIssue({ code: 'custom', path, message })
   const unique = (what: string, ids: (string | number)[], path: string[]) => ids.forEach((id, i) => { if (ids.indexOf(id) !== i) bad([...path, i, 'id'], `duplicate ${what} id "${id}"`) })
-  const { emails, chats, tickets, docs } = s.seed
+  const { emails, chats, unread, tickets, docs } = s.seed
+
+  const who = (id: string | null, path: (string | number)[]) => { if (id !== null && !Object.hasOwn(s.cast, id)) bad(path, `no cast member with id "${id}"`) }
+  who(s.player, ['player'])
+  for (const [c, ch] of Object.entries(s.channels)) if (ch.dm) who(c, ['channels', c])
+  for (const [field, rec] of [['chats', chats], ['unread', unread]] as const) {
+    for (const c of Object.keys(s.channels)) if (!Object.hasOwn(rec, c)) bad(['seed', field], `missing channel "${c}"`)
+    for (const c of Object.keys(rec)) if (!Object.hasOwn(s.channels, c)) bad(['seed', field, c], `no channel with id "${c}"`)
+  }
+  emails.forEach((e, i) => who(e.who, ['seed', 'emails', i, 'who']))
+  for (const [c, msgs] of Object.entries(chats)) msgs.forEach((m, i) => who(m.who, ['seed', 'chats', c, i, 'who']))
+  tickets.forEach((t, i) => { who(t.who, ['seed', 'tickets', i, 'who']); t.comments.forEach((m, j) => who(m.who, ['seed', 'tickets', i, 'comments', j, 'who'])) })
+  docs.forEach((d, i) => who(d.owner, ['seed', 'docs', i, 'owner']))
   unique('email', emails.map(e => e.id), ['seed', 'emails'])
   unique('ticket', tickets.map(t => t.id), ['seed', 'tickets'])
   unique('doc', docs.map(d => d.id), ['seed', 'docs'])
@@ -60,6 +78,7 @@ export const Scenario = z.object({
   const check = (files: z.infer<typeof attachment>[] | undefined, path: (string | number)[]) => files?.forEach((a, i) => {
     if (a.kind === 'doc' && !docIds.has(a.doc)) bad([...path, i], `no doc with id "${a.doc}"`)
     if (a.kind === 'ticket' && !ticketIds.has(a.id)) bad([...path, i], `no ticket with id "${a.id}"`)
+    if (a.kind === 'link' && a.chan && !Object.hasOwn(s.channels, a.chan)) bad([...path, i], `no channel with id "${a.chan}"`)
   })
   emails.forEach((e, i) => check(e.files, ['seed', 'emails', i, 'files']))
   for (const [c, msgs] of Object.entries(chats)) msgs.forEach((m, i) => check(m.files, ['seed', 'chats', c, i, 'files']))

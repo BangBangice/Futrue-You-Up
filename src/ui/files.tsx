@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { File, FileCode2, FileText, Image, MonitorUp, Paperclip, X } from 'lucide-react'
 import { APP_NAMES } from '../../shared/types.ts'
-import type { Attachment, ChanId } from '../../shared/types.ts'
+import type { Attachment } from '../../shared/types.ts'
 import { sim, useSim } from '../sim/store.ts'
 import { LOGOS } from './bits.tsx'
 
@@ -98,7 +98,7 @@ export function Rich({ text }: { text: string }) {
       code ? <code key={at} className="inline">{code}</code>
         : file ? <button key={at} type="button" className="link mono" onClick={() => sim.openCode(byText.get(file))}>{file}</button>
         : ticket ? <button key={at} type="button" className="link" onClick={() => sim.openTicket(ticket)}>{ticket}</button>
-        : chan ? <button key={at} type="button" className="link" onClick={() => sim.openChat(chan as ChanId)}>#{chan}</button>
+        : chan ? <button key={at} type="button" className="link" onClick={() => sim.openChat(chan)}>#{chan}</button>
         : <mark key={at}>{all}</mark>,
     )
     at = m.index + all.length

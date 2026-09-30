@@ -224,7 +224,7 @@ export function story(s: Session): string[] {
     if (e.type === 'incident') add(e.t, `${e.id} opened: ${e.what}`)
     if (e.type === 'resolved') add(e.t, `${e.id} resolved after ${e.mins} min`)
     if (e.type === 'demo') add(e.t, e.held ? 'The Northwind demo went ahead' : 'The Northwind demo was postponed')
-    if (e.type === 'doc' && e.who === 'maya') add(e.t, `Wrote the wiki page "${e.title}"`)
+    if (e.type === 'doc' && e.who === s.world.player) add(e.t, `Wrote the wiki page "${e.title}"`)
   }
   add(f.ackAt, 'Acknowledged the incident')
   add(f.clientAt, 'Wrote to the client')

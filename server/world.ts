@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Response } from 'express'
-import { CHANS, PEOPLE, START, clock } from '../shared/types.ts'
+import { START, clock } from '../shared/types.ts'
 import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, PersonId, TermLine, Ticket, Tone, World } from '../shared/types.ts'
 import { aiProblem, onAiProblem } from './ai/llm.ts'
 import { Workspace } from './sandbox.ts'
@@ -93,7 +93,7 @@ export class Session {
     const msg: ChatMsg = { id: this.id(), who, text, time: this.now, ...extra }
     this.set(w => ({
       chats: { ...w.chats, [chan]: [...w.chats[chan], msg] },
-      unread: who === 'maya' ? w.unread : { ...w.unread, [chan]: w.unread[chan] + 1 },
+      unread: who === w.player ? w.unread : { ...w.unread, [chan]: w.unread[chan] + 1 },
       typing: w.typing.filter(t => !(t.chan === chan && t.who === who)),
     }))
     if (text || extra.files?.length) this.log('chat', { chan, who, text })
@@ -115,22 +115,24 @@ export class Session {
     const t = this.world.tickets.find(x => x.id === id)
     if (!t) return
     const note = what ?? Object.keys(p).filter(k => k !== 'activity' && k !== 'comments').map(k => `${k} → ${(p as any)[k]}`).join(', ')
-    this.set(w => ({ tickets: w.tickets.map(x => (x.id === id ? { ...x, ...p, activity: [...x.activity, { time: this.now, text: `${PEOPLE[by].name}: ${note}` }] } : x)) }))
+    this.set(w => ({ tickets: w.tickets.map(x => (x.id === id ? { ...x, ...p, activity: [...x.activity, { time: this.now, text: `${this.world.cast[by].name}: ${note}` }] } : x)) }))
     // Like the real thing: changes other people make to your tickets land in your inbox.
-    if (by !== 'maya' && (t.who === 'maya' || p.who === 'maya')) this.mail({ who: 'jira', folder: 'alerts', subject: `[JIRA] (${id}) ${t.title}`, body: [`${PEOPLE[by].name} updated ${id}.`, note], files: [{ kind: 'ticket', id }] })
+    const me = this.world.player
+    if (by !== me && (t.who === me || p.who === me)) this.mail({ who: 'jira', folder: 'alerts', subject: `[JIRA] (${id}) ${t.title}`, body: [`${this.world.cast[by].name} updated ${id}.`, note], files: [{ kind: 'ticket', id }] })
   }
 }
 
 // ---------- the sessions on this machine ----------
 const sessions = new Map<string, Session>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
+export const roster = (): Pick<World, 'cast' | 'channels' | 'player'> => structuredClone({ cast: SCENARIO.cast, channels: SCENARIO.channels, player: SCENARIO.player })
 
 export async function create(level: Level, background: string, pace: number, ai: World['ai']) {
   if (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value!)
   const id = randomUUID()
   const world: World = {
     id, stage: 'sim', level, background, ai, aiProblem: aiProblem(), pace, simMin: START,
-    ...structuredClone(SCENARIO.seed), typing: [],
+    ...roster(), ...structuredClone(SCENARIO.seed), typing: [],
     files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
     deploys: [], incident: null, demo: 'pending',
     timeline: [{ time: '12:02 PM', text: 'Deploy billing-api@e0c3a18 (Daniel)', tone: 'dim' }], recap: null,
@@ -148,11 +150,11 @@ export async function find(id: string) {
   const file = join(DATA, id, 'session.json')
   if (!existsSync(file)) return null
   const saved = JSON.parse(await readFile(file, 'utf8'))
-  const s = new Session({ ...saved.world, aiProblem: aiProblem(), typing: [], code: { ...saved.world.code, busy: null } }, saved.priv)
+  // Shifts saved before the cast moved into the world have none of their own.
+  const s = new Session({ ...roster(), ...saved.world, aiProblem: aiProblem(), typing: [], code: { ...saved.world.code, busy: null } }, saved.priv)
   s.ws = await Workspace.open(s.dir)
   sessions.set(id, s)
   return s
 }
 export const all = () => [...sessions.values()]
 onAiProblem(p => all().forEach(s => s.set({ aiProblem: p })))
-export { CHANS }

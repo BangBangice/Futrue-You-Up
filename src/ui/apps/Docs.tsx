@@ -4,8 +4,7 @@ import { motion } from 'motion/react'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Eye, FileText, Info, Lightbulb, Pencil, Plus, Search, TriangleAlert } from 'lucide-react'
-import { PEOPLE } from '../../../shared/types.ts'
-import type { ChanId, Doc } from '../../../shared/types.ts'
+import type { Doc } from '../../../shared/types.ts'
 import { sim, useSim } from '../../sim/store.ts'
 import { Avatar, Company, EASE, LOGOS, SPRING } from '../bits.tsx'
 import { linkify } from '../files.tsx'
@@ -18,7 +17,7 @@ const follow = (href: string) => {
   if (kind === 'code') void sim.openCode(target)
   else if (kind === 'jira') sim.openTicket(target)
   else if (kind === 'doc') sim.openDoc(target)
-  else sim.openChat(target as ChanId)
+  else sim.openChat(target)
 }
 const textOf = (node: ReactNode): string => (typeof node === 'string' ? node : Array.isArray(node) ? node.map(textOf).join('') : node && typeof node === 'object' && 'props' in node ? textOf((node.props as { children?: ReactNode }).children) : '')
 
@@ -69,6 +68,7 @@ function Editor({ doc, onDone }: { doc: Doc | null; onDone: () => void }) {
 export function Docs() {
   const docs = useSim(s => s.docs)
   const page = useSim(s => s.docPage)
+  const cast = useSim(s => s.cast)
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState<'read' | 'edit' | 'new'>('read')
   const doc = docs.find(d => d.id === page) ?? docs[0]
@@ -116,7 +116,7 @@ export function Docs() {
               <h1>{doc.title}</h1>
               <div className="cf-byline">
                 <Avatar who={doc.owner} size={26} />
-                <div className="stack"><b>Owned by {PEOPLE[doc.owner].name}</b><span>Last updated {doc.updated} · version {doc.version} · {Math.max(1, Math.round(doc.body.split(/\s+/).length / 200))} min read</span></div>
+                <div className="stack"><b>Owned by {cast[doc.owner].name}</b><span>Last updated {doc.updated} · version {doc.version} · {Math.max(1, Math.round(doc.body.split(/\s+/).length / 200))} min read</span></div>
               </div>
               <div className="cf-body"><Page body={doc.body} /></div>
             </motion.article>

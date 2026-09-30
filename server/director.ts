@@ -1,6 +1,6 @@
 // Runs the shift: the clock, the things that happen on schedule, and what follows from what the player does.
 // No model calls here. The director decides what is true; personas and the mentor decide how to say it.
-import { ALARM, CHECK_LABEL, COLS, DEMO, PEOPLE, SHARE, START, clock, dur, errAt, failing, isOutage, lockedAt, personByName } from '../shared/types.ts'
+import { ALARM, CHECK_LABEL, COLS, DEMO, SHARE, START, clock, dur, errAt, failing, isOutage, lockedAt, personByName } from '../shared/types.ts'
 import type { Attachment, ChanId, Check, Doc, Email, Folder, TermLine, Ticket } from '../shared/types.ts'
 import * as mentor from './ai/mentor.ts'
 import { reply } from './ai/personas.ts'
@@ -49,7 +49,7 @@ export function tick(s: Session) {
 
 // ---------- things that happen on schedule ----------
 const during = (s: Session, b: Beat) => open(s) && s.world.incident!.id === b.inc
-const shipped = (s: Session) => s.world.deploys.some(d => d.by === 'maya')
+const shipped = (s: Session) => s.world.deploys.some(d => d.by === s.world.player)
 const BEATS: Record<string, (s: Session, b: Beat) => void> = {
   daniel_warning: s => {
     s.priv.f.warnedAt = s.world.simMin
@@ -97,7 +97,7 @@ function openIncident(s: Session) {
   const id = 'INC-' + (37 + w.tickets.filter(t => t.id.startsWith('INC')).length)
   const what = failing(live.checks).filter(c => c !== 'sso_after_refresh').map(c => CHECK_LABEL[c]).join(', ')
   const rate = errAt(w.deploys, m).toFixed(1), reason = live.checks.find(c => !c.ok && c.id !== 'sso_after_refresh')?.reason ?? 'rejected'
-  const t: Ticket = { id, title: `${what} failing on auth-api`, status: 'progress', who: 'maya', pri: 'Urgent', pts: null, comments: [], activity: [{ time: s.now, text: 'CloudWatch: created the issue' }], desc: `CloudWatch alarm: 401 rate on auth-api above ${ALARM}% since ${clock(m)}. Opened automatically and assigned to the author of the latest deploy, auth-api@${live.sha}.` }
+  const t: Ticket = { id, title: `${what} failing on auth-api`, status: 'progress', who: s.world.player, pri: 'Urgent', pts: null, comments: [], activity: [{ time: s.now, text: 'CloudWatch: created the issue' }], desc: `CloudWatch alarm: 401 rate on auth-api above ${ALARM}% since ${clock(m)}. Opened automatically and assigned to the author of the latest deploy, auth-api@${live.sha}.` }
   s.set({ incident: { id, sha: live.sha, startedAt: m, resolvedAt: null, failing: failing(live.checks) }, tickets: [t, ...w.tickets] })
   s.mail({ who: 'jira', folder: 'alerts', subject: `[JIRA] (${id}) assigned to you: ${t.title}`, body: [`CloudWatch assigned ${id} to you.`, t.desc], files: [{ kind: 'ticket', id }] })
   s.post('incidents', 'cloudwatch', `[FIRING] auth-api · 401 rate ${rate}% (threshold ${ALARM}%) · top reason: ${reason}`, { alert: 'fire', files: [dashboard] })
@@ -128,7 +128,7 @@ async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
   if (service && !service.startsWith('-') && service !== 'auth-api') throw new Refusal(`ldg: you have no changes for ${service}. The service in this repo is auth-api.`)
 
   if (sub === 'status') {
-    say(`auth-api  prod  ${live.sha}  ${live.kind === 'rollback' ? 'rolled back' : 'deployed'} ${clock(live.at)} by ${PEOPLE[live.by].name}  6/6 pods`)
+    say(`auth-api  prod  ${live.sha}  ${live.kind === 'rollback' ? 'rolled back' : 'deployed'} ${clock(live.at)} by ${s.world.cast[live.by].name}  6/6 pods`)
     say(`401 rate  ${errAt(w.deploys, m).toFixed(1)}%  (alarm at ${ALARM}%)`, isOutage(live.checks) ? 'err' : 'ok')
     return 0
   }
@@ -161,7 +161,7 @@ async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
     await wait(s, 900); say('→ rolling out 6/6 pods … done', 'dim')
     say(`✓ auth-api@${st.head} is live in prod`, 'ok')
     const first = !shipped(s), bad = failing(v.checks), holes = bad.filter(c => mentor.SECURITY.includes(c))
-    s.set({ deploys: [...w.deploys, { sha: st.head, at: s.world.simMin, by: 'maya', kind: 'deploy', checks: visible(v.checks) }] })
+    s.set({ deploys: [...w.deploys, { sha: st.head, at: s.world.simMin, by: s.world.player, kind: 'deploy', checks: visible(v.checks) }] })
     s.timeline(`Deploy auth-api@${st.head} (Maya)`, 'accent')
     s.post('incidents', 'cloudwatch', `Deploy · auth-api@${st.head} by maya.chen · 6/6 pods healthy`, { alert: 'info' })
     s.log('deploy', { sha: st.head, tested: f.testedAt !== undefined && (f.editedAt === undefined || f.testedAt >= f.editedAt), broke: bad.filter(c => c !== 'sso_after_refresh').map(c => CHECK_LABEL[c]).join(', ') })
@@ -183,7 +183,7 @@ async function ldg(s: Session, args: string[], emit: Emit): Promise<number> {
     say(`✓ auth-api@${wanted.sha} is live in prod (rollback)`, 'ok')
     const hadHole = failing(s.priv.verdicts[live.sha]?.checks ?? []).some(c => mentor.SECURITY.includes(c))
     f.rolledBackAt = s.world.simMin
-    s.set({ deploys: [...w.deploys, { sha: wanted.sha, at: s.world.simMin, by: 'maya', kind: 'rollback', checks: wanted.checks }] })
+    s.set({ deploys: [...w.deploys, { sha: wanted.sha, at: s.world.simMin, by: s.world.player, kind: 'rollback', checks: wanted.checks }] })
     s.timeline(`Rollback to auth-api@${wanted.sha} (Maya)`, 'accent')
     s.post('incidents', 'cloudwatch', `Rollback · auth-api → ${wanted.sha} by maya.chen`, { alert: 'info' })
     s.log('rollback', { sha: wanted.sha })
@@ -243,7 +243,7 @@ export async function saveFile(s: Session, path: string, text: string) {
 export function seen(s: Session, what: string) {
   const f = s.priv.f, [kind, id] = [what.slice(0, what.indexOf(':')), what.slice(what.indexOf(':') + 1)]
   if (kind === 'chan' && id in s.world.unread) {
-    if (s.world.unread[id as ChanId]) s.set(w => ({ unread: { ...w.unread, [id]: 0 } }))
+    if (s.world.unread[id]) s.set(w => ({ unread: { ...w.unread, [id]: 0 } }))
     if (id === 'team' && f.warnedAt !== undefined && f.readWarningAt === undefined) f.readWarningAt = s.world.simMin
   } else if (kind === 'mail') {
     if (s.world.emails.some(e => e.id === id && !e.read)) s.set(w => ({ emails: w.emails.map(e => (e.id === id ? { ...e, read: true } : e)) }))
@@ -265,14 +265,14 @@ function scripted(s: Session, who: Persona, firstAck: boolean): string {
 
 export function chat(s: Session, chan: ChanId, text: string, files: Attachment[]) {
   const f = s.priv.f, m = s.world.simMin
-  s.post(chan, 'maya', text, { files })
+  s.post(chan, s.world.player, text, { files })
   const firstAck = open(s) && f.ackAt === undefined && (chan === 'incidents' || chan === 'priya')
   if (firstAck) { f.ackAt = m; f.ackText = text; s.timeline('Acknowledged by Maya', 'accent'); void mentor.review(s, 'ack', text) }
   if (chan === 'daniel') f.askedDanielAt ??= m
   if (chan === 'leo' && f.leoAskedAt !== undefined && !f.leo) f.leo = /later|busy|after|swamped|not now/i.test(text) ? 'deferred' : 'helped'
 
   const named = NAMES.find(([re]) => re.test(text))?.[1]
-  const who: Persona = chan === 'team' ? named ?? (text.includes('?') ? 'daniel' : 'leo') : chan === 'incidents' ? named ?? 'priya' : chan
+  const who: Persona = chan === 'team' ? named ?? (text.includes('?') ? 'daniel' : 'leo') : chan === 'incidents' ? named ?? 'priya' : chan as Persona
   const line = scripted(s, who, firstAck)
   if (who === 'leo' && f.leo === 'helped') s.log('leo-thanked')
   void reply(s, who, { room: chan }, text + (files.length ? `\n[attached: ${files.map(a => (a.kind === 'code' ? a.path : a.kind === 'doc' ? 'wiki page ' + a.doc : a.kind === 'ticket' ? a.id : a.kind === 'upload' ? a.name : a.label)).join(', ')}]` : ''), line)
@@ -281,16 +281,16 @@ export function chat(s: Session, chan: ChanId, text: string, files: Attachment[]
 export function mail(s: Session, a: { mode: 'reply' | 'new' | 'forward'; ref?: string; to?: string; subject?: string; text: string; files: Attachment[] }) {
   const w = s.world, f = s.priv.f, m = w.simMin
   const ref = w.emails.find(e => e.id === a.ref)
-  const to = a.mode === 'reply' ? ref?.who : personByName(a.to ?? '')
+  const to = a.mode === 'reply' ? ref?.who : personByName(s.world.cast, a.to ?? '')
   if (a.mode === 'reply' && !ref) throw new Refusal('That message no longer exists.')
   // A new message to someone answers their latest unanswered scenario mail, the same as replying would.
   const answers = a.mode === 'reply' ? ref : a.mode === 'new' ? w.emails.find(e => e.who === to && e.kind && !e.thread.length) : undefined
   const body = a.text.split('\n').map(p => p.trim()).filter(Boolean)
-  if (a.mode === 'forward' && ref) body.push('———  Forwarded message  ———', `From: ${PEOPLE[ref.who].name} · ${ref.time}`, ...ref.body)
-  const sent: Email = { id: 's' + s.id(), folder: 'sent', who: 'maya', toName: to ? PEOPLE[to].name : (a.to ?? '').trim().slice(0, 120), subject: a.mode === 'reply' ? 'Re: ' + ref!.subject.replace(/^Re: /, '') : (a.subject ?? '').trim().slice(0, 140) || '(No subject)', time: s.now, read: true, body, files: a.files, thread: [] }
+  if (a.mode === 'forward' && ref) body.push('———  Forwarded message  ———', `From: ${s.world.cast[ref.who].name} · ${ref.time}`, ...ref.body)
+  const sent: Email = { id: 's' + s.id(), folder: 'sent', who: s.world.player, toName: to ? s.world.cast[to].name : (a.to ?? '').trim().slice(0, 120), subject: a.mode === 'reply' ? 'Re: ' + ref!.subject.replace(/^Re: /, '') : (a.subject ?? '').trim().slice(0, 140) || '(No subject)', time: s.now, read: true, body, files: a.files, thread: [] }
   s.set(x => ({ emails: [sent, ...x.emails.map(e => (e.id === answers?.id ? { ...e, read: true, thread: [...e.thread, { time: s.now, text: a.text, files: a.files }] } : e))] }))
-  s.log('mail', { who: 'maya', to: sent.toName, subject: sent.subject, text: a.text })
-  if (!to || ['maya', 'people', 'cloudwatch', 'jira'].includes(to)) return
+  s.log('mail', { who: s.world.player, to: sent.toName, subject: sent.subject, text: a.text })
+  if (!to || [s.world.player, 'people', 'cloudwatch', 'jira'].includes(to)) return
 
   const kind = answers?.kind
   if (kind === 'assign') f.assignAckAt ??= m
@@ -300,27 +300,27 @@ export function mail(s: Session, a: { mode: 'reply' | 'new' | 'forward'; ref?: s
     : kind === 'client' ? (open(s) ? 'Thank you, Maya. Please let me know as soon as they can get in.\nMarta' : 'Confirmed, the team is back in. Thank you for writing to me directly.\nMarta')
     : kind === 'pm' ? 'Got it, thank you. We’ll go through the action items at standup tomorrow.'
     : null
-  const context = answers ? s.world.emails.find(e => e.id === answers.id)! : { ...sent, who: to, body: [`(Maya wrote to ${PEOPLE[to].name})`], thread: [{ time: s.now, text: a.text, files: [] }] }
+  const context = answers ? s.world.emails.find(e => e.id === answers.id)! : { ...sent, who: to, body: [`(Maya wrote to ${s.world.cast[to].name})`], thread: [{ time: s.now, text: a.text, files: [] }] }
   void reply(s, to as Persona, { room: to === 'priya' && kind !== 'client' ? 'priya' : null, mail: context }, a.text, line)
 }
 
 export function saveTicket(s: Session, id: string | undefined, p: Partial<Pick<Ticket, 'title' | 'desc' | 'status' | 'pri' | 'who' | 'pts'>>) {
-  if (id) return s.ticket(id, p, 'maya')
+  if (id) return s.ticket(id, p, s.world.player)
   const n = Math.max(217, ...s.world.tickets.map(t => Number(t.id.replace('LED-', '')) || 0)) + 1
-  const t: Ticket = { id: 'LED-' + n, title: p.title || 'Untitled', desc: p.desc ?? '', status: p.status ?? 'todo', who: p.who ?? 'maya', pri: p.pri ?? 'Medium', pts: p.pts ?? null, comments: [], activity: [{ time: s.now, text: 'Maya Chen: created the issue' }] }
+  const t: Ticket = { id: 'LED-' + n, title: p.title || 'Untitled', desc: p.desc ?? '', status: p.status ?? 'todo', who: p.who ?? s.world.player, pri: p.pri ?? 'Medium', pts: p.pts ?? null, comments: [], activity: [{ time: s.now, text: `${s.world.cast[s.world.player].name}: created the issue` }] }
   s.set(w => ({ tickets: [...w.tickets, t] }))
   s.log('ticket', { id: t.id, title: t.title })
   return t.id
 }
 export function comment(s: Session, id: string, text: string) {
   const t = s.world.tickets.find(x => x.id === id)
-  if (t) s.ticket(id, { comments: [...t.comments, { who: 'maya', time: s.now, text }] }, 'maya', 'commented')
+  if (t) s.ticket(id, { comments: [...t.comments, { who: s.world.player, time: s.now, text }] }, s.world.player, 'commented')
 }
 export function saveDoc(s: Session, id: string | undefined, d: Pick<Doc, 'title' | 'group' | 'body'>) {
   const f = s.priv.f, old = s.world.docs.find(x => x.id === id)
-  const next: Doc = old ? { ...old, ...d, version: old.version + 1, updated: 'today ' + s.now } : { id: 'p' + s.id(), ...d, owner: 'maya', updated: 'today ' + s.now, version: 1 }
+  const next: Doc = old ? { ...old, ...d, version: old.version + 1, updated: 'today ' + s.now } : { id: 'p' + s.id(), ...d, owner: s.world.player, updated: 'today ' + s.now, version: 1 }
   s.set(w => ({ docs: old ? w.docs.map(x => (x.id === old.id ? next : x)) : [...w.docs, next] }))
-  s.log('doc', { who: 'maya', id: next.id, title: next.title })
+  s.log('doc', { who: s.world.player, id: next.id, title: next.title })
   // A postmortem written as a wiki page counts the same as one sent by email.
   if (/post-?mortem/i.test(d.title) && s.world.incident?.resolvedAt && f.pmAt === undefined) {
     f.pmAt = s.world.simMin; f.pmText = d.body

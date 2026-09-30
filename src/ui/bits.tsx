@@ -2,7 +2,6 @@
 import { useEffect, useRef } from 'react'
 import { animate, motion } from 'motion/react'
 import { Moon, Sun } from 'lucide-react'
-import { PEOPLE } from '../../shared/types.ts'
 import type { AppId, PersonId } from '../../shared/types.ts'
 import { setTheme, useSim } from '../sim/store.ts'
 import outlook from '../assets/logos/outlook.png'
@@ -35,7 +34,7 @@ export function Brand({ size = 15 }: { size?: number }) {
 }
 
 export function Avatar({ who, size = 32 }: { who: PersonId; size?: number }) {
-  const p = PEOPLE[who]
+  const p = useSim(s => s.cast[who])
   if (who === 'cloudwatch' || who === 'jira') return <div className="avatar avatar-app" style={{ width: size, height: size }}><img src={who === 'jira' ? jira : aws} alt="" draggable={false} /></div>
   return <div className="avatar" style={{ width: size, height: size, background: p.color, fontSize: Math.round(size * 0.38) }}>{p.init}</div>
 }
