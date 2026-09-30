@@ -32,7 +32,7 @@ No key? It still runs. Colleagues fall back to scripted lines and no network is 
 
 #### Database
 
-Optional for now: shifts are still kept in `.data/`. With `DATABASE_URL` set, the server migrates the database on startup.
+Optional. Without `DATABASE_URL`, shifts are kept in `.data/` as before. With it, the server migrates on startup and each shift's state and event log live in `runs` and `run_events`, pinned to the published scenario version it started on (the file is published if none is); only the player's git workspace stays in `.data/`. `npm run check:db` checks the round trip against a running database.
 
 ```
 docker compose up db              # Postgres 17 on localhost:5432 (DB_PORT=... to move it)

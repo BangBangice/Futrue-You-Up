@@ -1,19 +1,21 @@
 // One running shift: the world the browser sees, the private facts it does not, and the stream that keeps them in step.
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { mkdir } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Response } from 'express'
+import type { Scenario } from '../shared/scenario.ts'
 import { START, clock } from '../shared/types.ts'
 import type { Attachment, ChanId, ChatMsg, Coaching, Email, Level, Patch, PersonId, TermLine, Ticket, Tone, World } from '../shared/types.ts'
 import { aiProblem, onAiProblem } from './ai/llm.ts'
 import { Workspace } from './sandbox.ts'
 import type { Verdict } from './sandbox.ts'
+import { store } from './runs.ts'
 import { loadScenario } from './scenarios.ts'
 
 export const DATA = join(dirname(fileURLToPath(import.meta.url)), '..', '.data', 'sessions')
-const MAX_SESSIONS = 8, MAX_TERM = 400
+// A cache of live shifts, not the record of them: an evicted shift is saved first and reloads on its next request.
+const MAX_SESSIONS = 32, MAX_TERM = 400
 // Loaded once at startup, so a broken scenario file stops the server instead of a shift.
 const SCENARIO = loadScenario('ledgerly-day2')
 
@@ -44,12 +46,17 @@ export class Session {
   timers = new Set<ReturnType<typeof setTimeout>>()
   /** Multiplier on real-time delays. The headless check shrinks it. */
   timeScale = 1
+  /** The run's row version in the store, for optimistic locking. */
+  rev = 0
   private saving: ReturnType<typeof setTimeout> | undefined
+  private writing = Promise.resolve(true)
   readonly dir: string
+  readonly scenario: Scenario
 
-  constructor(world: World, priv: Priv) {
+  constructor(world: World, priv: Priv, scenario: Scenario) {
     this.world = world
     this.priv = priv
+    this.scenario = scenario
     this.dir = join(DATA, world.id)
   }
 
@@ -65,7 +72,7 @@ export class Session {
   log(type: string, data: Record<string, unknown> = {}) {
     const e: Event = { t: this.world.simMin, type, ...data }
     this.priv.events.push(e)
-    appendFile(join(this.dir, 'events.jsonl'), JSON.stringify(e) + '\n').catch(() => {})
+    store().appendEvent(this, e)
   }
   send(event: string, data: Record<string, unknown>) {
     const frame = `event: ${event}\ndata: ${JSON.stringify({ seq: ++this.seq, ...data })}\n\n`
@@ -80,9 +87,18 @@ export class Session {
   get now() { return clock(this.world.simMin) }
   private save() {
     clearTimeout(this.saving)
-    this.saving = setTimeout(() => writeFile(join(this.dir, 'session.json'), JSON.stringify({ world: this.world, priv: this.priv })).catch(() => {}), 800)
+    this.saving = setTimeout(() => void this.flush(), 800)
   }
-  stop() { clearInterval(this.clock); this.clock = undefined; this.timers.forEach(clearTimeout); this.timers.clear(); clearTimeout(this.saving) }
+  /** Saves now. Writes queue behind each other, so each one expects the version the last one left. */
+  flush() {
+    clearTimeout(this.saving)
+    this.saving = undefined
+    return (this.writing = this.writing.then(() => store().saveRun(this)))
+  }
+  stop() {
+    clearInterval(this.clock); this.clock = undefined; this.timers.forEach(clearTimeout); this.timers.clear()
+    return this.saving ? this.flush() : this.writing
+  }
 
   // ---------- things that happen ----------
   term(line: TermLine) {
@@ -124,37 +140,60 @@ export class Session {
 
 // ---------- the sessions on this machine ----------
 const sessions = new Map<string, Session>()
+const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
-export const roster = (): Pick<World, 'cast' | 'channels' | 'player'> => structuredClone({ cast: SCENARIO.cast, channels: SCENARIO.channels, player: SCENARIO.player })
+export const roster = (sc = SCENARIO): Pick<World, 'cast' | 'channels' | 'player'> => structuredClone({ cast: sc.cast, channels: sc.channels, player: sc.player })
+
+/** Makes room, preferring a shift nobody is watching. Its open streams reconnect and reload it. */
+async function evict() {
+  if (sessions.size < MAX_SESSIONS) return
+  const s = all().find(x => !x.clients.size) ?? all()[0]
+  s.clients.forEach(c => c.end())
+  await drop(s.world.id)
+}
 
 export async function create(level: Level, background: string, pace: number, ai: World['ai']) {
-  if (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value!)
+  await evict()
+  const { spec, version } = await store().pickScenario(SCENARIO)
   const id = randomUUID()
   const world: World = {
     id, stage: 'sim', level, background, ai, aiProblem: aiProblem(), pace, simMin: START,
-    ...roster(), ...structuredClone(SCENARIO.seed), typing: [],
+    ...roster(spec), ...structuredClone(spec.seed), typing: [],
     files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
     deploys: [], incident: null, demo: 'pending',
     timeline: [{ time: '12:02 PM', text: 'Deploy billing-api@e0c3a18 (Daniel)', tone: 'dim' }], recap: null,
   }
-  const s = new Session(world, { uid: 100, beats: [], verdicts: {}, attempts: 0, aiCalls: 0, events: [], f: { seen: [], praised: [], reviewed: [] } })
+  const s = new Session(world, { uid: 100, beats: [], verdicts: {}, attempts: 0, aiCalls: 0, events: [], f: { seen: [], praised: [], reviewed: [] } }, spec)
+  await mkdir(s.dir, { recursive: true })
+  s.ws = await Workspace.open(s.dir)
+  await store().createRun(s, version)
+  sessions.set(id, s)
+  return s
+}
+
+/** Finds a running shift, or brings one back from the store after a restart or an eviction. */
+export async function find(id: string): Promise<Session | null> {
+  if (sessions.has(id)) return sessions.get(id)!
+  if (!loading.has(id)) loading.set(id, load(id).finally(() => loading.delete(id)))
+  return loading.get(id)!
+}
+async function load(id: string) {
+  const saved = await store().loadRun(id, join(DATA, id), SCENARIO)
+  if (!saved) return null
+  await evict()
+  // Shifts saved before the cast moved into the world have none of their own.
+  const s = new Session({ ...roster(saved.scenario), ...saved.world, aiProblem: aiProblem(), typing: [], code: { ...saved.world.code, busy: null } }, saved.priv, saved.scenario)
+  s.rev = saved.rev
   await mkdir(s.dir, { recursive: true })
   s.ws = await Workspace.open(s.dir)
   sessions.set(id, s)
   return s
 }
-
-/** Finds a running shift, or brings one back from disk after a restart. */
-export async function find(id: string) {
-  if (sessions.has(id)) return sessions.get(id)!
-  const file = join(DATA, id, 'session.json')
-  if (!existsSync(file)) return null
-  const saved = JSON.parse(await readFile(file, 'utf8'))
-  // Shifts saved before the cast moved into the world have none of their own.
-  const s = new Session({ ...roster(), ...saved.world, aiProblem: aiProblem(), typing: [], code: { ...saved.world.code, busy: null } }, saved.priv)
-  s.ws = await Workspace.open(s.dir)
-  sessions.set(id, s)
-  return s
+/** Forgets a shift without ending it, as eviction does. */
+export async function drop(id: string) {
+  const s = sessions.get(id)
+  sessions.delete(id)
+  await s?.stop()
 }
 export const all = () => [...sessions.values()]
 onAiProblem(p => all().forEach(s => s.set({ aiProblem: p })))

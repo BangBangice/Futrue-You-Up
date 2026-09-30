@@ -10,6 +10,8 @@ import { loadScenario } from './scenarios.ts'
 import { create } from './world.ts'
 
 process.env.LLM = 'stub'
+// This check reads .data/ directly. npm run check:db covers Postgres.
+delete process.env.DATABASE_URL
 process.env.PERPLEXITY_API_KEY = 'must-never-reach-player-code'
 const settle = (ms = 60) => new Promise(r => setTimeout(r, ms))
 const s = await create('newgrad', 'Six years as a hospital pharmacist', 4, 'stub')

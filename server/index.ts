@@ -4,8 +4,9 @@ import type { NextFunction, Request, Response } from 'express'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mode } from './ai/llm.ts'
-import { dbEnabled, migrateDb } from './db/index.ts'
+import { closeDb, dbEnabled, migrateDb } from './db/index.ts'
 import { api, errors } from './routes.ts'
+import { all } from './world.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PORT = Number(process.env.PORT ?? 5183)
@@ -61,3 +62,9 @@ if (dbEnabled()) {
   console.log('Database migrated.')
 }
 app.listen(PORT, '0.0.0.0', () => console.log(`LARP is running on port ${PORT}  (colleagues: ${mode() === 'live' ? 'AI' : 'scripted, no network needed'})`))
+// Hosts stop the server with SIGTERM on every deploy. Saves still waiting on their debounce go out first.
+process.once('SIGTERM', async () => {
+  await Promise.all(all().map(s => s.stop()))
+  await closeDb()
+  process.exit(0)
+})
