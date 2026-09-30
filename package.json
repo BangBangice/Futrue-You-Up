@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/index.ts",
     "build": "tsc --noEmit && vite build",
+    "lint": "oxlint --max-warnings=0",
     "start": "NODE_ENV=production node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/index.ts",
     "check": "node --no-warnings --experimental-strip-types server/check.ts",
     "check:auth": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env server/check-auth.ts",
@@ -41,6 +42,7 @@
     "lucide-react": "^1.48.0",
     "monaco-editor": "^0.57.0",
     "motion": "^13.4.5",
+    "oxlint": "^1.86.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",

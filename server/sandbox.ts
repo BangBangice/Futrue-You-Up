@@ -341,7 +341,7 @@ export class Workspace {
       const { p, info } = await this.real(given, this.cwd)
       if (!info) throw new Refusal(`${given}: no such file or folder`)
       if (info.isFile()) files.add(p)
-      else for (const e of await readdir(p, { recursive: true, withFileTypes: true })) if (e.isFile() && /\.test\.ts$/.test(e.name) && !e.parentPath.includes('node_modules')) files.add(join(e.parentPath, e.name))
+      else for (const e of await readdir(p, { recursive: true, withFileTypes: true })) if (e.isFile() && e.name.endsWith('.test.ts') && !e.parentPath.includes('node_modules')) files.add(join(e.parentPath, e.name))
     }
     if (!files.size) { emit({ c: 'err', t: 'No test files found.' }); return 1 }
     const { code } = await this.node(this.runner, () => ['--test', '--experimental-test-isolation=none', '--test-reporter=spec', ...[...files].sort().map(this.rel)], r => [r.root], emit)
