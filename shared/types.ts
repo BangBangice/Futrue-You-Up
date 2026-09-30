@@ -82,6 +82,12 @@ export interface CodeState {
 }
 export interface Recap { ready: boolean; happened: string[]; corrected: string[]; next: string[]; note: string }
 
+export interface Calendar { weekday: string; date: string; day: number; start: number }
+const WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+/** "Tue", for the menu bar. A weekday that is not a day's name is shown whole. */
+export const shortDay = (weekday: string) => WEEK.includes(weekday) ? weekday.slice(0, 3) : weekday
+/** "Monday" when the shift is on a Tuesday; "yesterday" when the weekday is not a day's name. */
+export const dayBefore = (weekday: string) => { const i = WEEK.indexOf(weekday); return i < 0 ? 'yesterday' : WEEK[(i + 6) % 7] }
 /** Everything the server owns. The browser holds a read-only copy kept current by patches. */
 export interface World {
   id: string; stage: 'sim' | 'recap'; level: Level; background: string; ai: 'live' | 'stub'
@@ -91,6 +97,8 @@ export interface World {
   company: string
   /** What the code workspace and the work laptop are called. */
   workspace: { repo: string; host: string }
+  /** When the shift happens: "Tuesday", "Sep 29", which day of the placement, and the sim minute it starts. */
+  calendar: Calendar
   /** When the demo is, in sim minutes, or null when the scenario has none. */
   deadline: number | null
   /** What failing checks cost. Only the checks customers can feel. */

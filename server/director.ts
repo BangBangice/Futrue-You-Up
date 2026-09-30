@@ -1,7 +1,7 @@
 // Runs the shift: the clock, the things that happen on schedule, and what follows from what the player does.
 // No model calls here. The director decides what is true; personas and the mentor decide how to say it.
 import { clientOf } from '../shared/scenario.ts'
-import { COLS, clock, errAt, failing, firstName, isOutage, minutes, personByName, shortName } from '../shared/types.ts'
+import { COLS, clock, errAt, failing, firstName, isOutage, minutes, personByName, shortDay, shortName } from '../shared/types.ts'
 import type { Attachment, ChanId, Check, Doc, Email, Folder, PersonId, TermLine, Ticket } from '../shared/types.ts'
 import * as mentor from './ai/mentor.ts'
 import { reply } from './ai/personas.ts'
@@ -26,7 +26,7 @@ export async function start(s: Session) {
   // The shift has only the template so far, whose verdict is known without starting a sandbox for it.
   const [state, base] = [await s.ws.state(), await s.ws.acceptTemplate(s.scenario.checks.map(c => c.id))]
   s.priv.verdicts[state.head] = { ...base, diff: '' }
-  s.world.term = [{ c: 'dim', t: 'Last login: Tue Sep 29 09:14 on ttys002' }, { c: 'dim', t: 'Type "help" to see what is available here.' }]
+  s.world.term = [{ c: 'dim', t: `Last login: ${shortDay(s.world.calendar.weekday)} ${s.world.calendar.date} 09:14 on ttys002` }, { c: 'dim', t: 'Type "help" to see what is available here.' }]
   s.set({ files: await s.ws.tree(), code: state, deploys: [{ sha: state.head, at: minutes(s.scenario.clock.start) - 300, by: s.scenario.mentor, kind: 'deploy', checks: visible(s, base.checks) }] })
   triggers.schedule(s, s.scenario.triggers, 'start')
   if (s.scenario.clock.deadline) s.priv.beats.push({ at: minutes(s.scenario.clock.deadline), kind: 'demo' })

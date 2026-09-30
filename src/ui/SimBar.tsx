@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { LogOut, Sparkles, TriangleAlert, WifiOff } from 'lucide-react'
-import { PACES, RATE, clock, dur, lockedAt, money, paceTip } from '../../shared/types.ts'
+import { PACES, RATE, clock, dur, lockedAt, money, paceTip, shortDay } from '../../shared/types.ts'
+import { DAYS } from '../../shared/scenario.ts'
 import { useAccount } from '../sim/auth.ts'
 import { live, sim, useSim } from '../sim/store.ts'
 import { Brand, SPRING, Segmented, ThemeToggle } from './bits.tsx'
@@ -37,13 +38,14 @@ export function SimBar() {
   const tip = paceTip(pace, PACES.find(p => p[0] === pace)?.[1] ?? 'Custom')
   const account = useAccount()
   const company = useSim(s => s.company)
+  const cal = useSim(s => s.calendar)
   const on = live({ incident }), toDemo = deadline === null ? null : deadline - m
   return (
     <header className={'simbar' + (on ? ' compact' : '')}>
       <Brand size={14} />
       <div className="simbar-role">
         <i className="vsep" />
-        <div className="stack"><b>Backend Developer · {company}</b><span>Day 2 of 5 · Tue, Sep 29</span></div>
+        <div className="stack"><b>Backend Developer · {company}</b><span>Day {cal.day} of {DAYS} · {shortDay(cal.weekday)}, {cal.date}</span></div>
       </div>
       <div className="stack simclock" title={tip}><b>{clock(m, sec)}</b><span>SIM TIME</span></div>
       <Segmented id="pace" value={String(pace)} options={PACES.map(([n, label]) => [String(n), label, paceTip(n, label)])} onChange={v => sim.setPace(Number(v))} />

@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { Undo2 } from 'lucide-react'
-import { RATE, clock, errAt, lockedAt, lockedFor, money } from '../../../shared/types.ts'
+import { RATE, clock, dayBefore, errAt, lockedAt, lockedFor, money } from '../../../shared/types.ts'
 import { live, sim, useSim } from '../../sim/store.ts'
 import { LOGOS, SPRING } from '../bits.tsx'
 import { DragBar, Lights } from '../Window.tsx'
@@ -41,6 +41,7 @@ export function Monitor() {
   const m = useSim(s => s.simMin)
   const deploys = useSim(s => s.deploys)
   const incident = useSim(s => s.incident)
+  const weekday = useSim(s => s.calendar.weekday)
   const timeline = useSim(s => s.timeline)
   const busy = useSim(s => s.code.busy)
   const owner = useSim(s => s.cast[s.player]?.name)
@@ -77,7 +78,7 @@ export function Monitor() {
           </div>
           <div className="panel">
             <div className="panel-head"><b>Incident</b><span className={'pill ' + (on ? 'fire' : incident ? 'ok' : '')}>{on ? 'Open' : incident ? 'Resolved' : 'None'}</span></div>
-            {!incident ? <p className="sub">No active incidents on auth-api. Last incident: billing-worker queue lag, Monday.</p> : (
+            {!incident ? <p className="sub">No active incidents on auth-api. Last incident: billing-worker queue lag, {dayBefore(weekday)}.</p> : (
               <motion.div key={incident.id} className="incident" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
                 <b>{incident.id} · auth-api@{incident.sha}</b>
                 <dl>

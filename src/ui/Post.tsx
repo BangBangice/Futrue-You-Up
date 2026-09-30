@@ -1,7 +1,8 @@
 // After the shift: what happened, what you put right, and what to practise next. No score.
 import { motion } from 'motion/react'
 import { ArrowRight, Check, Footprints, LoaderCircle } from 'lucide-react'
-import { clock } from '../../shared/types.ts'
+import { clock, shortDay } from '../../shared/types.ts'
+import { DAYS } from '../../shared/scenario.ts'
 import { sim, useSim } from '../sim/store.ts'
 import { Avatar, Brand, ThemeToggle, rise, stagger } from './bits.tsx'
 
@@ -9,6 +10,7 @@ export function Post() {
   const recap = useSim(s => s.recap)
   const end = useSim(s => s.simMin)
   const company = useSim(s => s.company)
+  const cal = useSim(s => s.calendar)
   const mentorId = useSim(s => s.mentor), mentor = useSim(s => s.cast[s.mentor])
   if (!recap) return null
   return (
@@ -22,9 +24,9 @@ export function Post() {
       <div className="page">
         <motion.div className="recap" variants={stagger(0.08)} initial="hidden" animate="show">
           <motion.div variants={rise} className="post-head">
-            <div className="eyebrow">SHIFT COMPLETE · DAY 2 OF 5</div>
+            <div className="eyebrow">SHIFT COMPLETE · DAY {cal.day} OF {DAYS}</div>
             <h1>What today was for</h1>
-            <div className="sub">{company} · Backend Developer · Tue, Sep 29 · 1:10 PM – {clock(end)}</div>
+            <div className="sub">{company} · Backend Developer · {shortDay(cal.weekday)}, {cal.date} · {clock(cal.start)} – {clock(end)}</div>
           </motion.div>
 
           <motion.section variants={rise} className="panel mentor-note">
@@ -54,7 +56,7 @@ export function Post() {
                 <motion.section variants={rise} className="panel">
                   <b className="panel-title">Practise on your next ticket</b>
                   {recap.next.map((c, i) => <div key={i} className="recap-item"><Footprints size={15} strokeWidth={2} /><span>{c}</span></div>)}
-                  <div className="sub small">This carries into Day 3. So does what your colleagues saw today.</div>
+                  <div className="sub small">{cal.day < DAYS ? `This carries into Day ${cal.day + 1}.` : 'This carries into your handoff.'} So does what your colleagues saw today.</div>
                 </motion.section>
               )}
               <motion.button variants={rise} className="cta" onClick={sim.replay}>Do it again<ArrowRight size={16} strokeWidth={2.4} /></motion.button>
