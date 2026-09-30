@@ -107,8 +107,18 @@ assert.equal((await db().select().from(runWorkspaces).where(eq(runWorkspaces.run
 await discard(wsUser)
 assert.equal((await db().select().from(runWorkspaces).where(eq(runWorkspaces.runId, t.world.id))).length, 0, 'discard deletes the snapshot')
 
+// ---- a new run plays the built-in's file, not an older version still published, like one from before {{player}}.
+const file = scenarioFile('ledgerly-day2')!
+await publish(JSON.parse(JSON.stringify(file).replaceAll('{{player}}', 'Maya')))
+const fresh = await create('newgrad', '', 4, 'stub', null, { name: 'Jimmy Lee' })
+assert.equal(fresh.world.emails.find(e => e.id === 'e1')!.body[0], 'Hi Jimmy,', 'colleagues call the player by their own name')
+assert.match(JSON.stringify(fresh.scenario.triggers), /hey Jimmy, sorry to bug you/, 'scripted lines too')
+assert.deepEqual((await store().loadRun(fresh.world.id, fresh.dir))!.scenario, file, 'the run is pinned to the file, republished')
+await drop(fresh.world.id)
+await rm(fresh.dir, { recursive: true, force: true })
+
 // ---- the library: a seeded built-in is public with its tags; a private lesson is not listed, whatever its tags.
-await publish(scenarioFile('ledgerly-day2')!)
+await publish(file)
 const ids = async (q = {}) => (await listLessons(q)).map(l => l.id)
 const builtIn = (await listLessons()).find(l => l.id === 'ledgerly-day2')!
 assert.ok(builtIn, 'a seeded built-in is listed')
