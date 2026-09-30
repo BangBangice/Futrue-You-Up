@@ -8,6 +8,7 @@ import * as director from './director.ts'
 import { Refusal } from './sandbox.ts'
 import { authEnabled, googleEnabled, me } from './auth.ts'
 import { lessonsApi, playable } from './authoring.ts'
+import { completeApi } from './complete.ts'
 import { generateApi } from './generate.ts'
 import type { Me } from './auth.ts'
 import { mailReady } from './mail.ts'
@@ -109,7 +110,7 @@ api.get('/me/runs', async (_req, res) => {
   if (!res.locals.me) throw new Missing('Accounts are off on this server.')
   res.json(await listRuns(res.locals.me.id))
 })
-api.use('/my/lessons', generateApi, lessonsApi)
+api.use('/my/lessons', generateApi, completeApi, lessonsApi)
 api.post('/lessons/:id/report', reportRoute)
 api.use('/admin', adminApi)
 

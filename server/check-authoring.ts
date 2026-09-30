@@ -8,6 +8,7 @@ import { closeDb, db, dbEnabled, migrateDb } from './db/index.ts'
 import { lessonGenerations, runs, scenarioVersions, scenarios, users } from './db/schema.ts'
 import { MAX_LESSONS, lessonsApi, playable } from './authoring.ts'
 import * as director from './director.ts'
+import { PER_MINUTE as SUGGESTIONS_PER_MINUTE, completeApi, join, model as completer } from './complete.ts'
 import { DAILY_GENERATIONS, generateApi, model } from './generate.ts'
 import type { Brief } from './generate.ts'
 import { listLessons } from './lessons.ts'
@@ -21,7 +22,7 @@ await migrateDb()
 
 // The lessons routes behind a stand-in for sign-in: x-user names the caller.
 const app = express()
-app.use(express.json({ limit: '300kb' }), (req: Request, res: Response, next: NextFunction) => { res.locals.me = { id: req.headers['x-user'] }; next() }, generateApi, lessonsApi, errors)
+app.use(express.json({ limit: '300kb' }), (req: Request, res: Response, next: NextFunction) => { res.locals.me = { id: req.headers['x-user'] }; next() }, generateApi, completeApi, lessonsApi, errors)
 const server = app.listen(0)
 const base = `http://localhost:${(server.address() as AddressInfo).port}`
 const call = async (user: string, method: string, path = '', body?: unknown) => {
@@ -216,6 +217,32 @@ try {
   const [row] = await db().select().from(lessonGenerations).where(eq(lessonGenerations.userId, carol))
   assert.equal(row.count, DAILY_GENERATIONS)
   assert.equal((await generate(bob, { prompt })).status, 201, 'the quota is per author')
+
+  // ---- Suggestions while typing: free, only for authors, only on your own lesson, and rate-limited per author.
+  const suggest = (user: string, body: unknown) => call(user, 'POST', '/complete', body)
+  for (const u of [guest, unverified]) assert.equal((await suggest(u, { text: 'A fintech startup on a Friday' })).status, 403, `${u} gets no suggestions`)
+  assert.deepEqual((await suggest(carol, { text: 'Too short' })).body, { suggestion: '' }, 'no suggestion before there is an idea')
+  const stubbed = await suggest(carol, { text: 'A Friday before a release' })
+  assert.deepEqual([stubbed.status, stubbed.body.suggestion], [200, ' at a small fintech startup'])
+  assert.equal((await call(carol, 'GET', '/generate')).body.remaining, 0, "suggestions don't spend generations")
+  assert.equal((await suggest(bob, { text: 'Make the manager meaner', lessonId: lid })).status, 404, "no suggestions on someone else's lesson")
+  const heardFor: string[] = []
+  const realComplete = completer.complete
+  completer.complete = async (text, base) => { heardFor.push(base?.title ?? ''); return text.includes('echo') ? '"the client echo and more"' : null }
+  assert.deepEqual((await suggest(carol, { text: 'Make the client echo', lessonId: lid })).body, { suggestion: ' and more' }, 'the echo and quotes are trimmed')
+  assert.ok(heardFor[0], 'a revision is suggested with the lesson in mind')
+  assert.deepEqual((await suggest(carol, { text: 'The model is not answering' })).body, { suggestion: '' })
+  completer.complete = realComplete
+  let limited = 0
+  for (let i = 0; i < SUGGESTIONS_PER_MINUTE; i++) if ((await suggest(alice, { text: `A fintech startup, take ${i}` })).status === 429) limited++
+  assert.equal(limited, 0)
+  assert.equal((await suggest(alice, { text: 'A fintech startup, once more' })).status, 429, 'suggestions are rate-limited per author')
+
+  // How a suggestion is fitted onto the text.
+  assert.equal(join('A shift.', 'The PM'), ' The PM', 'a space after punctuation')
+  assert.equal(join('A shift ', ' at a bank'), 'at a bank', 'no double space')
+  assert.equal(join('A startu', 'p in Berlin'), 'p in Berlin', 'finishing a word')
+  assert.equal(join('A shift', 'line one\nline two'), 'line one line two', 'one line')
 } finally {
   server.close()
   const mine = (await db().select({ id: scenarios.id }).from(scenarios).where(inArray(scenarios.authorId, [alice, bob, carol]))).map(r => r.id)
