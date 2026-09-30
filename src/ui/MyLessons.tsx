@@ -134,7 +134,7 @@ function List() {
       <motion.section variants={rise} className="author-card">
         <div className="field-label">New lesson</div>
         <Ask label="Generate" placeholder="A fintech startup on the Friday before a release. The PM keeps changing priorities and a big client emails about a login bug…" onDone={l => navigate(`/my/lessons/${encodeURIComponent(l.id)}`)} />
-        <div className="sub small">For now every lesson runs on the same codebase, Ledgerly's auth service, so the bug to fix stays the same. Everything around it is yours.</div>
+        <div className="sub small">For now every lesson runs on the same built-in codebase, an auth service, so the bug to fix stays the same. Everything around it is yours.</div>
       </motion.section>
       {error ? <div className="cta-note bad" role="alert">{error}</div> : lessons && (lessons.length === 0
         ? <div className="library-empty sub">No lessons yet. Describe one above.</div>
@@ -223,7 +223,7 @@ function Editor() {
       <motion.section variants={rise} className="author-card">
         <div className="field-label">Revise with AI</div>
         {lesson.prompt && <div className="sub small">Last asked: “{lesson.prompt}”</div>}
-        <Ask lessonId={lesson.id} label="Revise" placeholder="Make Leo more anxious, and have the client email arrive earlier…" onDone={setLesson} />
+        <Ask lessonId={lesson.id} label="Revise" placeholder="Make the manager more impatient, and have the client email arrive earlier…" onDone={setLesson} />
       </motion.section>
 
       {error && <pre className="gen-error" role="alert">{error}</pre>}

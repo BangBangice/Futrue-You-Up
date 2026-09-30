@@ -142,7 +142,7 @@ const guideStep: z.ZodType<GuideStep> = z.strictObject({
 export const WORKSPACE = { repo: 'ledgerly-api', host: 'ledgerly-ws-02' }
 /** How the engine's own lines tell the story around an outage, as Ledgerly has it. Specs saved before this was data get these. */
 export const STORY = {
-  client: 'marta', customer: 'Northwind Freight', staff: 'finance contractors', deadline: 'renewal demo', movedTo: 'Thursday',
+  client: 'marta', customer: 'Northwind Freight', staff: 'finance contractors', deadline: 'renewal demo', movedTo: 'Thursday', weekday: 'Tuesday',
   integrations: ['Osprey’s nightly export', 'Brightline’s booking sync'],
   postponed: { who: 'sam', subject: 'Northwind demo postponed', body: ['I called Marta and moved the demo to Thursday. She was polite about it, but she asked for a written explanation for their CFO.', 'Sam'] },
 }
@@ -188,13 +188,15 @@ export const Scenario = z.object({
     deadline: line,
     /** When it moves to if production is down at the deadline. */
     movedTo: line,
+    /** The day the shift happens, as the colleagues know it. */
+    weekday: line.default(STORY.weekday),
     /** What breaks for API-key customers, as in "Osprey’s nightly export". */
     integrations: z.array(line),
     /** The email sent when production is down at the deadline. */
     postponed: z.strictObject({ who: person, subject: text.min(1), body: z.array(text).min(1) }),
   }).default(() => structuredClone(STORY)),
   /** Only a member with a persona answers the player. */
-  cast: z.record(key, z.object({ name: line, short: line.optional(), init: line, color: z.string().regex(/^#[0-9a-f]{6}$/i, 'a #rrggbb colour'), email: line, title: line, persona: persona.optional() })),
+  cast: z.record(key, z.object({ name: line, short: line.optional(), pronouns: z.enum(['she', 'he', 'they']).optional(), init: line, color: z.string().regex(/^#[0-9a-f]{6}$/i, 'a #rrggbb colour'), email: line, title: line, persona: persona.optional() })),
   /** A DM channel's id is the id of the person on the other end. */
   channels: z.record(key, z.object({ label: line, topic: z.string(), dm: z.boolean().optional() })),
   seed: z.object({
