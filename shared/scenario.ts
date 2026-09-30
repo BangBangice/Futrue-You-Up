@@ -1,5 +1,5 @@
 // The shape of a scenario file. Pure: the server validates with it, and a scenario editor can reuse it.
-// It covers the cast, the channels and the starting content; personas, the timeline and checks are still code.
+// It covers the cast, the channels, the starting content and the scripted triggers; personas, the demo and checks are still code.
 import { z } from 'zod'
 import { APP_IDS, COLS, FOLDERS, PRIORITIES } from './types.ts'
 
@@ -37,6 +37,56 @@ const ticket = z.object({
 
 const doc = z.object({ id: line, title: line, group: line, owner: person, updated: line, body: z.string(), version: z.number().int().positive().default(1) })
 
+/** Timestamps in the session's private facts that a trigger may record or test. */
+export const FLAGS = ['warnedAt', 'readWarningAt', 'editedAt', 'testedAt', 'leoAskedAt', 'ackAt', 'askedDanielAt', 'clientMailAt', 'clientAt', 'pmAt', 'assignAckAt', 'rolledBackAt', 'fixedAt'] as const
+/** Values the engine computes for {{name}} placeholders in trigger text. */
+export const VARS = ['now', 'deployTime', 'deployTimePlus1', 'timeToDemo'] as const
+export const EVENTS = ['start', 'incident.opened', 'incident.resolved'] as const
+const flag = z.enum(FLAGS, { error: i => `no flag "${String(i.input)}"` })
+const text = z.string().superRefine((t, ctx) => {
+  for (const [p, name] of t.matchAll(/\{\{(.*?)\}\}/g)) if (!(VARS as readonly string[]).includes(name)) ctx.addIssue({ code: 'custom', message: `unknown placeholder "${p}"` })
+})
+
+// Conditions and actions are objects with exactly one leading key, not unions, so a mistake is reported at the field that is wrong.
+const one = (keys: readonly string[], what: string) => (o: object, ctx: z.RefinementCtx) => {
+  const got = Object.keys(o).filter(k => keys.includes(k))
+  if (got.length !== 1) ctx.addIssue({ code: 'custom', message: `${what} needs exactly one of ${keys.join(', ')}` })
+}
+/** Exactly one of all, any, not, flag (with set), incident, shipped, demo. */
+export interface Cond {
+  all?: Cond[]; any?: Cond[]; not?: Cond
+  flag?: typeof FLAGS[number]; set?: boolean
+  /** The incident that scheduled this trigger has not been resolved. */
+  incident?: 'still-open'
+  /** Whether the player has deployed anything yet. */
+  shipped?: boolean
+  demo?: 'pending' | 'held' | 'postponed'
+}
+const cond: z.ZodType<Cond> = z.lazy(() => z.strictObject({
+  all: z.array(cond).min(1).optional(), any: z.array(cond).min(1).optional(), not: cond.optional(),
+  flag: flag.optional(), set: z.boolean().optional(),
+  incident: z.literal('still-open').optional(), shipped: z.boolean().optional(), demo: z.enum(['pending', 'held', 'postponed']).optional(),
+}).superRefine((c, ctx) => {
+  one(['all', 'any', 'not', 'flag', 'incident', 'shipped', 'demo'], 'a condition')(c, ctx)
+  if ((c.flag === undefined) !== (c.set === undefined)) ctx.addIssue({ code: 'custom', message: '"flag" and "set" go together' })
+}))
+
+const action = z.strictObject({
+  post: z.strictObject({ chan, who: person, text: text.min(1), files: z.array(attachment).optional() }).optional(),
+  mail: email.omit({ id: true, time: true, read: true, thread: true }).extend({ folder: z.enum(FOLDERS).default('inbox'), subject: text.min(1), toName: text.optional(), body: z.array(text).min(1) }).strict().optional(),
+  /** Records the current sim minute. */
+  flag: flag.optional(),
+}).superRefine(one(['post', 'mail', 'flag'], 'an action'))
+
+const trigger = z.strictObject({
+  id: z.string().regex(/^[a-z0-9_-]+$/, 'lowercase letters, digits, dashes and underscores'),
+  /** Sim minutes after an engine event. */
+  when: z.strictObject({ on: z.enum(EVENTS), after: z.number().int().min(0) }),
+  if: cond.optional(),
+  do: z.array(action).min(1),
+})
+export type Trigger = z.infer<typeof trigger>
+
 export const Scenario = z.object({
   id: key,
   title: line,
@@ -53,6 +103,8 @@ export const Scenario = z.object({
     tickets: z.array(ticket),
     docs: z.array(doc),
   }),
+  /** Scripted things that happen on schedule. Order matters for triggers due in the same minute. */
+  triggers: z.array(trigger).default([]),
 }).superRefine((s, ctx) => {
   const bad = (path: (string | number)[], message: string) => ctx.addIssue({ code: 'custom', path, message })
   const unique = (what: string, ids: (string | number)[], path: string[]) => ids.forEach((id, i) => { if (ids.indexOf(id) !== i) bad([...path, i, 'id'], `duplicate ${what} id "${id}"`) })
@@ -82,6 +134,19 @@ export const Scenario = z.object({
   })
   emails.forEach((e, i) => check(e.files, ['seed', 'emails', i, 'files']))
   for (const [c, msgs] of Object.entries(chats)) msgs.forEach((m, i) => check(m.files, ['seed', 'chats', c, i, 'files']))
+  s.triggers.forEach((t, i) => t.do.forEach(({ post, mail }, j) => {
+    const path = ['triggers', i, 'do', j]
+    if (post) {
+      if (!Object.hasOwn(s.channels, post.chan)) bad([...path, 'post', 'chan'], `no channel with id "${post.chan}"`)
+      who(post.who, [...path, 'post', 'who'])
+      check(post.files, [...path, 'post', 'files'])
+    }
+    if (mail) { who(mail.who, [...path, 'mail', 'who']); check(mail.files, [...path, 'mail', 'files']) }
+  }))
+  const scoped = (c: Cond | undefined): boolean => !!c && (!!c.incident || !!c.all?.some(scoped) || !!c.any?.some(scoped) || scoped(c.not))
+  s.triggers.forEach((t, i) => { if (scoped(t.if) && t.when.on !== 'incident.opened') bad(['triggers', i, 'if'], '"incident": "still-open" only applies to triggers on incident.opened') })
+  unique('trigger', s.triggers.map(t => t.id), ['triggers'])
+  s.triggers.forEach((t, i) => { if (t.id === 'demo') bad(['triggers', i, 'id'], 'the id "demo" is reserved') })
   // Wiki pages link to each other as [text](doc:id).
   docs.forEach((d, i) => { for (const [, id] of d.body.matchAll(/\]\(doc:([^)\s]+)\)/g)) if (!docIds.has(id)) bad(['seed', 'docs', i, 'body'], `links to missing doc "${id}"`) })
 })

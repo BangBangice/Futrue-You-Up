@@ -1,12 +1,13 @@
 // Runs the shift: the clock, the things that happen on schedule, and what follows from what the player does.
 // No model calls here. The director decides what is true; personas and the mentor decide how to say it.
-import { ALARM, CHECK_LABEL, COLS, DEMO, SHARE, START, clock, dur, errAt, failing, isOutage, lockedAt, personByName } from '../shared/types.ts'
+import { ALARM, CHECK_LABEL, COLS, DEMO, SHARE, START, clock, errAt, failing, isOutage, lockedAt, personByName } from '../shared/types.ts'
 import type { Attachment, ChanId, Check, Doc, Email, Folder, TermLine, Ticket } from '../shared/types.ts'
 import * as mentor from './ai/mentor.ts'
 import { reply } from './ai/personas.ts'
 import type { Persona } from './ai/personas.ts'
 import { Refusal, tokenize } from './sandbox.ts'
 import type { Emit } from './sandbox.ts'
+import * as triggers from './triggers.ts'
 import type { Beat, Session } from './world.ts'
 
 /** The browser gets the checks customers can feel. Security verdicts stay on the server. */
@@ -21,7 +22,7 @@ export async function start(s: Session) {
   s.priv.verdicts[state.head] = { ...base, diff: '' }
   s.world.term = [{ c: 'dim', t: 'Last login: Tue Sep 29 09:14 on ttys002' }, { c: 'dim', t: 'Type "help" to see what is available here.' }]
   s.set({ files: await s.ws.tree(), code: state, deploys: [{ sha: state.head, at: START - 300, by: 'daniel', kind: 'deploy', checks: visible(base.checks) }] })
-  s.at(1, 'daniel_warning'); s.at(3, 'leo_question'); s.at(22, 'priya_checkin'); s.at(45, 'priya_chase')
+  triggers.schedule(s, s.scenario.triggers, 'start')
   s.priv.beats.push({ at: DEMO, kind: 'demo' })
   s.log('start', { level: s.world.level })
 }
@@ -39,7 +40,7 @@ export function tick(s: Session) {
   const m = s.world.simMin
   const due = s.priv.beats.filter(b => b.at <= m)
   s.priv.beats = s.priv.beats.filter(b => b.at > m)
-  due.forEach(b => BEATS[b.kind]?.(s, b))
+  due.forEach(b => beat(s, b))
   // Production follows the code. A rollout takes two minutes to show either way.
   const live = s.world.deploys.at(-1)!
   if (m < live.at + 2) return
@@ -48,47 +49,20 @@ export function tick(s: Session) {
 }
 
 // ---------- things that happen on schedule ----------
-const during = (s: Session, b: Beat) => open(s) && s.world.incident!.id === b.inc
 const shipped = (s: Session) => s.world.deploys.some(d => d.by === s.world.player)
-const BEATS: Record<string, (s: Session, b: Beat) => void> = {
-  daniel_warning: s => {
-    s.priv.f.warnedAt = s.world.simMin
-    s.post('team', 'daniel', '@maya saw Priya gave you LED-214. Heads up: verifySession is shared by every login path (SSO, password, API keys). Whatever you change in there, check the password flow too. Ping me when you get stuck, not after.', { files: [{ kind: 'code', path: 'src/auth/verifySession.ts' }, { kind: 'doc', doc: 'auth' }] })
-  },
-  leo_question: s => { s.priv.f.leoAskedAt = s.world.simMin; s.post('leo', 'leo', 'hey Maya, sorry to bug you. how do I run just the auth tests? the full suite takes 9 minutes on my laptop') },
-  priya_checkin: s => { if (!shipped(s)) s.post('priya', 'priya', 'How’s LED-214 looking? Ideally it’s out before 2:30 so we have buffer for the demo.') },
-  priya_chase: s => { if (!shipped(s)) s.post('priya', 'priya', 'Any update on LED-214? Sam is asking.') },
-
-  leo_bounced: (s, b) => { if (during(s, b)) s.post('team', 'leo', 'is anyone else getting bounced back to the login page? email + password, prod') },
-  priya_ack1: (s, b) => { if (during(s, b) && s.priv.f.ackAt === undefined) s.post('priya', 'priya', `Maya, login errors are spiking and it lines up with your ${clock(s.world.deploys.at(-1)!.at)} deploy. Are you on it?`) },
-  priya_ack2: (s, b) => { if (during(s, b) && s.priv.f.ackAt === undefined) s.post('priya', 'priya', 'I need a status, even if it’s just “looking”.') },
-  hana_mail: (s, b) => {
-    if (during(s, b)) s.mail({ who: 'hana', subject: 'Spike in “can’t log in” tickets', kind: 'support', body: ['Hi eng,', 'We’ve had 31 tickets in the last 10 minutes, all the same: email + password users sign in, then get bounced straight back to the login page. SSO customers seem fine.', 'Osprey and Brightline have both called. Anything I can tell them?', 'Hana · Support'] })
-  },
-  marta_mail: (s, b) => {
-    if (!during(s, b)) return
-    s.priv.f.clientMailAt = s.world.simMin
-    s.mail({ who: 'marta', subject: 'Our team can’t log in, and the demo is at 3:00', kind: 'client', toName: 'Ledgerly Support; Sam Whitfield', body: ['Hello,', `Since about ${clock(s.world.deploys.at(-1)!.at + 1)}, none of our finance contractors can get into Ledgerly. They enter their password and land back on the sign-in page. They’re the people I’m showing the new invoice run to at 3:00.`, 'This is exactly the kind of reliability issue we’re weighing in the renewal. Can someone tell me what’s happening?', 'Marta Lindqvist', 'Head of Finance Ops, Northwind Freight'] })
-  },
-  priya_decide: (s, b) => { if (during(s, b)) s.post('incidents', 'priya', `@maya Northwind demo is in ${dur(Math.max(0, DEMO - s.world.simMin))}. Revert or patch? I need to know which.`) },
-  sam_mail: (s, b) => {
-    if (during(s, b)) s.mail({ who: 'sam', subject: 'Do we postpone Northwind?', kind: 'sam', body: ['Priya looped me in. Marta just emailed me directly too.', 'If logins aren’t back by 2:45 I’ll have to call her and move the demo, which won’t help the renewal. What’s your read?', 'Sam'] })
-  },
-
-  priya_postmortem: s => {
-    s.post('priya', 'priya', 'We’re back. Thank you. Before you log off, send me a short postmortem: what happened, why, what we change. Blameless, keep it short.')
-    s.mail({ who: 'priya', subject: 'Postmortem: auth-api password logins', kind: 'pm', files: [{ kind: 'doc', doc: 'postmortem' }], body: ['Hi Maya,', 'Thanks for getting us back. Please send a short, blameless postmortem before you log off: what happened, impact, why, how we fixed it, and what we’ll change. Replying here is fine, or write it up as a page in Confluence.', 'Priya'] })
-  },
-  leo_works: s => s.post('team', 'leo', 'password login works again for me'),
-  sam_demo_on: s => { if (s.world.demo === 'pending') s.mail({ who: 'sam', subject: 'Northwind demo is on', body: ['Marta says her team is back in. Demo goes ahead at 3:00. Thanks for moving fast.', 'Sam'] }) },
-  demo: s => {
-    const held = !open(s)
-    s.set({ demo: held ? 'held' : 'postponed' })
-    s.log('demo', { held })
-    if (held) return
-    s.timeline('Northwind demo postponed', 'bad')
-    s.mail({ who: 'sam', subject: 'Northwind demo postponed', body: ['I called Marta and moved the demo to Thursday. She was polite about it, but she asked for a written explanation for their CFO.', 'Sam'] })
-  },
+// Beats hold a trigger id, or "demo". Shifts saved before triggers were data used the same names.
+function beat(s: Session, b: Beat) {
+  if (b.kind === 'demo') return demo(s)
+  const t = s.scenario.triggers.find(x => x.id === b.kind)
+  if (t) triggers.fire(s, t, b.inc)
+}
+function demo(s: Session) {
+  const held = !open(s)
+  s.set({ demo: held ? 'held' : 'postponed' })
+  s.log('demo', { held })
+  if (held) return
+  s.timeline('Northwind demo postponed', 'bad')
+  s.mail({ who: 'sam', subject: 'Northwind demo postponed', body: ['I called Marta and moved the demo to Thursday. She was polite about it, but she asked for a written explanation for their CFO.', 'Sam'] })
 }
 
 // ---------- production ----------
@@ -104,7 +78,7 @@ function openIncident(s: Session) {
   s.mail({ who: 'cloudwatch', folder: 'alerts', subject: `[FIRING] auth-api: 401 rate ${rate}% (threshold ${ALARM}%)`, body: [`Alarm: auth-api 401 rate above ${ALARM}% for 2 minutes.`, `Current: ${rate}% · Baseline: 0.4%`, `Top reason: ${reason}`, `Most recent deploy: auth-api@${live.sha} by maya.chen at ${clock(live.at)}`], files: [dashboard, { kind: 'doc', doc: 'incident' }] })
   s.timeline(`Alarm fired: 401 rate > ${ALARM}%`, 'bad')
   s.log('incident', { id, what })
-  for (const [d, kind] of [[2, 'leo_bounced'], [3, 'priya_ack1'], [6, 'hana_mail'], [8, 'priya_ack2'], [9, 'marta_mail'], [15, 'priya_decide'], [18, 'sam_mail']] as const) s.at(d, kind, id)
+  triggers.schedule(s, s.scenario.triggers, 'incident.opened', id)
   mentor.onIncident(s, live.sha, v, v.diff)
 }
 
@@ -115,8 +89,7 @@ function resolveIncident(s: Session) {
   s.post('incidents', 'cloudwatch', `[RESOLVED] auth-api · 401 rate back to ${errAt(w.deploys, m + 2).toFixed(1)}% · duration ${m - inc.startedAt} min`, { alert: 'ok' })
   s.timeline(`Resolved: 401 rate ${errAt(w.deploys, m + 2).toFixed(1)}%`, 'good')
   s.log('resolved', { id: inc.id, mins: m - inc.startedAt })
-  s.at(1, 'priya_postmortem'); s.at(1, 'leo_works')
-  if (m < DEMO - 3) s.at(3, 'sam_demo_on')
+  triggers.schedule(s, s.scenario.triggers, 'incident.resolved', inc.id)
   void mentor.onHealthy(s, live.kind === 'rollback' ? 'rollback' : 'fix')
 }
 
