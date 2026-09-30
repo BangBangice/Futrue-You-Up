@@ -50,11 +50,11 @@ export function Company({ size = 22 }: { size?: number }) {
   return <div className="company" style={{ width: size, height: size, borderRadius: size * 0.27, fontSize: size * 0.5 }}>{initial}</div>
 }
 
-export function Segmented<T extends string>({ id, value, options, onChange, grow }: { id: string; value: T; options: [T, string][]; onChange: (v: T) => void; grow?: boolean }) {
+export function Segmented<T extends string>({ id, value, options, onChange, grow }: { id: string; value: T; options: [T, string, string?][]; onChange: (v: T) => void; grow?: boolean }) {
   return (
     <div className={'seg' + (grow ? ' seg-grow' : '')} role="tablist">
-      {options.map(([k, label]) => (
-        <button key={k} role="tab" aria-selected={k === value} className={k === value ? 'on' : ''} onClick={() => onChange(k)}>
+      {options.map(([k, label, tip]) => (
+        <button key={k} role="tab" aria-selected={k === value} className={k === value ? 'on' : ''} title={tip} onClick={() => onChange(k)}>
           {k === value && <motion.span layoutId={'seg-' + id} className="seg-pill" transition={SPRING} />}
           <span>{label}</span>
         </button>
