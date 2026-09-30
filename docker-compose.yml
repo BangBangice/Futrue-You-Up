@@ -1,0 +1,39 @@
+# Local development only. Railway provides its own Postgres and DATABASE_URL.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-larp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-larp}
+      POSTGRES_DB: ${POSTGRES_DB:-larp}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-larp}:${POSTGRES_PASSWORD:-larp}@db:5432/${POSTGRES_DB:-larp}
+      LLM: ${LLM:-stub}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      PERPLEXITY_MODEL: ${PERPLEXITY_MODEL:-openai/gpt-6-luna}
+      # Safe only because the port below is bound to this machine.
+      PUBLIC_ACCESS: "1"
+      PORT: "5183"
+    ports:
+      - "127.0.0.1:5183:5183"
+    volumes:
+      - data:/app/.data
+
+volumes:
+  db:
+  data:

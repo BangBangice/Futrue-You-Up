@@ -30,6 +30,19 @@ No key? It still runs. Colleagues fall back to scripted lines and no network is 
 
 **Never commit `.env`.** This repository is public. `.env` and `.data/` are git-ignored.
 
+#### Database
+
+Optional for now: shifts are still kept in `.data/`. With `DATABASE_URL` set, the server migrates the database on startup.
+
+```
+docker compose up db              # Postgres 17 on localhost:5432 (DB_PORT=... to move it)
+# in .env: DATABASE_URL=postgres://larp:larp@localhost:5432/larp
+npm run db:migrate
+npm run db:seed-scenarios         # publishes scenarios/*.json that changed
+```
+
+`docker compose up` runs the database and the app together on http://localhost:5183, with scripted colleagues unless `LLM=live`. After changing `server/db/schema.ts`, run `npm run db:generate` and commit the new migration.
+
 ### What you can do in a shift
 
 | App | What is real |
