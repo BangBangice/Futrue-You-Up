@@ -17,7 +17,7 @@ export const DATA = join(dirname(fileURLToPath(import.meta.url)), '..', '.data',
 // A cache of live shifts, not the record of them: an evicted shift is saved first and reloads on its next request.
 const MAX_SESSIONS = 32, MAX_TERM = 400
 // Loaded once at startup, so a broken scenario file stops the server instead of a shift.
-const SCENARIO = loadScenario('ledgerly-day2')
+export const SCENARIO = loadScenario('ledgerly-day2')
 
 export interface Beat { at: number; kind: string; inc?: string }
 export interface Event { t: number; type: string; [k: string]: unknown }
