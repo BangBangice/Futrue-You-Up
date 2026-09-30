@@ -23,7 +23,8 @@ const wait = (s: Session, ms: number) => new Promise(r => setTimeout(r, ms * s.t
 
 // ---------- start, clock ----------
 export async function start(s: Session) {
-  const [state, base] = [await s.ws.state(), await accept(s)]
+  // The shift has only the template so far, whose verdict is known without starting a sandbox for it.
+  const [state, base] = [await s.ws.state(), await s.ws.acceptTemplate(s.scenario.checks.map(c => c.id))]
   s.priv.verdicts[state.head] = { ...base, diff: '' }
   s.world.term = [{ c: 'dim', t: 'Last login: Tue Sep 29 09:14 on ttys002' }, { c: 'dim', t: 'Type "help" to see what is available here.' }]
   s.set({ files: await s.ws.tree(), code: state, deploys: [{ sha: state.head, at: minutes(s.scenario.clock.start) - 300, by: s.scenario.mentor, kind: 'deploy', checks: visible(s, base.checks) }] })
@@ -185,7 +186,10 @@ export async function refresh(s: Session) {
   s.log('commit', { sha: state.head, subject: state.subject })
   // Get ahead: find out now what this commit would do in production, and start on the coaching if it would do harm.
   const live = s.world.deploys.at(-1)!
-  const v = { ...(await accept(s)), diff: (await s.ws.git(['diff', live.sha, 'HEAD', '--', 'src'])).out }
+  // No sandbox to run it in (already logged): deploying works it out instead, and says so if it still cannot.
+  const verdict = await accept(s).catch(e => { if (e instanceof Refusal) return null; throw e })
+  if (!verdict) return
+  const v = { ...verdict, diff: (await s.ws.git(['diff', live.sha, 'HEAD', '--', 'src'])).out }
   if (state.changes.length === 0) s.priv.verdicts[state.head] = v
   if (v.build === 'ok' && failing(v.checks).length) void mentor.prepare(s, state.head, v, v.diff)
 }
@@ -322,6 +326,7 @@ export function saveDoc(s: Session, id: string | undefined, d: Pick<Doc, 'title'
 export async function end(s: Session) {
   if (s.world.stage !== 'sim') return
   pause(s)
+  void s.ws.close()
   const live = s.priv.verdicts[s.world.deploys.at(-1)!.sha]
   s.priv.finished = s.priv.f.fixedAt !== undefined && !!live && !failing(live.checks).length
   s.log('end', { finished: s.priv.finished })

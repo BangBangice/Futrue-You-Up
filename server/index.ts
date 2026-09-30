@@ -9,6 +9,7 @@ import { closeDb, dbEnabled, migrateDb } from './db/index.ts'
 import { auth, authEnabled } from './auth.ts'
 import { checkMail, mailScope, mailStatus } from './mail.ts'
 import { api, errors } from './routes.ts'
+import { useE2B } from './sandbox.ts'
 import { all } from './world.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -74,7 +75,7 @@ if (dbEnabled()) {
   await migrateDb()
   console.log('Database migrated.')
 }
-app.listen(PORT, '0.0.0.0', () => console.log(`LARP is running on port ${PORT}  (colleagues: ${mode() === 'live' ? 'AI' : 'scripted, no network needed'})`))
+app.listen(PORT, '0.0.0.0', () => console.log(`LARP is running on port ${PORT}  (colleagues: ${mode() === 'live' ? 'AI' : 'scripted, no network needed'}; player code: ${useE2B() ? 'E2B sandboxes' : 'local processes'})`))
 // Hosts stop the server with SIGTERM on every deploy. Saves still waiting on their debounce go out first.
 process.once('SIGTERM', async () => {
   await Promise.all(all().map(s => s.stop()))

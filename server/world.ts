@@ -101,7 +101,8 @@ export class Session {
   }
   stop() {
     clearInterval(this.clock); this.clock = undefined; this.timers.forEach(clearTimeout); this.timers.clear()
-    return this.saving ? this.flush() : this.writing
+    // The shift's sandbox goes too, if it has one: nothing is kept there, and the next run makes a new one.
+    return Promise.all([this.saving ? this.flush() : this.writing, this.ws?.close()]).then(([saved]) => saved)
   }
 
   // ---------- things that happen ----------

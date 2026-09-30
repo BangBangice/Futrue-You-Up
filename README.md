@@ -85,6 +85,7 @@ Useful terminal commands: `help`, `npm test -- src/auth`, `git status`, `git com
 | `src/` | The browser app (React, TypeScript). Holds a read-only copy of the world and what only the browser knows, such as window positions |
 | `server/` | Express. Owns the world, runs the clock, decides consequences, talks to the AI model |
 | `server/sandbox.ts` | The only code that touches disk or starts a process for the player |
+| `server/e2b.ts` | Runs the player's code in an E2B cloud sandbox when `E2B_API_KEY` is set |
 | `server/acceptance.ts` | Hidden production checks run against the player's code on every deploy |
 | `server/ai/` | The model client, the colleagues, and the mentor |
 | `shared/` | Types, pure helpers and the scenario schema, used by both sides |
@@ -100,7 +101,7 @@ Three rules the design follows:
 
 ### Limits
 
-- **Run it on your own machine only.** The player's code runs as your user. It cannot read outside its workspace, write files, start processes or reach the network (the last on macOS only), but those are guard rails, not a security boundary. Hosting this publicly needs container isolation in `server/sandbox.ts` first.
+- **Without `E2B_API_KEY`, run it on your own machine only.** The player's code runs as your user. It cannot read outside its workspace, write files, start processes or reach the network (the last on macOS only), but those are guard rails, not a security boundary. Hosted, set `E2B_API_KEY` so it runs in an E2B cloud sandbox instead (`server/e2b.ts`); `npm run check:e2b` tries that live.
 - One role and one day are playable.
 - Colleagues answer in a few seconds. The model is `openai/gpt-6-luna` through Perplexity; any model from `GET https://api.perplexity.ai/v1/models` works, set with `PERPLEXITY_MODEL`.
 - Files attached from your computer are not stored.
