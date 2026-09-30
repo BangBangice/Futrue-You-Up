@@ -6,8 +6,9 @@ import { execFileSync } from 'node:child_process'
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
 import express from 'express'
-import { done, stepsFor } from '../shared/guide.ts'
-import { Scenario, personalize } from '../shared/scenario.ts'
+import { allDone, done, plan, required, stepsFor } from '../shared/guide.ts'
+import type { Facts } from '../shared/guide.ts'
+import { INCIDENT_PHASES, Scenario, personalize } from '../shared/scenario.ts'
 import { normalizeTags } from '../shared/tags.ts'
 import { errAt, isOutage, minutes as minutesOf } from '../shared/types.ts'
 import { heard } from './ai/llm.ts'
@@ -41,6 +42,8 @@ const original = await s.ws.read(vs)
 const edit = (to: string) => director.saveFile(s, vs, original.replace("  const token = req.cookies[SESSION_COOKIE]\n", to))
 const NAIVE = "  const header = req.headers['authorization'] ?? ''\n  const token = header.replace(/^Bearer\\s+/i, '')\n"
 const CORRECT = "  const header = req.headers['authorization'] ?? ''\n  const token = header.replace(/^Bearer\\s+/i, '') || req.cookies[SESSION_COOKIE]\n"
+/** The step list as the browser would show it now: the phase, and each step's id with a tick. */
+const guideNow = (x = s, extra = {}) => { const p = plan({ ...x.world, seen: x.priv.f.seen, ...extra }, x.world.phases, x.world.level); return { ...p, ticks: Object.fromEntries(p.steps.map(t => [t.id, t.done])) } }
 
 // ---- the world at 1:10 PM
 assert.equal(s.world.code.branch, 'maya/led-214-sso-expiry')
@@ -55,6 +58,9 @@ assert.equal(s.world.chats.team.at(-1)!.who, 'daniel', 'Daniel warns about verif
 assert.equal(s.world.unread.leo, 2, 'Leo asks for help at +3')
 director.seen(s, 'chan:team')
 assert.equal(s.priv.f.readWarningAt, s.world.simMin)
+assert.deepEqual([guideNow().phase, guideNow().title, guideNow().ticks.leo], ['ticket', 'Fix LED-214', false], 'the opening phase, with Leo’s question waiting')
+assert.match(guideNow().sub, /Priya wants it fixed before the 3:00 PM demo/, 'names and the deadline are filled in')
+assert.deepEqual(guideNow().map.map(p => `${p.id}:${p.state}`), ['ticket:current', 'deployed:upcoming', 'incident:upcoming', 'after:upcoming', 'shipped:upcoming'])
 
 // ---- mail and chat
 director.mail(s, { mode: 'reply', ref: 'e1', text: 'On it, fix out before 2:30.', files: [{ kind: 'code', path: vs }] })
@@ -62,6 +68,7 @@ assert.deepEqual([s.world.emails[0].folder, s.world.emails[0].subject, s.world.e
 assert.equal(s.priv.f.assignAckAt, s.world.simMin)
 director.chat(s, 'leo', 'npm test -- src/auth runs just the auth suite', [{ kind: 'doc', doc: 'tests' }])
 assert.equal(s.priv.f.leo, 'helped')
+assert.equal(guideNow().ticks.leo, true, 'answering Leo ticks his question off')
 await settle()
 assert.match(s.world.chats.leo.at(-1)!.text, /thank you/, 'scripted reply when the model is unavailable')
 director.patchMail(s, 'e3', { folder: 'archive', flagged: true })
@@ -101,6 +108,8 @@ assert.equal(s.world.code.changes.length, 0)
 await sh('ldg deploy auth-api --env prod')
 assert.equal(s.world.deploys.at(-1)!.sha, bad)
 assert.equal(incident(), null, 'the alarm takes two minutes to fire')
+assert.deepEqual([guideNow().phase, guideNow().ticks.deploy, guideNow().ticks.watch], ['deployed', false, false], 'deployed, and the ticket still open')
+assert.equal(guideNow(s, { looking: ['monitor'] }).ticks.watch, true, 'CloudWatch on screen counts as watching it')
 ticks(2)
 assert.equal(incident()?.id, 'INC-37')
 assert.equal(s.world.tickets[0].id, 'INC-37')
@@ -116,8 +125,11 @@ await settle(120)
 const coached = daniel().at(-1)!
 assert.ok(coached.coach?.why.includes('cookie') && coached.coach.blast.includes('1,340'), 'coaching explains the cause and the blast radius')
 
+assert.deepEqual([guideNow().phase, guideNow().ticks.ack, guideNow().ticks.rollback], ['incident', false, false], 'the incident outranks the deploy')
+assert.equal(guideNow().map.find(p => p.id === 'deployed')!.state, 'past')
 director.chat(s, 'incidents', 'Investigating login failures. Likely my 2:17 deploy. Rolling back now, update in 10 min.', [])
 assert.equal(s.priv.f.ackAt, s.world.simMin)
+assert.equal(guideNow().ticks.ack, true)
 ticks(9)
 assert.ok(s.world.emails.some(e => e.who === 'marta'), 'the client escalates at +9')
 director.mail(s, { mode: 'new', to: 'marta lindqvist', subject: 'Sign-in issue', text: 'Hi Marta, a change we deployed broke email and password sign-in. I am sorry. We are rolling it back now and I will update you within 15 minutes.', files: [] })
@@ -128,6 +140,8 @@ assert.equal(s.world.deploys.at(-1)!.kind, 'rollback')
 assert.equal(ticket('LED-214').reopened, undefined, 'LED-214 was never closed, so it is not reopened')
 ticks(2)
 assert.ok(incident()!.resolvedAt, 'the incident resolves once the rollback has rolled out')
+assert.deepEqual([guideNow().phase, guideNow().sub, guideNow().ticks.deploy], ['after', 'Close out the incident, then fix LED-214 for real.', false], 'service is back, the ticket is not')
+assert.deepEqual(guideNow().map.map(p => p.state), ['past', 'past', 'past', 'current', 'upcoming'], 'the incident happened')
 assert.equal(ticket('INC-37').status, 'done')
 ticks(6)
 assert.ok(errAt(s.scenario, s.world.deploys, s.world.simMin) < 5, 'error rate recovers')
@@ -138,6 +152,7 @@ assert.match(daniel().map(m => m.text).join('\n'), /Rolling back first was the r
 await director.saveFile(s, vs, original.replace('export async function verifySession(req: Request): Promise<Session> {', 'export async function verifySession(req: Request): Promise<Session> {\n  if (req) return { ok: true, userId: "u", org: "o" }'))
 await sh('git commit -am "fix(auth): always accept"')
 await sh('ldg deploy auth-api --env prod')
+assert.deepEqual([guideNow().phase, guideNow().ticks.deploy, guideNow().ticks.edit], ['after', true, false], 'a deploy after the rollback ticks off, and the next change starts over')
 ticks(3)
 assert.ok(incident()!.resolvedAt, 'no alarm fires for a security hole')
 await settle(120)
@@ -161,6 +176,10 @@ ticks(3)
 assert.deepEqual(s.world.deploys.at(-1)!.checks.filter(c => !c.ok), [])
 assert.equal(ticket('LED-214').status, 'done')
 assert.ok(incident()!.resolvedAt, 'no new incident')
+assert.deepEqual([guideNow().phase, guideNow().sub, 'deploy' in guideNow().ticks], ['after', 'Close out the incident.', false], 'fixed, but the postmortem is still owed')
+const pmDoc = { id: 'pm', title: 'Postmortem: INC-37', group: 'Incidents', owner: 'maya', updated: 'today', body: '', version: 1 }
+const shipped = guideNow(s, { docs: [...s.world.docs, pmDoc] })
+assert.deepEqual([shipped.phase, shipped.ready, shipped.steps.map(x => x.id)], ['shipped', true, ['watch', 'tell', 'finish']], 'with the postmortem written, it is shipped and can end')
 await settle(120)
 assert.match(daniel().map(m => m.text).join('\n'), /Every login path is healthy/)
 
@@ -214,23 +233,55 @@ assert.deepEqual(broken(c => { c.checks[0].share = -1 }), ['a share cannot be ne
 assert.deepEqual(broken(c => { c.checks[4].share = 2 }), ['a security check fails silently, so its share must be 0'])
 assert.deepEqual(broken(c => { c.clock.deadline = '1:00 PM' }), ['the deadline must be after the start'])
 assert.deepEqual(broken(c => { c.clock.start = '13:10' }), ['a time like "1:10 PM"'])
-assert.deepEqual(broken(c => { delete c.clock.deadline }), ['uses the demo, so the clock needs a deadline', 'uses the demo, so the clock needs a deadline'])
-const step = (c: any, id: string) => c.guide.find((g: any) => g.id === id)
-assert.deepEqual(broken(c => { step(c, 'read').doneWhen = { mailOpened: 'e1' } }), ['Unrecognized key: "mailOpened"', 'a step condition needs exactly one of all, any, not, mailRead, mailReplied, ticket, commented, posted, channelRead, openedDoc, openedFile, code, deployed, git, ran'])
+assert.deepEqual(broken(c => { delete c.clock.deadline }), ['uses the demo, so the clock needs a deadline', 'uses the demo, so the clock needs a deadline', '{{deadline}} needs the clock to have a deadline'])
+const step = (c: any, id: string) => c.phases[0].steps.find((g: any) => g.id === id)
+assert.deepEqual(broken(c => { step(c, 'read').doneWhen = { mailOpened: 'e1' } }), ['Unrecognized key: "mailOpened"', 'a step condition needs exactly one of all, any, not, mailRead, mailReplied, ticket, commented, posted, channelRead, openedDoc, openedFile, code, deployed, redeployed, git, ran, incident, watched, postmortem, ended, stepsDone'])
 assert.deepEqual(broken(c => { step(c, 'team').doneWhen.all[1] = { channelRead: 'random' } }), ['no channel with id "random"'])
 assert.deepEqual(broken(c => { step(c, 'wiki').doneWhen = { not: { openedDoc: 'nope' } } }), ['no doc with id "nope"'])
 assert.deepEqual(broken(c => { step(c, 'ticket').showMe = { ticket: 'LED-999' } }), ['no ticket with id "LED-999"'])
 assert.deepEqual(broken(c => { step(c, 'wiki').levels = ['intern'] }), ['no level "intern"'])
-assert.deepEqual(broken(c => { step(c, 'read').showMe = { mail: 'e1', doc: 'auth' } }), ['a show-me target needs exactly one of mail, reply, ticket, chat, doc, file, edit, vscode'])
+assert.deepEqual(broken(c => { step(c, 'read').showMe = { mail: 'e1', doc: 'auth' } }), ['a show-me target needs exactly one of mail, reply, ticket, chat, doc, file, edit, vscode, monitor, finish'])
+assert.deepEqual(broken(c => { step(c, 'read').text += ' {{mood}}' }), ['unknown placeholder "{{mood}}"'])
+assert.deepEqual(broken(c => { step(c, 'read').text += ' {{from}}' }), ['unknown placeholder "{{from}}"'], '{{from}} only in a step with each')
+assert.deepEqual(broken(c => { delete step(c, 'read').doneWhen }), ['a step needs doneWhen (only a step with "each" has its own)'])
+assert.deepEqual(broken(c => { c.phases[0].side[0].if.posted.match = '(' }), ['not a valid regular expression'])
+assert.deepEqual(broken(c => { c.phases[0].when = { deployed: true } }), ['the first phase has no "when": it is where the lesson starts'])
+assert.deepEqual(broken(c => { c.phases[2].id = 'ticket' }), ['duplicate phase id "ticket"'])
+assert.deepEqual(broken(c => { c.phases[4].steps[1].doneWhen.posted.after.who = 'nobody' }), ['no cast member with id "nobody"'])
+assert.deepEqual(broken(c => { c.guide = [step(c, 'read')] }), ['give the steps as phases or as guide, not both: guide is the older form of the first phase'])
 assert.deepEqual(broken(c => { c.seed.chats.team[0].id = 100 }), ['seed message ids must be below 100'])
 // The opening steps tick off from browser-side facts alone.
 const facts = { ...structuredClone(good.seed), player: good.player, code: { branch: '', head: '', subject: '', changes: [], busy: null }, deploys: [], seen: ['doc:auth'] }
-const ticked = () => stepsFor(good.guide, 'newgrad').filter(g => done(facts, g.doneWhen)).map(g => g.id)
+const ticked = () => stepsFor(good.phases[0].steps, 'newgrad').filter(g => done(facts, g.doneWhen!)).map(g => g.id)
 assert.deepEqual(ticked(), ['wiki'])
 facts.emails[0].read = true
 facts.tickets.find(t => t.id === 'LED-214')!.status = 'progress'
 assert.deepEqual(ticked(), ['read', 'ticket', 'wiki'])
-assert.deepEqual(stepsFor(good.guide, 'bootcamp').map(g => g.id).filter(id => id === 'wiki' || id === 'password'), [], 'only new grads get the extra steps')
+assert.deepEqual(stepsFor(good.phases[0].steps, 'bootcamp').map(g => g.id).filter(id => id === 'wiki' || id === 'password'), [], 'only new grads get the extra steps')
+// A deploy that does not close the ticket: the list says so, and "Deploy the new version" ticks off rather than coming back forever.
+const retry: Facts = { ...facts, cast: good.cast, mentor: good.mentor, deploys: [{ sha: 'base', at: 0, by: 'daniel', kind: 'deploy', checks: [] }] }
+const deploy = (sha: string) => { retry.code = { ...retry.code, head: sha }; retry.deploys = [...retry.deploys, { sha, at: 0, by: 'maya', kind: 'deploy', checks: [] }] }
+const now = () => { const p = plan(retry, good.phases, 'bootcamp'); return [p.phase, p.sub, p.steps.find(x => x.id === 'deploy')!.done] }
+deploy('a1')
+assert.deepEqual(now(), ['deployed', 'Jira still shows LED-214 as open. See what production says.', false])
+retry.code = { ...retry.code, head: 'b2' }
+assert.deepEqual(now(), ['deployed', 'Jira still shows LED-214 as open. See what production says.', false], 'a new commit waits for its deploy')
+deploy('b2')
+assert.deepEqual(now(), ['deployed', 'That deploy didn’t close LED-214 either, so it stays open. See what production says, then change the code and deploy again.', true], 'the second deploy is done, and honest about the ticket')
+retry.code = { ...retry.code, changes: [{ status: 'M', path: vs }] }
+assert.equal(now()[2], false, 'new work to ship: the next deploy is the step')
+// Phases are data. A spec saved before they were, with only guide, plays as the engine did then: the incident shift gets its own
+// opening steps and Ledgerly's later phases, and a lesson with a goal becomes one phase that ends by finishing.
+const { phases: _p, ...ledgerlyOld } = structuredClone(good) as any
+const old = Scenario.parse({ ...ledgerlyOld, guide: good.phases[0].steps })
+assert.deepEqual(old.phases, good.phases, 'an incident spec without phases gets Ledgerly’s')
+assert.deepEqual(INCIDENT_PHASES.map(p => p.id), ['deployed', 'incident', 'after', 'shipped'])
+assert.ok(!('guide' in old), 'guide is read into phases, not kept beside them')
+const git = loadScenario('git-101'), { phases: gp, ...gitOld } = structuredClone(git) as any
+const oldGit = Scenario.parse({ ...gitOld, guide: gp[0].steps.filter((x: any) => x.id !== 'finish') })
+assert.deepEqual([oldGit.phases.length, oldGit.phases[0].title, oldGit.phases[0].steps.at(-1)!.id], [1, git.goal!.title, 'finish'])
+const gitFacts = { ...structuredClone(git.seed), player: 'maya', code: { branch: 'main', head: 'x', subject: '', changes: [], busy: null }, deploys: [], seen: [] }
+assert.deepEqual([allDone(gitFacts, oldGit.phases, 'newgrad'), required(gitFacts, oldGit.phases, 'newgrad').map(x => x.id)], [false, required(gitFacts, git.phases, 'newgrad').map(x => x.id)], 'the same steps decide it')
 // The hidden harness is code: if it and the scenario disagree about which checks exist, the build counts as broken.
 const ids = good.checks.map(c => c.id), verdict = { build: 'ok' as const, checks: ids.map(id => ({ id, ok: true, reason: '' })) }
 assert.equal(conform(verdict, ids), verdict)
@@ -298,12 +349,20 @@ if (!process.env.DATABASE_URL) {
 
 // ---- a lesson that renames everyone: the engine's own lines follow, so no old name reaches the browser or the model.
 // Ids stay (the engine and the schema refer to them); every other string gets the new names, as a generated lesson would.
-s.stop()
+await s.stop()
+// A stopped shift may be loaded again as a new Session. A model reply or timer that lands on the old one afterwards changes nothing.
+const quiet = [events.length, s.world.chats.daniel.length, s.priv.events.length]
+s.post('daniel', 'daniel', 'A reply that arrived after the shift stopped.')
+s.mail({ who: 'marta', subject: 'Is the SSO login issue being addressed?', body: ['Late.'] })
+s.later(0, () => s.post('daniel', 'daniel', 'A timer that fired after the shift stopped.'))
+await settle()
+assert.deepEqual([events.length, s.world.chats.daniel.length, s.priv.events.length], quiet, 'a stopped shift takes nothing more')
 const OLD = ['northwindfreight', 'ledgerly', 'daniel', 'okafor', 'priya', 'raman', 'marta', 'lindqvist', 'leo', 'martins', 'maya', 'chen', 'sam', 'whitfield', 'northwind', 'osprey', 'brightline']
 const NEW_ = ['kestrelhaul', 'quillstone', 'rosa', 'albescu', 'nadia', 'osei', 'ines', 'barros', 'theo', 'lund', 'kai', 'moreno', 'june', 'park', 'kestrel', 'pelican', 'clearwater']
 const oldName = new RegExp(`(?<![a-z])(${OLD.join('|')})(?![a-z])`, 'gi')
 const keep = new Set([...Object.keys(good.cast), ...Object.keys(good.channels)])
-const rename = (v: unknown): unknown => typeof v === 'string' ? (keep.has(v) ? v : v.replace(oldName, m => { const n = NEW_[OLD.indexOf(m.toLowerCase())]; return m[0] === m[0].toUpperCase() ? n[0].toUpperCase() + n.slice(1) : n }))
+// Placeholders like {{priya}} are ids too.
+const rename = (v: unknown): unknown => typeof v === 'string' ? (keep.has(v) ? v : v.split(/(\{\{\w+\}\})/).map((t, i) => i % 2 ? t : t.replace(oldName, m => { const n = NEW_[OLD.indexOf(m.toLowerCase())]; return m[0] === m[0].toUpperCase() ? n[0].toUpperCase() + n.slice(1) : n })).join(''))
   : Array.isArray(v) ? v.map(rename) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, rename(x)])) : v
 const renamed = Scenario.parse({ ...(rename(good) as object), workspace: { repo: 'books-api', host: 'quill-mbp-7' } })
 assert.equal(renamed.cast.daniel.name, 'Rosa Albescu')
@@ -345,11 +404,11 @@ await settle(120)
 const rterm = r.world.term.map(l => l.t).join('\n')
 for (const want of ['/Users/kai/books-api', 'books-api@4.18.2 test', 'Author: Rosa Albescu <rosa@quillstone.io>', 'org=org_kestrel']) assert.ok(rterm.includes(want), `the terminal says ${want}`)
 assert.ok(r.world.timeline.some(t => t.text === 'Kestrel demo postponed') && r.world.emails.some(e => e.subject === 'Kestrel demo postponed'))
-// Every string the browser holds, terminal included, except the ids themselves.
+// Every string the browser holds, terminal included, except the ids themselves, which step text names as {{id}} for the browser to fill.
 const texts: string[] = []
 const walk = (v: unknown) => { if (typeof v === 'string') { if (!keep.has(v)) texts.push(v) } else if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') Object.values(v).forEach(walk) }
 walk(r.world)
-const leaks = (where: string, all: string[]) => all.flatMap(t => [...t.replaceAll(/"(\w+)"/g, (q, id) => (keep.has(id) ? '' : q)).matchAll(oldName)].map(m => `${where}: …${t.slice(Math.max(0, m.index - 40), m.index + 40)}…`))
+const leaks = (where: string, all: string[]) => all.flatMap(t => [...t.replaceAll(/"(\w+)"|\{\{(\w+)\}\}/g, (q, a, b) => (keep.has(a ?? b) ? '' : q)).matchAll(oldName)].map(m => `${where}: …${t.slice(Math.max(0, m.index - 40), m.index + 40)}…`))
 assert.ok(asked.length >= 8, 'the stub model was asked')
 assert.deepEqual([...leaks('world', texts), ...leaks('prompt', asked)], [], 'no old name reaches the browser or the model')
 r.stop()
@@ -360,7 +419,7 @@ g.timeScale = 0.001
 await director.start(g)
 const gsh = (cmd: string) => director.command(g, cmd)
 const gout = () => g.world.term.map(l => l.t).join('\n')
-const gsteps = () => stepsFor(g.world.guide, g.world.level).filter(x => !done({ ...g.world, seen: g.priv.f.seen }, x.doneWhen)).map(x => x.id)
+const gsteps = () => required({ ...g.world, seen: g.priv.f.seen }, g.world.phases, g.world.level).filter(x => !x.done).map(x => x.id)
 assert.deepEqual([g.world.goal?.title, g.world.code.branch, g.world.code.remote, g.world.deploys[0].checks], ['Your first commit, start to finish', 'main', ['main'], []], 'starts on main, cloned from origin, with no production')
 assert.ok(!('priya' in g.world.cast) && Object.keys(g.world.cast).length === 2, 'only the player and one senior')
 await gsh('ldg deploy auth-api --env prod')
@@ -394,8 +453,10 @@ await gsh('git checkout main')
 assert.ok(!(await g.ws.read('README.md')).includes('Onboarding questions'), 'main does not have the change')
 assert.deepEqual(gsteps(), ['tell'])
 assert.equal(g.priv.f.fixedAt, undefined)
+assert.deepEqual([guideNow(g).phase, guideNow(g).ready, 'finish' in guideNow(g).ticks], ['goal', false, false], 'no finish step while a step is left')
 director.chat(g, 'daniel', 'Pushed sam/readme!', [])
 assert.deepEqual(gsteps(), [])
+assert.deepEqual([guideNow(g).ready, guideNow(g).sub, guideNow(g).steps.filter(x => !x.side).at(-1)!.id], [true, 'Every step is done.', 'finish'], 'then the last step is finishing')
 assert.ok(g.priv.f.fixedAt !== undefined && g.priv.events.some(e => e.type === 'goal'), 'every step done is noticed')
 await settle(200)
 assert.match(g.world.chats.daniel.filter(m => m.who === 'daniel').map(m => m.text).join('\n'), /Finish lesson/, 'the mentor says the lesson can end')

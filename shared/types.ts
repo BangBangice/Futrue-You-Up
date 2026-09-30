@@ -1,5 +1,5 @@
 // Types, constants and pure helpers used by both the server and the browser. No I/O here.
-import type { GuideStep } from './guide.ts'
+import type { Phase } from './guide.ts'
 
 export type AppId = 'mail' | 'chat' | 'code' | 'tracker' | 'docs' | 'monitor'
 /** A key of the scenario's cast. The scenario schema checks references; the compiler cannot. */
@@ -122,8 +122,8 @@ export interface World {
   impact: Impact
   /** How each starting level is described on the start page. Empty until the scenario has loaded. */
   levels: Partial<Record<Level, { label: string; blurb: string }>>
-  /** The scenario's opening steps, for the step guide. */
-  guide: GuideStep[]
+  /** The lesson's phases and their steps, for the step guide (shared/guide.ts). */
+  phases: Phase[]
   /** What the lesson is for, when it sets its own goal. Null for the incident shift, whose goal is fixing LED-214 in production. */
   goal: Goal | null
   /** Terminal commands the player has run, as the guide compares them (see normalize in guide.ts). */

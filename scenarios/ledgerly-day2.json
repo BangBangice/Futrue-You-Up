@@ -892,41 +892,141 @@
       ]
     }
   ],
-  "guide": [
-    { "id": "read", "text": "Read Priya’s email about LED-214", "doneWhen": { "mailRead": "e1" }, "showMe": { "mail": "e1" } },
-    { "id": "ack", "text": "Reply to Priya so she knows you’ve picked it up", "doneWhen": { "mailReplied": "e1" }, "showMe": { "reply": "e1" } },
+  "phases": [
     {
-      "id": "ticket", "text": "Move LED-214 to In progress in Jira", "hint": "Change Status on the ticket, or drag the card.",
-      "doneWhen": { "ticket": { "id": "LED-214", "status": ["progress", "review", "done"] } }, "showMe": { "ticket": "LED-214" }
+      "id": "ticket", "title": "Fix LED-214", "sub": "SSO users get logged out after about an hour. {{priya}} wants it fixed before the {{deadline}} demo.",
+      "steps": [
+        { "id": "read", "text": "Read Priya’s email about LED-214", "doneWhen": { "mailRead": "e1" }, "showMe": { "mail": "e1" } },
+        { "id": "ack", "text": "Reply to Priya so she knows you’ve picked it up", "doneWhen": { "mailReplied": "e1" }, "showMe": { "reply": "e1" } },
+        {
+          "id": "ticket", "text": "Move LED-214 to In progress in Jira", "hint": "Change Status on the ticket, or drag the card.",
+          "doneWhen": { "ticket": { "id": "LED-214", "status": ["progress", "review", "done"] } }, "showMe": { "ticket": "LED-214" }
+        },
+        {
+          "id": "team", "text": "Read Daniel’s heads-up in #team",
+          "doneWhen": { "all": [{ "posted": { "chan": "team", "who": "daniel" } }, { "channelRead": "team" }] }, "showMe": { "chat": "team" }
+        },
+        { "id": "wiki", "text": "Read “Auth service: login paths” in Confluence", "levels": ["newgrad"], "doneWhen": { "openedDoc": "auth" }, "showMe": { "doc": "auth" } },
+        {
+          "id": "password", "text": "Open passwordLogin.ts and see what it sends", "levels": ["newgrad"],
+          "doneWhen": { "openedFile": "src/auth/passwordLogin.ts" }, "showMe": { "file": "src/auth/passwordLogin.ts" }
+        },
+        {
+          "id": "open", "text": "Open verifySession.ts in VS Code",
+          "doneWhen": { "any": [{ "openedFile": "src/auth/verifySession.ts" }, { "code": "changed" }] }, "showMe": { "file": "src/auth/verifySession.ts" }
+        },
+        {
+          "id": "edit", "text": "Make your change and save it (⌘S)",
+          "doneWhen": { "any": [{ "code": "changed" }, { "code": "committed" }] }, "showMe": { "edit": "src/auth/verifySession.ts" }
+        },
+        {
+          "id": "test", "text": "Run the tests", "hint": "Run tests at the top of VS Code, or type npm test in the terminal.",
+          "doneWhen": { "code": "tested" }, "showMe": { "vscode": "run-tests" }
+        },
+        {
+          "id": "commit", "text": "Commit your change", "hint": "Source control, on the left of VS Code. Write what you changed and why.",
+          "doneWhen": { "all": [{ "code": "committed" }, { "not": { "code": "changed" } }] }, "showMe": { "vscode": "commit" }
+        },
+        {
+          "id": "deploy", "text": "Deploy to production", "hint": "Deploy at the top of VS Code, or ldg deploy auth-api --env prod.",
+          "doneWhen": { "deployed": true }, "showMe": { "vscode": "deploy" }
+        }
+      ],
+      "side": [
+        {
+          "id": "leo", "text": "{{leo}} asked you something in Teams", "if": { "posted": { "chan": "leo", "who": "leo", "match": "auth tests" } },
+          "doneWhen": { "posted": { "chan": "leo", "who": "maya", "after": { "chan": "leo", "who": "leo", "match": "auth tests" } } }, "showMe": { "chat": "leo" }
+        },
+        {
+          "id": "priya", "text": "{{priya}} wants an update in Teams", "if": { "posted": { "chan": "priya", "who": "priya", "match": "^(How’s|Any update on) LED-214" } },
+          "doneWhen": { "posted": { "chan": "priya", "who": "maya", "after": { "chan": "priya", "who": "priya", "match": "^(How’s|Any update on) LED-214" } } }, "showMe": { "chat": "priya" }
+        }
+      ]
     },
     {
-      "id": "team", "text": "Read Daniel’s heads-up in #team",
-      "doneWhen": { "all": [{ "posted": { "chan": "team", "who": "daniel" } }, { "channelRead": "team" }] }, "showMe": { "chat": "team" }
-    },
-    { "id": "wiki", "text": "Read “Auth service: login paths” in Confluence", "levels": ["newgrad"], "doneWhen": { "openedDoc": "auth" }, "showMe": { "doc": "auth" } },
-    {
-      "id": "password", "text": "Open passwordLogin.ts and see what it sends", "levels": ["newgrad"],
-      "doneWhen": { "openedFile": "src/auth/passwordLogin.ts" }, "showMe": { "file": "src/auth/passwordLogin.ts" }
-    },
-    {
-      "id": "open", "text": "Open verifySession.ts in VS Code",
-      "doneWhen": { "any": [{ "openedFile": "src/auth/verifySession.ts" }, { "code": "changed" }] }, "showMe": { "file": "src/auth/verifySession.ts" }
-    },
-    {
-      "id": "edit", "text": "Make your change and save it (⌘S)",
-      "doneWhen": { "any": [{ "code": "changed" }, { "code": "committed" }] }, "showMe": { "edit": "src/auth/verifySession.ts" }
-    },
-    {
-      "id": "test", "text": "Run the tests", "hint": "Run tests at the top of VS Code, or type npm test in the terminal.",
-      "doneWhen": { "code": "tested" }, "showMe": { "vscode": "run-tests" }
+      "id": "deployed", "title": "Your deploy is live", "sub": "Jira still shows LED-214 as open. See what production says.",
+      "subs": [{ "when": { "redeployed": true }, "sub": "That deploy didn’t close LED-214 either, so it stays open. See what production says, then change the code and deploy again." }],
+      "when": { "deployed": true },
+      "steps": [
+        { "id": "watch", "text": "Watch the 401 rate in CloudWatch", "hint": "A deploy takes about two minutes to show up.", "doneWhen": { "watched": true }, "showMe": { "monitor": "error-rate" } },
+        {
+          "id": "mentor", "text": "Read {{mentor}}’s message in Teams", "if": { "posted": { "chan": "daniel", "who": "daniel", "after": { "alert": "info" } } },
+          "doneWhen": { "channelRead": "daniel" }, "showMe": { "chat": "daniel" }
+        },
+        { "id": "edit", "text": "Change the code and save (⌘S)", "doneWhen": { "any": [{ "code": "changed" }, { "code": "committed" }] }, "showMe": { "edit": "src/auth/verifySession.ts" } },
+        { "id": "test", "text": "Run the tests", "hint": "Run tests at the top of VS Code, or type npm test in the terminal.", "doneWhen": { "code": "tested" }, "showMe": { "vscode": "run-tests" } },
+        {
+          "id": "commit", "text": "Commit your change", "hint": "Source control, on the left of VS Code. Write what you changed and why.",
+          "doneWhen": { "all": [{ "code": "committed" }, { "not": { "code": "changed" } }] }, "showMe": { "vscode": "commit" }
+        },
+        { "id": "deploy", "text": "Deploy the new version", "hint": "Deploy at the top of VS Code, or ldg deploy auth-api --env prod.", "doneWhen": { "redeployed": true }, "showMe": { "vscode": "deploy" } }
+      ]
     },
     {
-      "id": "commit", "text": "Commit your change", "hint": "Source control, on the left of VS Code. Write what you changed and why.",
-      "doneWhen": { "all": [{ "code": "committed" }, { "not": { "code": "changed" } }] }, "showMe": { "vscode": "commit" }
+      "id": "incident", "title": "Production is down", "sub": "The alarm fired after your deploy. Restore service first, investigate after.",
+      "when": { "incident": "live" }, "optional": true, "happened": { "incident": "opened" },
+      "steps": [
+        {
+          "id": "ack", "text": "Say in #incidents that you’re on it", "hint": "One line is enough. People can see the alarm and are waiting to hear who has it.",
+          "doneWhen": { "any": [{ "posted": { "chan": "incidents", "who": "maya", "after": { "alert": "fire" } } }, { "posted": { "chan": "priya", "who": "maya", "after": { "alert": "fire" } } }] },
+          "showMe": { "chat": "incidents" }
+        },
+        { "id": "look", "text": "Check CloudWatch: what is failing, and for whom", "doneWhen": { "watched": true }, "showMe": { "monitor": "error-rate" } },
+        { "id": "rollback", "text": "Roll back your release", "hint": "The incident runbook in Confluence explains why.", "doneWhen": { "incident": "rolled-back" }, "showMe": { "monitor": "rollback" } },
+        { "id": "wait", "text": "Wait for the 401 rate to drop under 5%", "doneWhen": { "incident": "resolved" }, "showMe": { "monitor": "error-rate" } }
+      ],
+      "side": [
+        {
+          "id": "mentor", "text": "Read {{mentor}}’s message in Teams", "if": { "posted": { "chan": "daniel", "who": "daniel", "after": { "alert": "fire" } } },
+          "doneWhen": { "channelRead": "daniel" }, "showMe": { "chat": "daniel" }
+        },
+        { "id": "reply", "text": "Reply to {{from}}", "each": { "mail": ["client", "support", "sam"] } }
+      ]
     },
     {
-      "id": "deploy", "text": "Deploy to production", "hint": "Deploy at the top of VS Code, or ldg deploy auth-api --env prod.",
-      "doneWhen": { "deployed": true }, "showMe": { "vscode": "deploy" }
+      "id": "after", "title": "Service is back", "sub": "Close out the incident, then fix LED-214 for real.",
+      "subs": [{ "when": { "ticket": { "id": "LED-214", "status": ["done"] } }, "sub": "Close out the incident." }],
+      "when": { "all": [{ "incident": "resolved" }, { "any": [{ "not": { "ticket": { "id": "LED-214", "status": ["done"] } } }, { "postmortem": false }] }] },
+      "optional": true, "happened": { "incident": "resolved" },
+      "steps": [
+        { "id": "update", "text": "Tell #incidents that service is restored", "doneWhen": { "posted": { "chan": "incidents", "who": "maya", "after": { "alert": "ok" } } }, "showMe": { "chat": "incidents" } },
+        {
+          "id": "mentor", "text": "Read {{mentor}}’s message in Teams", "if": { "posted": { "chan": "daniel", "who": "daniel", "after": { "alert": "fire" } } },
+          "doneWhen": { "channelRead": "daniel" }, "showMe": { "chat": "daniel" }
+        },
+        {
+          "id": "pm", "text": "Send {{from}} a short postmortem", "hint": "Reply to {{from}}’s email, or write it as a page in Confluence. The template is there too.",
+          "each": { "mail": ["pm"] }, "doneWhen": { "postmortem": true }
+        },
+        {
+          "id": "edit", "text": "Change the code and save (⌘S)", "if": { "not": { "ticket": { "id": "LED-214", "status": ["done"] } } },
+          "doneWhen": { "any": [{ "code": "changed" }, { "code": "committed" }] }, "showMe": { "edit": "src/auth/verifySession.ts" }
+        },
+        {
+          "id": "test", "text": "Run the tests", "hint": "Run tests at the top of VS Code, or type npm test in the terminal.", "if": { "not": { "ticket": { "id": "LED-214", "status": ["done"] } } },
+          "doneWhen": { "code": "tested" }, "showMe": { "vscode": "run-tests" }
+        },
+        {
+          "id": "commit", "text": "Commit your change", "hint": "Source control, on the left of VS Code. Write what you changed and why.", "if": { "not": { "ticket": { "id": "LED-214", "status": ["done"] } } },
+          "doneWhen": { "all": [{ "code": "committed" }, { "not": { "code": "changed" } }] }, "showMe": { "vscode": "commit" }
+        },
+        {
+          "id": "deploy", "text": "Deploy the new version", "hint": "Deploy at the top of VS Code, or ldg deploy auth-api --env prod.", "if": { "not": { "ticket": { "id": "LED-214", "status": ["done"] } } },
+          "doneWhen": { "redeployed": true }, "showMe": { "vscode": "deploy" }
+        }
+      ],
+      "side": [
+        { "id": "reply", "text": "Reply to {{from}}", "each": { "mail": ["client", "support", "sam"] }, "hideDone": true }
+      ]
+    },
+    {
+      "id": "shipped", "title": "LED-214 is shipped", "sub": "SSO users stay signed in. Finish the way a good engineer would.",
+      "when": { "all": [{ "ticket": { "id": "LED-214", "status": ["done"] } }, { "not": { "incident": "live" } }, { "any": [{ "not": { "incident": "resolved" } }, { "postmortem": true }] }] },
+      "steps": [
+        { "id": "watch", "text": "Watch the 401 rate in CloudWatch for a few minutes", "hint": "A deploy takes about two minutes to show up.", "doneWhen": { "watched": true }, "showMe": { "monitor": "error-rate" } },
+        { "id": "tell", "text": "Tell {{priya}} it is out", "doneWhen": { "posted": { "chan": "priya", "who": "maya", "after": { "alert": "info" } } }, "showMe": { "chat": "priya" } },
+        { "id": "finish", "text": "Finish the lesson when you’re ready", "hint": "You get a recap of the day and a note from {{mentor}}.", "doneWhen": { "ended": true }, "showMe": { "finish": true } }
+      ]
     }
   ]
 }

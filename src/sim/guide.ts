@@ -1,11 +1,11 @@
 // The step list in the top-left corner: what to do next, worked out from the state of the shift.
 // Steps say what to do and where. They never say what the bug is: finding that out is the lesson.
-// The opening steps are scenario data (shared/guide.ts evaluates them); the phases after the first deploy are still here.
-import { NEW, done, stepsFor } from '../../shared/guide.ts'
-import type { ShowMe } from '../../shared/guide.ts'
-import { clock, firstName, their } from '../../shared/types.ts'
-import type { AppId, ChanId, Email, PersonId } from '../../shared/types.ts'
-import { live, sim } from './store.ts'
+// The lesson's phases and steps are scenario data, which shared/guide.ts evaluates; this only adds where "Show me" points.
+import { plan } from '../../shared/guide.ts'
+import type { Plan, ShowMe } from '../../shared/guide.ts'
+import { APP_IDS } from '../../shared/types.ts'
+import type { AppId, ChanId, Email } from '../../shared/types.ts'
+import { sim } from './store.ts'
 import type { State } from './store.ts'
 
 export interface Step {
@@ -17,9 +17,8 @@ export interface Step {
   /** Brings the right window forward and flashes where to look. */
   show: () => void
 }
-export interface Guide { phase: string; title: string; sub: string; steps: Step[] }
-
-const VERIFY = 'src/auth/verifySession.ts'
+/** `phase` is the current phase's id; `map` is every phase in road-map order, with where the player is. `ready`: the lesson can end. */
+export interface Guide { phase: string; title: string; sub: string; steps: Step[]; ready: boolean; map: Plan['map'] }
 
 // ---------- where "Show me" points ----------
 // Each also picks the pane a phone has to be on for the target to be on screen (sim.dive); wider screens show both.
@@ -40,8 +39,8 @@ const inMail = (e: Email, reply = false) => () => {
   sim.spotlight(reply && reading ? ['mail-reply'] : ['mail:' + e.id], 'dock:mail')
 }
 const inEditor = (path: string) => () => { void sim.openCode(path); sim.spotlight(['editor'], 'dock:code') }
-/** Where a scenario step's "Show me" goes. */
-function target(s: State, m: ShowMe = {}): () => void {
+/** Where a step's "Show me" goes. */
+function target(s: State, m: ShowMe): () => void {
   const mail = s.emails.find(e => e.id === m.mail)
   if (mail) return inMail(mail)
   if (m.reply) return () => { sim.openMail(m.reply!); sim.spotlight(['mail-reply'], 'dock:mail') }
@@ -51,109 +50,14 @@ function target(s: State, m: ShowMe = {}): () => void {
   if (m.file) return inCode('files', 'file:' + m.file)
   if (m.edit) return inEditor(m.edit)
   if (m.vscode) return inCode(m.vscode === 'commit' ? 'git' : 'files', m.vscode)
+  if (m.monitor) return m.monitor === 'rollback' ? inApp('monitor', 'rollback', 'rollback-code') : inApp('monitor', 'error-rate')
+  if (m.finish) return () => sim.spotlight(['end-shift'])
   return () => {}
 }
 
-const finish = (hint: string): Step => ({ id: 'finish', text: 'Finish the lesson when you’re ready', done: false, hint, show: () => sim.spotlight(['end-shift']) })
-
-/** A lesson with its own goal: its steps are the whole plan, and messages waiting in a DM are shown beside them. */
-function practice(s: State): Guide {
-  const mentorName = s.cast[s.mentor] ? firstName(s.cast[s.mentor]) : 'your mentor'
-  const steps: Step[] = stepsFor(s.guide, s.level).map(x => ({ id: x.id, text: x.text, hint: x.hint, done: done(s, x.doneWhen), show: target(s, x.showMe) }))
-  const all = steps.every(x => x.done)
-  const waiting: Step[] = Object.entries(s.channels).filter(([id, c]) => c.dm && s.unread[id] && s.cast[id])
-    .map(([id]) => ({ id: 'dm:' + id, text: `${firstName(s.cast[id])} messaged you in Teams`, done: false, side: true, show: inChat(id) }))
-  return {
-    phase: all ? 'done' : 'goal', title: s.goal!.title,
-    sub: all ? 'Every step is done.' : s.goal!.summary,
-    steps: [...steps, ...(all ? [finish(`You get a recap and a note from ${mentorName}.`)] : []), ...waiting],
-  }
-}
-
 export function guide(s: State): Guide {
-  if (s.goal) return practice(s)
-  const n = s.deploys.length, prod = s.deploys.at(-1)
-  const fixed = s.tickets.find(t => t.id === 'LED-214')?.status === 'done'
-  const committed = !!s.code.head && !s.deploys.some(d => d.sha === s.code.head)
-  const watched = s.seen.includes('monitor@' + n) || (s.wins.monitor.open && !s.wins.monitor.min)
-  const saidIn = (chan: ChanId, after: number) => s.chats[chan].some(m => m.who === s.player && m.id > after)
-  const lastAlert = (kind: 'fire' | 'ok' | 'info') => s.chats.incidents.findLast(m => m.alert === kind && m.id > NEW)?.id ?? NEW
-  const pm = s.emails.find(e => e.kind === 'pm')
-  const pmDone = !!pm?.thread.length || s.docs.some(d => d.owner === s.player && /post-?mortem/i.test(d.title))
-
-  const call = (id: PersonId) => (s.cast[id] ? firstName(s.cast[id]) : id)
-  const watch = (text: string): Step => ({ id: 'watch', text, done: watched, hint: 'A deploy takes about two minutes to show up.', show: inApp('monitor', 'error-rate') })
-  const mid = s.mentor, mentorName = s.cast[mid]?.name.split(' ')[0]
-  const mentor = (after: number, side = false): Step[] => s.chats[mid]?.some(m => m.who === mid && m.id > after)
-    ? [{ id: 'mentor', text: `Read ${mentorName}’s message in Teams`, done: !s.unread[mid], side, show: inChat(mid) }] : []
-  const replies = (): Step[] => s.emails.filter(e => e.kind === 'client' || e.kind === 'support' || e.kind === 'sam')
-    .map(e => ({ id: e.id, text: `Reply to ${s.cast[e.who].name}`, done: e.thread.length > 0, side: true, show: inMail(e, true) }))
-  const ship = (again: boolean): Step[] => [
-    { id: 'edit', text: again ? 'Change the code and save (⌘S)' : 'Make your change and save it (⌘S)', done: s.code.changes.length > 0 || committed, show: inEditor(VERIFY) },
-    { id: 'test', text: 'Run the tests', done: s.seen.includes('tested@' + n), hint: 'Run tests at the top of VS Code, or type npm test in the terminal.', show: inCode('files', 'run-tests') },
-    { id: 'commit', text: 'Commit your change', done: committed && !s.code.changes.length, hint: 'Source control, on the left of VS Code. Write what you changed and why.', show: inCode('git', 'commit') },
-    { id: 'deploy', text: again ? 'Deploy the new version' : 'Deploy to production', done: false, hint: 'Deploy at the top of VS Code, or ldg deploy auth-api --env prod.', show: inCode('files', 'deploy') },
-  ]
-
-  // ---------- production is down ----------
-  if (live(s)) {
-    const fire = lastAlert('fire')
-    return {
-      phase: 'incident:' + s.incident!.id, title: 'Production is down', sub: 'The alarm fired after your deploy. Restore service first, investigate after.',
-      steps: [
-        { id: 'ack', text: 'Say in #incidents that you’re on it', done: saidIn('incidents', fire) || saidIn('priya', fire), hint: 'One line is enough. People can see the alarm and are waiting to hear who has it.', show: inChat('incidents') },
-        { id: 'look', text: 'Check CloudWatch: what is failing, and for whom', done: watched, show: inApp('monitor', 'error-rate') },
-        { id: 'rollback', text: 'Roll back your release', done: prod?.sha !== s.incident!.sha, hint: 'The incident runbook in Confluence explains why.', show: inApp('monitor', 'rollback', 'rollback-code') },
-        { id: 'wait', text: 'Wait for the 401 rate to drop under 5%', done: false, show: inApp('monitor', 'error-rate') },
-        ...mentor(fire, true), ...replies(),
-      ],
-    }
-  }
-
-  // ---------- after an incident ----------
-  if (s.incident?.resolvedAt != null && (!fixed || !pmDone)) {
-    return {
-      phase: 'after:' + s.incident.id, title: 'Service is back', sub: fixed ? 'Close out the incident.' : 'Close out the incident, then fix LED-214 for real.',
-      steps: [
-        { id: 'update', text: 'Tell #incidents that service is restored', done: saidIn('incidents', lastAlert('ok')), show: inChat('incidents') },
-        ...mentor(lastAlert('fire')),
-        ...(pm ? [{ id: 'pm', text: `Send ${call(pm.who)} a short postmortem`, done: pmDone, hint: `Reply to ${their(s.cast[pm.who] ?? {})} email, or write it as a page in Confluence. The template is there too.`, show: inMail(pm, true) }] : []),
-        ...(fixed ? [] : ship(true)),
-        ...replies().filter(x => !x.done),
-      ],
-    }
-  }
-
-  // ---------- LED-214 is fixed ----------
-  if (fixed) {
-    const out = lastAlert('info')
-    return {
-      phase: 'done', title: 'LED-214 is shipped', sub: 'SSO users stay signed in. Finish the way a good engineer would.',
-      steps: [
-        watch('Watch the 401 rate in CloudWatch for a few minutes'),
-        { id: 'tell', text: `Tell ${call('priya')} it is out`, done: saidIn('priya', out), show: inChat('priya') },
-        finish(`You get a recap of the day and a note from ${mentorName}.`),
-      ],
-    }
-  }
-
-  // ---------- deployed, but the ticket is still open ----------
-  if (s.deploys.some(d => d.by === s.player && d.kind === 'deploy')) {
-    return {
-      phase: 'retry:' + n, title: 'Your deploy is live', sub: 'Jira still shows LED-214 as open. See what production says.',
-      steps: [watch('Watch the 401 rate in CloudWatch'), ...mentor(lastAlert('info')), ...ship(true)],
-    }
-  }
-
-  // ---------- the scenario's opening steps ----------
-  const leo = s.chats.leo.find(m => m.who === 'leo' && m.id > NEW && m.text.includes('auth tests'))
-  const priya = s.chats.priya.findLast(m => m.who === 'priya' && m.id > NEW && /^(How’s|Any update on) LED-214/.test(m.text))
-  return {
-    phase: 'ticket', title: 'Fix LED-214', sub: `SSO users get logged out after about an hour. ${call('priya')} wants it fixed${s.deadline === null ? '' : ` before the ${clock(s.deadline)} demo`}.`,
-    steps: [
-      ...stepsFor(s.guide, s.level).map(x => ({ id: x.id, text: x.text, hint: x.hint, done: done(s, x.doneWhen), show: target(s, x.showMe) })),
-      ...(leo ? [{ id: 'leo', text: `${call('leo')} asked you something in Teams`, done: saidIn('leo', leo.id), side: true, show: inChat('leo') }] : []),
-      ...(priya ? [{ id: 'priya', text: `${call('priya')} wants an update in Teams`, done: saidIn('priya', priya.id), side: true, show: inChat('priya') }] : []),
-    ],
-  }
+  // What is on screen counts as looked at: CloudWatch open since before the deploy still watches it.
+  const looking = APP_IDS.filter(a => s.wins[a].open && !s.wins[a].min)
+  const p = plan({ ...s, looking }, s.phases, s.level)
+  return { ...p, steps: p.steps.map(x => ({ id: x.id, text: x.text, hint: x.hint, done: x.done, side: x.side || undefined, show: target(s, x.showMe) })) }
 }

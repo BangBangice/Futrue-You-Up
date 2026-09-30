@@ -1,14 +1,18 @@
 // Runs the scenario's scripted triggers: checks a trigger's condition, fills in its text and carries out its actions.
-import { clock, dur, firstName, minutes } from '../shared/types.ts'
+import { clock, dur, firstName, minutes, shortName } from '../shared/types.ts'
 import type { Cond, EVENTS, Trigger, VARS } from '../shared/scenario.ts'
 import type { Session } from './world.ts'
 
 export type EngineEvent = typeof EVENTS[number]
 
 export const vars = (s: Session): Record<typeof VARS[number], string> => {
-  const live = s.world.deploys.at(-1)!, due = s.scenario.clock.deadline
-  // The schema refuses {{timeToDemo}} without a deadline.
-  return { now: s.now, deployTime: clock(live.at), deployTimePlus1: clock(live.at + 1), timeToDemo: due ? dur(Math.max(0, minutes(due) - s.world.simMin)) : '', player: firstName(s.world.cast[s.world.player]) }
+  const live = s.world.deploys.at(-1)!, due = s.scenario.clock.deadline, { story, customers } = s.scenario
+  // The schema refuses {{timeToDemo}} without a deadline. A lesson with a goal has no client, so those are empty there.
+  const client = s.world.cast[story.client], customer = customers.named.find(c => c.name === story.customer)
+  return {
+    now: s.now, deployTime: clock(live.at), deployTimePlus1: clock(live.at + 1), timeToDemo: due ? dur(Math.max(0, minutes(due) - s.world.simMin)) : '', player: firstName(s.world.cast[s.world.player]),
+    client: client ? firstName(client) : '', customer: customer ? shortName(customer) : '',
+  }
 }
 export const render = (text: string, v: Record<string, string>) => text.replace(/\{\{(.*?)\}\}/g, (_, k: string) => v[k])
 

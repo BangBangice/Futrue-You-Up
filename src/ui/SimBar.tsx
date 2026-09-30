@@ -36,7 +36,7 @@ export function SimBar() {
   const company = useSim(s => s.company), role = useSim(s => s.cast[s.player]?.title)
   const cal = useSim(s => s.calendar)
   // Finishing with the work done ends the lesson at once. Before that, it asks: a click there is usually a slip or a wish to stop.
-  const ready = useSim(s => guide(s).phase === 'done')
+  const ready = useSim(s => guide(s).ready)
   const [asking, setAsking] = useState(false)
   return (
     <header className="simbar">

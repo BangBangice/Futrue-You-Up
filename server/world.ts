@@ -52,6 +52,9 @@ export class Session {
   rev = 0
   /** Who owns the run. Kept out of the world, which goes to the browser. Null without accounts. */
   userId: string | null = null
+  /** Set by stop(). An evicted or dropped shift may be loaded again as a new Session, so a model reply or a timer that lands on
+   * this one afterwards must change nothing: no stream, no save over the newer copy, no event. */
+  stopped = false
   private saving: ReturnType<typeof setTimeout> | undefined
   private writing = Promise.resolve(true)
   private snapping: ReturnType<typeof setTimeout> | undefined
@@ -71,6 +74,7 @@ export class Session {
 
   // ---------- state ----------
   set(p: Patch | ((w: World) => Patch | null)) {
+    if (this.stopped) return
     const patch = typeof p === 'function' ? p(this.world) : p
     if (!patch) return
     this.world = { ...this.world, ...patch }
@@ -79,16 +83,20 @@ export class Session {
   }
   /** Appends to the event log, the record the mentor and the recap are written from. */
   log(type: string, data: Record<string, unknown> = {}) {
+    if (this.stopped) return
     const e: Event = { t: this.world.simMin, type, ...data }
     this.priv.events.push(e)
     store().appendEvent(this, e)
   }
   send(event: string, data: Record<string, unknown>) {
+    if (this.stopped) return
     const frame = `event: ${event}\ndata: ${JSON.stringify({ seq: ++this.seq, ...data })}\n\n`
     this.clients.forEach(c => c.write(frame))
   }
+  /** Runs `fn` after `ms`, unless the shift has ended or stopped by then: what was due in the shift stays in it. */
   later(ms: number, fn: () => void) {
-    const t = setTimeout(() => { this.timers.delete(t); fn() }, ms * this.timeScale)
+    if (this.stopped) return
+    const t = setTimeout(() => { this.timers.delete(t); if (!this.stopped && this.world.stage === 'sim') fn() }, ms * this.timeScale)
     this.timers.add(t)
   }
   at(delta: number, kind: string, inc?: string) { this.priv.beats.push({ at: this.world.simMin + delta, kind, inc }) }
@@ -128,6 +136,7 @@ export class Session {
     }))
   }
   stop() {
+    this.stopped = true
     clearInterval(this.clock); this.clock = undefined; this.timers.forEach(clearTimeout); this.timers.clear()
     // The shift's sandbox goes too, if it has one: nothing is kept there, and the next run makes a new one.
     return Promise.all([this.saving ? this.flush() : this.writing, this.snapping ? this.flushWorkspace() : this.packing, this.ws?.close()]).then(([saved]) => saved)
@@ -135,6 +144,7 @@ export class Session {
 
   // ---------- things that happen ----------
   term(line: TermLine) {
+    if (this.stopped) return
     this.world.term = [...this.world.term, line].slice(-MAX_TERM)
     this.send('term', { lines: [line] })
   }
@@ -176,14 +186,14 @@ const sessions = new Map<string, Session>()
 const loading = new Map<string, Promise<Session | null>>()
 export const valid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
 // Persona cards and mentor guidance are prompts, so they stay on the server. So do security checks: the browser must not learn they exist.
-export const roster = (sc: Scenario): Pick<World, 'lesson' | 'company' | 'workspace' | 'calendar' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'guide' | 'goal'> => structuredClone({
+export const roster = (sc: Scenario): Pick<World, 'lesson' | 'company' | 'workspace' | 'calendar' | 'cast' | 'channels' | 'player' | 'mentor' | 'levels' | 'deadline' | 'impact' | 'phases' | 'goal'> => structuredClone({
   lesson: { id: sc.id, title: sc.title, summary: sc.summary ?? null }, company: sc.company.name, workspace: sc.workspace,
   calendar: { weekday: sc.story.weekday ?? STORY.weekday, date: sc.story.date ?? STORY.date, day: sc.story.day ?? STORY.day, start: minutes(sc.clock.start) },
   cast: Object.fromEntries(Object.entries(sc.cast).map(([id, { persona: _, ...p }]) => [id, p])), channels: sc.channels, player: sc.player, mentor: sc.mentor,
   levels: Object.fromEntries(Object.entries(sc.levels).map(([k, { mentorGuidance: _, ...l }]) => [k, l])),
   deadline: sc.clock.deadline ? minutes(sc.clock.deadline) : null,
   impact: { alarmPercent: sc.alarmPercent, checks: sc.checks.filter(c => c.share > 0).map(({ security: _, ...c }) => c), customers: sc.customers },
-  guide: sc.guide, goal: sc.goal ?? null,
+  phases: sc.phases, goal: sc.goal ?? null,
 })
 
 /** Where a lesson with a goal says its repository was cloned from. Nothing is ever sent there (see Workspace.remoteCommand). The

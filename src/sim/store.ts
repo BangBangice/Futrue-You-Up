@@ -6,8 +6,8 @@ import { APP_NAMES } from '../../shared/types.ts'
 import type { AppId, Attachment, ChanId, Doc, Folder, Level, Patch, Priority, TermLine, Theme, Ticket, World } from '../../shared/types.ts'
 
 export interface Win { open: boolean; min: boolean; max: boolean; x: number; y: number; w: number; h: number; z: number }
-/** Without an app it is a notice from LARP itself. */
-export interface Toast { id: number; app?: AppId; title: string; body: string; go: () => void }
+/** Without an app it is a notice from LARP itself. `shift` is the shift it belongs to, when it may arrive late. */
+export interface Toast { id: number; app?: AppId; title: string; body: string; go: () => void; shift?: string }
 export interface Compose { mode: 'reply' | 'new' | 'forward'; to: string; subject: string }
 /** A file open in the editor. `saved` is what is on disk, so the two differ while there are unsaved edits. */
 export interface Buffer { text: string; saved: string }
@@ -53,7 +53,7 @@ const view = (): View => ({
   scenario: '',
 })
 const nowhere = (): Omit<World, 'stage'> => ({
-  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: 0, lesson: { id: '', title: '', summary: null }, company: '', workspace: { repo: '', host: '' }, calendar: { weekday: '', date: '', day: 0, start: 0 }, cast: {}, channels: {}, player: '', mentor: '', levels: {}, deadline: null, guide: [], goal: null, ran: [],
+  id: '', level: 'bootcamp', background: '', ai: 'live', aiProblem: null, pace: 4, simMin: 0, lesson: { id: '', title: '', summary: null }, company: '', workspace: { repo: '', host: '' }, calendar: { weekday: '', date: '', day: 0, start: 0 }, cast: {}, channels: {}, player: '', mentor: '', levels: {}, deadline: null, phases: [], goal: null, ran: [],
   impact: { alarmPercent: 0, checks: [], customers: { named: [], otherAccounts: 0, otherPasswordUsers: 0 } },
   emails: [], chats: {}, unread: {}, typing: [],
   tickets: [], docs: [], files: [], code: { branch: '', head: '', subject: '', changes: [], busy: null }, term: [],
@@ -94,7 +94,8 @@ export class Store {
     return body
   }
   private act(a: Record<string, unknown>) {
-    return this.call('/act', { method: 'POST', body: JSON.stringify(a) }).catch(e => { this.toast({ app: this.state.focus ?? 'mail', title: 'That did not go through', body: e.message, go: () => {} }); throw e })
+    const shift = this.state.id
+    return this.call('/act', { method: 'POST', body: JSON.stringify(a) }).catch(e => { this.toast({ app: this.state.focus ?? 'mail', title: 'That did not go through', body: e.message, go: () => {}, shift }); throw e })
   }
   /** Sends a file from the player's computer to the server, which keeps the bytes and answers with what to attach. */
   upload = async (f: File): Promise<Attachment> => {
@@ -159,17 +160,24 @@ export class Store {
   }
   private connect(id: string) {
     this.stream?.close()
+    this.stream = null
+    // Another shift starts from nothing: nothing of this one's (its mail and chats, toasts, terminal, windows, files) may show in it.
+    if (this.state.id && id !== this.state.id) this.forget({ starting: true })
     sessionStorage.setItem(KEY, id)
     const es = this.stream = new EventSource(`/api/sessions/${id}/events`)
+    // A closed stream can still deliver what was already queued. Only the current one speaks, so an old shift's mail never lands here.
     const read = (e: MessageEvent) => {
+      if (this.stream !== es) return
       const d = JSON.parse(e.data)
       // A gap means a message was lost. Reconnecting brings a fresh snapshot.
-      if (e.type !== 'snapshot' && d.seq !== this.seq + 1) return this.connect(id)
+      if (e.type !== 'snapshot' && d.seq !== this.seq + 1) return void this.connect(id)
       this.seq = d.seq
       return d
     }
     es.addEventListener('snapshot', e => {
-      const { world } = read(e) as { world: World }
+      const d = read(e) as { world: World } | undefined
+      if (!d) return
+      const { world } = d
       const fresh = this.state.id !== world.id
       this.remember(world)
       this.set({ ...(fresh ? { ...view(), seen: this.recall(world.id) } : {}), theme: this.state.theme, desk: this.state.desk, scenario: this.state.scenario, ...world, online: true, starting: false })
@@ -224,10 +232,20 @@ export class Store {
   // ---------- shift ----------
   setPace = (pace: number) => (this.state.id ? void this.act({ type: 'pace', pace }) : this.set({ pace }))
   endShift = () => void this.act({ type: 'end' })
-  replay = () => { this.stream?.close(); this.stream = null; sessionStorage.removeItem(KEY); sessionStorage.removeItem(SEEN); this.known.clear(); const { theme, level, background, scenario } = this.state; this.set({ ...nowhere(), ...view(), theme, level, background, scenario }) }
+  replay = () => { this.stream?.close(); this.stream = null; sessionStorage.removeItem(KEY); sessionStorage.removeItem(SEEN); this.forget() }
+  /** Drops everything that belongs to a shift, keeping only the player's own choices: theme, level, background, lesson, screen. */
+  private forget(p: Partial<State> = {}) {
+    this.known.clear()
+    this.seq = 0
+    clearTimeout(this.saver)
+    const { theme, level, background, scenario, desk } = this.state
+    this.set({ ...nowhere(), ...view(), theme, level, background, scenario, desk, ...p })
+  }
 
   // ---------- notifications ----------
   toast(t: Omit<Toast, 'id'>) {
+    // A failed request that answers after the player moved to another shift is not news in that one.
+    if (t.shift !== undefined && t.shift !== this.state.id) return
     const id = ++this.uid
     this.set(s => ({ toasts: [...s.toasts.slice(-2), { ...t, id }] }))
     setTimeout(() => this.dismissToast(id), 6500)

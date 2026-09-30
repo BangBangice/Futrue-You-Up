@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { Router } from 'express'
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { Scenario } from '../shared/scenario.ts'
+import { INCIDENT_PHASES, Scenario } from '../shared/scenario.ts'
 import { mode, stream } from './ai/llm.ts'
 import { Refused, author, createLesson, latest, owned, roomForOne, saveDraft, who } from './authoring.ts'
 import { db } from './db/index.ts'
@@ -29,7 +29,10 @@ const FIXED = ['checks', 'customers', 'alarmPercent', 'clock', 'player', 'mentor
 const RENAMEABLE = ['name', 'short', 'note'] as const
 /** The ticket for the bug in the workspace's code. The engine closes and reopens it by this id. */
 const CODE_TICKET = 'LED-214'
-/** Ids the engine refers to (director.ts, ai/personas.ts, src/sim/guide.ts). They may be renamed and re-voiced, not removed. */
+/** What the model may write of that ticket: how its story tells the bug (Ledgerly's names Ledgerly's customers). The id, title,
+ * status and assignee stay Ledgerly's: they are the bug itself and how the engine tracks it. */
+const TICKET_WORDS = ['desc', 'pri', 'pts', 'comments', 'activity'] as const
+/** Ids the engine refers to (director.ts, ai/personas.ts, the later phases in scenarios/ledgerly-day2.json). They may be renamed and re-voiced, not removed. */
 const KEEP_CAST = Object.keys(LEDGERLY.cast), KEEP_CHANNELS = Object.keys(LEDGERLY.channels)
 
 /** Which kind of lesson a description asks for. The incident shift only when it talks about production going wrong: the rest,
@@ -56,10 +59,17 @@ function anchor(raw: unknown, kind: Kind): unknown {
   })
   const seed = out.seed as { tickets?: unknown } | undefined
   if (seed && typeof seed === 'object' && Array.isArray(seed.tickets)) {
-    const ticket = structuredClone(LEDGERLY.seed.tickets.find(t => t.id === CODE_TICKET)!)
-    const others = seed.tickets.filter(t => (t as { id?: unknown })?.id !== CODE_TICKET)
+    // Ledgerly's words for it name Ledgerly's customers, so the model's own words for the bug replace them where it wrote some.
+    const ticket: Record<string, unknown> = structuredClone(LEDGERLY.seed.tickets.find(t => t.id === CODE_TICKET)!)
+    const mine = seed.tickets.find(t => (t as { id?: unknown })?.id === CODE_TICKET) as Record<string, unknown> | undefined
+    for (const k of TICKET_WORDS) if (mine?.[k] !== undefined) ticket[k] = mine[k]
+    const others = seed.tickets.filter(t => t !== mine)
     out.seed = { ...seed, tickets: [ticket, ...others] }
   }
+  // Every phase after the opening one follows the incident the engine runs on LED-214, so those are Ledgerly's, whatever the model
+  // wrote. Its opening phase is its own; a lesson that gives only guide gets the same through the schema (withPhases).
+  const phases = (raw as { phases?: unknown }).phases
+  if (Array.isArray(phases) && phases.length) { out.phases = [phases[0], ...structuredClone(INCIDENT_PHASES)]; delete out.guide }
   return out
 }
 /** What a lesson of this kind must have, in the words the repair prompt and a 422 use. */
@@ -98,8 +108,8 @@ const FORMAT = 'Answer with the whole lesson as ONE JSON object matching the JSO
 const RULES = `Rules the schema can't show:
 - Every person a message, email, ticket, doc or trigger names is a cast id; every channel is a channels id. seed.chats and seed.unread have an entry for every channel, and only for channels.
 - The mentor has a persona and a DM channel with their id. Every persona's "can" includes "do_nothing"; its rooms are channel ids.
-- Ids are unique within emails, tickets, docs, chat messages (numbers below 100), triggers and guide steps. Attachments and guide targets name existing emails, docs, tickets and channels. Docs link to each other as [text](doc:id).
-- In any text, {{player}} is the player's first name. Use it, not a name, for the player. In trigger text the other placeholders are {{now}}, {{deployTime}}, {{deployTimePlus1}} and {{timeToDemo}}.`
+- Ids are unique within emails, tickets, docs, chat messages (numbers below 100), triggers, phases, and the steps of a phase. Attachments and step targets name existing emails, docs, tickets and channels. Docs link to each other as [text](doc:id).
+- In any text, {{player}} is the player's first name. Use it, not a name, for the player. In trigger text the other placeholders are {{now}}, {{deployTime}}, {{deployTimePlus1}}, {{timeToDemo}}, {{client}} and {{customer}}. In phase and step text, {{mentor}} is the mentor's first name and a cast id in braces, like {{daniel}}, is that person's.`
 
 const PRACTICE_SYSTEM = `You write lessons for LARP, a workplace simulator that teaches the skills of a software job by doing them. The learner sits at a simulated work computer: VS Code with a real git repository and a terminal, Outlook, Teams, Jira and Confluence. They work through the lesson's steps while a mentor, an AI persona, coaches them over chat. The steps list in the corner ticks each one off as it is done.
 
@@ -108,7 +118,7 @@ ${FORMAT}
 Write a practice lesson: one with a "goal". It teaches the skill the author describes, and only that. Keep it to what the author asked for.
 - title: says what the learner practises, like "Git 101: your first commit, start to finish". Never mention SSO, LED-214, outages or a bug unless the author did.
 - goal: { title, summary }. The heading of the step list and one line under it.
-- steps (guide): 4 to 12, in order, each one small concrete thing the learner does, with doneWhen saying how the simulator knows it is done. Give a hint where a beginner would get stuck, and showMe where to look.
+- phases: exactly one, like the example's: id "goal", title and sub as the goal's title and summary, the same "subs", then its steps: 4 to 12, in order, each one small concrete thing the learner does, with doneWhen saying how the simulator knows it is done. Give a hint where a beginner would get stuck, and showMe where to look. End the steps with the example's "finish" step, and keep its "side" as it is: those are how the lesson ends and how waiting messages show.
 - cast: the player, the mentor, and only the people the lesson needs. A lesson about one skill usually needs no one else. Every other person must have a reason to be there.
 - channels: the mentor's DM, plus a team channel only if a step or message uses it.
 - seed: an email or chat message from the mentor that sets the task, the docs the steps need (a short how-to page is usually worth it), a ticket for the task if it helps. No clutter.
@@ -116,6 +126,7 @@ Write a practice lesson: one with a "goal". It teaches the skill the author desc
 - clock.start is when the lesson starts; leave clock.deadline out unless the author wants one. story needs only weekday, date and day.
 - levels: how the mentor pitches to each kind of learner, for this skill.
 - Leave out checks, customers and alarmPercent: those are for the incident shift. No trigger may run on an incident.
+- Write the lesson's own content for the author's story. The example shows the format, not what to say: don't reuse its people, messages or pages unless the lesson is about the same thing.
 
 What doneWhen can check (exactly one key per condition; all, any and not combine them):
 - ran: a terminal command they ran, or its start: "git status", "git diff", "git log", "npm test". It matches anything that starts with it ("git diff" is also done by "git diff --staged"), so make it specific enough to tell steps apart and no more: a step for git diff --staged uses "git diff --staged", but a test run is "npm test", since learners type paths differently.
@@ -141,9 +152,10 @@ const INCIDENT_SYSTEM = `You write lessons for LARP, a workplace simulator. This
 ${FORMAT}
 
 The code is fixed. Every incident shift runs on the same codebase: an invoicing service's auth-api (the example calls it ledgerly-api), whose bug is ticket ${CODE_TICKET} (SSO users logged out after a token refresh, in src/auth/verifySession.ts). The repository's files, and the ids and paths inside them, stay as they are whatever the lesson calls things. So:
-- You may change: title, summary, tags, company, playerBrief, levels, the cast's names, pronouns ("she", "he" or "they"; they when left out), titles, colours, emails and personas, channels' labels and topics, seed emails, chats, unread counts, tickets other than ${CODE_TICKET}, docs, triggers and guide. You may add cast members, channels, emails, tickets, docs, triggers and guide steps.
+- You may change: title, summary, tags, company, playerBrief, levels, the cast's names, pronouns ("she", "he" or "they"; they when left out), titles, colours, emails and personas, channels' labels and topics, seed emails, chats, unread counts, tickets (of ${CODE_TICKET}, its desc, pri, pts, comments and activity, which must still describe that bug), docs, triggers, and the first phase (phases[0], "ticket": the player's opening steps and the side steps beside them). You may add cast members, channels, emails, tickets, docs, triggers and steps to the first phase.
 - You may also change the labels around the code and the incident: workspace.repo (the repository's name) and workspace.host (the work laptop's name); customers' ${RENAMEABLE.join(', ')} (keep their order, figures come from the example); and story, which is how the engine's own lines tell the outage: story.client (the cast id of the client contact who escalates), story.customer (their company, one of the customers' names), story.staff (who there signs in with a password), story.deadline (what happens at the clock's deadline, e.g. "renewal demo"), story.movedTo, story.weekday (the day the shift happens, a day's name such as "Tuesday"), story.date (its month and day, as in "Sep 29"), story.day (which day of the five-day placement, 1 to 5), story.integrations (what breaks for API-key customers) and story.postponed (the email sent when production is down at the deadline).
-- Do not change: ${FIXED.join(', ')} (apart from the customers' names above), or ticket ${CODE_TICKET}. The server copies them from the example, so leave them out or copy them unchanged. Leave out "goal": that is for practice lessons.
+- Do not change: ${FIXED.join(', ')} (apart from the customers' names above), ticket ${CODE_TICKET}'s id, title, status and assignee, or the phases after the first (${INCIDENT_PHASES.map(p => `"${p.id}"`).join(', ')}): they follow the incident the engine runs, and the server copies them from the example, so write only the first phase. Leave out "goal": that is for practice lessons.
+- Write this lesson's own story, not the example's. Give every cast member a name, title and persona that fit it (keep their ids), rename the customers, and write your own seed emails, chats, docs, triggers, story and ${CODE_TICKET} wording. Nothing of the example's people, companies or messages (Marta, Northwind, Priya's emails…) should be left unless the author asked for that story. The example shows the format and the engine's rules, not the content.
 - Keep these cast ids: ${KEEP_CAST.join(', ')}. Keep these channel ids: ${KEEP_CHANNELS.join(', ')}. The engine refers to them by id and reads their names from the cast, so rename them freely: priya is the manager who assigns ${CODE_TICKET} and gets the postmortem, the mentor is the senior engineer, leo is a peer who asks for help, and the engine posts as cloudwatch and jira.
 - Engine lines still talk about the auth service (auth-api, deployed with the ldg command), logins, invoices, Jira, Confluence, CloudWatch and a demo at the clock's deadline. Keep the story consistent with that.
 
@@ -181,7 +193,7 @@ export function peek(text: string): Peek {
     title: strings(top, 'title')[0], goal: goal ? strings(goal, 'title')[0] : undefined,
     people: strings(section(text, 'cast', ['channels', 'seed']), 'name'),
     emails: strings(section(text, 'emails', ['chats', 'unread', 'tickets']), 'subject'),
-    steps: strings(section(text, 'guide', ['levels', 'triggers', 'cast']), 'text'),
+    steps: strings(section(text, 'phases', ['levels', 'triggers', 'cast']) || section(text, 'guide', ['levels', 'triggers', 'cast']), 'text'),
   }
 }
 

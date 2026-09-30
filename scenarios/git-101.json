@@ -97,17 +97,31 @@
       "do": [{ "post": { "chan": "daniel", "who": "daniel", "text": "How’s it going, {{player}}? If git has said anything that didn’t make sense, paste it here and we’ll read it together." } }]
     }
   ],
-  "guide": [
-    { "id": "read", "text": "Read Daniel’s email with today’s plan", "doneWhen": { "mailRead": "e1" }, "showMe": { "mail": "e1" } },
-    { "id": "status", "text": "See where you are: run git status", "hint": "The terminal is at the bottom of VS Code. It tells you your branch and whether anything has changed.", "doneWhen": { "ran": "git status" }, "showMe": { "vscode": "terminal" } },
-    { "id": "branch", "text": "Make a branch of your own", "hint": "git switch -c yourname/readme, or git checkout -b yourname/readme. Then git status again: which branch are you on?", "doneWhen": { "git": "branched" }, "showMe": { "vscode": "terminal" } },
-    { "id": "edit", "text": "Add yourself under “Who to ask” in README.md, and save (⌘S)", "doneWhen": { "any": [{ "code": "changed" }, { "git": "committed" }] }, "showMe": { "edit": "README.md" } },
-    { "id": "diff", "text": "Check exactly what you changed with git diff", "hint": "Lines starting with + are yours. Is that everything you meant to change, and nothing else?", "doneWhen": { "ran": "git diff" }, "showMe": { "vscode": "terminal" } },
-    { "id": "add", "text": "Stage your change with git add", "hint": "git add README.md, then git status: the file moves to “Changes to be committed”.", "doneWhen": { "git": "staged" }, "showMe": { "vscode": "terminal" } },
-    { "id": "commit", "text": "Commit it with a message that says what and why", "hint": "git commit -m \"docs: add {{player}} to who to ask\". The wiki page has more on good messages.", "doneWhen": { "all": [{ "git": "committed" }, { "not": { "code": "changed" } }] }, "showMe": { "vscode": "terminal" } },
-    { "id": "log", "text": "Find your commit with git log --oneline", "doneWhen": { "ran": "git log" }, "showMe": { "vscode": "terminal" } },
-    { "id": "push", "text": "Push your branch to origin", "hint": "git push -u origin yourname/readme, with your branch’s name. Pushing to main is refused: that is on purpose.", "doneWhen": { "git": "pushed" }, "showMe": { "vscode": "terminal" } },
-    { "id": "main", "text": "Switch back to main and see that your line isn’t there yet", "hint": "git checkout main, then open README.md. Your change lives on your branch until a pull request merges it.", "doneWhen": { "any": [{ "ran": "git checkout main" }, { "ran": "git switch main" }] }, "showMe": { "vscode": "terminal" } },
-    { "id": "tell", "text": "Tell Daniel in Teams that your branch is pushed", "hint": "Say which branch, so he knows what to look for.", "doneWhen": { "posted": { "chan": "daniel", "who": "maya" } }, "showMe": { "chat": "daniel" } }
+  "phases": [
+    {
+      "id": "goal", "title": "Your first commit, start to finish",
+      "sub": "Add yourself to the README on a branch of your own, commit it and push it. Daniel is a message away.",
+      "subs": [{ "when": { "stepsDone": true }, "sub": "Every step is done." }],
+      "steps": [
+        { "id": "read", "text": "Read Daniel’s email with today’s plan", "doneWhen": { "mailRead": "e1" }, "showMe": { "mail": "e1" } },
+        { "id": "status", "text": "See where you are: run git status", "hint": "The terminal is at the bottom of VS Code. It tells you your branch and whether anything has changed.", "doneWhen": { "ran": "git status" }, "showMe": { "vscode": "terminal" } },
+        { "id": "branch", "text": "Make a branch of your own", "hint": "git switch -c yourname/readme, or git checkout -b yourname/readme. Then git status again: which branch are you on?", "doneWhen": { "git": "branched" }, "showMe": { "vscode": "terminal" } },
+        { "id": "edit", "text": "Add yourself under “Who to ask” in README.md, and save (⌘S)", "doneWhen": { "any": [{ "code": "changed" }, { "git": "committed" }] }, "showMe": { "edit": "README.md" } },
+        { "id": "diff", "text": "Check exactly what you changed with git diff", "hint": "Lines starting with + are yours. Is that everything you meant to change, and nothing else?", "doneWhen": { "ran": "git diff" }, "showMe": { "vscode": "terminal" } },
+        { "id": "add", "text": "Stage your change with git add", "hint": "git add README.md, then git status: the file moves to “Changes to be committed”.", "doneWhen": { "git": "staged" }, "showMe": { "vscode": "terminal" } },
+        { "id": "commit", "text": "Commit it with a message that says what and why", "hint": "git commit -m \"docs: add {{player}} to who to ask\". The wiki page has more on good messages.", "doneWhen": { "all": [{ "git": "committed" }, { "not": { "code": "changed" } }] }, "showMe": { "vscode": "terminal" } },
+        { "id": "log", "text": "Find your commit with git log --oneline", "doneWhen": { "ran": "git log" }, "showMe": { "vscode": "terminal" } },
+        { "id": "push", "text": "Push your branch to origin", "hint": "git push -u origin yourname/readme, with your branch’s name. Pushing to main is refused: that is on purpose.", "doneWhen": { "git": "pushed" }, "showMe": { "vscode": "terminal" } },
+        { "id": "main", "text": "Switch back to main and see that your line isn’t there yet", "hint": "git checkout main, then open README.md. Your change lives on your branch until a pull request merges it.", "doneWhen": { "any": [{ "ran": "git checkout main" }, { "ran": "git switch main" }] }, "showMe": { "vscode": "terminal" } },
+        { "id": "tell", "text": "Tell Daniel in Teams that your branch is pushed", "hint": "Say which branch, so he knows what to look for.", "doneWhen": { "posted": { "chan": "daniel", "who": "maya" } }, "showMe": { "chat": "daniel" } },
+        {
+          "id": "finish", "text": "Finish the lesson when you’re ready", "hint": "You get a recap and a note from {{mentor}}.",
+          "if": { "stepsDone": true }, "doneWhen": { "ended": true }, "showMe": { "finish": true }
+        }
+      ],
+      "side": [
+        { "id": "dm", "text": "{{from}} messaged you in Teams", "each": { "dm": true }, "hideDone": true }
+      ]
+    }
   ]
 }

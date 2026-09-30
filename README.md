@@ -150,7 +150,7 @@ Before a shift you pick your background (new grad, bootcamp, career switcher) an
 | Confluence | Read, create and edit pages in Markdown |
 | CloudWatch | Error rates and incidents that follow from the code you deployed |
 
-The step list in the top-left corner shows what to do next and ticks steps off as you do them. **Show me** brings the right window forward and flashes where to click. The steps say what to do and where, never what the bug is. New grads also get the checks a senior engineer would make first.
+The step list in the top-left corner shows what to do next and ticks steps off as you do them. It is lesson data: each lesson lists its phases in road-map order (for the incident shift: fix the ticket, the deploy is live, production is down, service is back, shipped), and you are in the last one whose condition holds. **Show me** brings the right window forward and flashes where to click. The steps say what to do and where, never what the bug is. New grads also get the checks a senior engineer would make first.
 
 Useful terminal commands: `help`, `npm test -- src/auth`, `git status`, `git commit -am "..."`, `ldg deploy auth-api --env prod`, `ldg rollback auth-api`, `ldg status`, `ldg logs`.
 
@@ -205,7 +205,7 @@ One Node process on one port serves the API and the browser app (through Vite mi
 | `server/e2b.ts` | Runs the player's code in an E2B cloud sandbox when `E2B_API_KEY` is set |
 | `server/acceptance.ts` | Hidden production checks run against the player's code on every deploy |
 | `server/ai/` | The model client, the colleagues, and the mentor |
-| `shared/` | Types, pure helpers, the scenario schema, the opening step list and tag rules, used by both sides |
+| `shared/` | Types, pure helpers, the scenario schema, the step list (a lesson's phases and when each step is done) and tag rules, used by both sides |
 | `scenarios/` | Scenario content as data: the cast, the chat channels, and the inbox, chats, tickets and wiki the shift starts with. Checked against the schema at startup |
 | `workspace-template/ledgerly-api/` | The codebase the player works on. Copied fresh for each shift |
 | `.data/` | Running shifts: state, event log, and each player's workspace. Safe to delete |
