@@ -3,7 +3,7 @@
 import { randomBytes } from 'node:crypto'
 import { Router } from 'express'
 import type { Response } from 'express'
-import { and, count, desc, eq, inArray } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { Scenario } from '../shared/scenario.ts'
 import { db, dbEnabled } from './db/index.ts'
@@ -15,14 +15,16 @@ export const MAX_LESSONS = 20
 export const VISIBILITIES = ['private', 'unlisted', 'public'] as const
 export type Visibility = typeof VISIBILITIES[number]
 
-class Refused extends Error {
+export class Refused extends Error {
   status: number
-  constructor(status: number, message: string) { super(message); this.status = status }
+  /** More for the response body, next to the error. */
+  extra: Record<string, unknown>
+  constructor(status: number, message: string, extra: Record<string, unknown> = {}) { super(message); this.status = status; this.extra = extra }
 }
 type Version = typeof scenarioVersions.$inferSelect
 
 /** Guests and unconfirmed addresses can play but not write. */
-async function author(userId: string) {
+export async function author(userId: string) {
   const [u] = await db().select({ anon: users.isAnonymous, verified: users.emailVerified, banned: users.bannedAt }).from(users).where(eq(users.id, userId))
   if (u?.banned) throw new Refused(403, 'This account is suspended.')
   if (!u || u.anon) throw new Refused(403, 'Create an account and confirm your email to write lessons.')
@@ -30,31 +32,32 @@ async function author(userId: string) {
 }
 
 /** The caller's own lesson. Someone else's is missing, not forbidden, so its id is not confirmed to exist. */
-async function owned(userId: string, id: string) {
+export async function owned(userId: string, id: string) {
   const [row] = await db().select().from(scenarios).where(eq(scenarios.id, id))
   if (row && row.authorId === null) throw new Refused(403, "Built-in lessons can't be edited.")
   if (!row || row.authorId !== userId) throw new Refused(404, 'No such lesson.')
   return row
 }
 
-const latest = async (id: string, published = false): Promise<Version | undefined> => (await db().select().from(scenarioVersions)
+export const latest = async (id: string, published = false): Promise<Version | undefined> => (await db().select().from(scenarioVersions)
   .where(and(eq(scenarioVersions.scenarioId, id), published ? eq(scenarioVersions.status, 'published') : undefined))
   .orderBy(desc(scenarioVersions.version)).limit(1))[0]
 
-/** Which of these versions the author has finished a shift on. */
+/** Which of these versions the author has finished a shift on: ended with the lesson's work done (director.end sets
+ * `finished`), not just ended early from the End shift button. */
 async function tested(userId: string, versionIds: string[]) {
   if (!versionIds.length) return new Set<string>()
   const rows = await db().selectDistinct({ id: runs.scenarioVersionId }).from(runs)
-    .where(and(eq(runs.userId, userId), eq(runs.status, 'ended'), inArray(runs.scenarioVersionId, versionIds)))
+    .where(and(eq(runs.userId, userId), eq(runs.status, 'ended'), sql`(${runs.priv} ->> 'finished')::boolean`, inArray(runs.scenarioVersionId, versionIds)))
   return new Set(rows.map(r => r.id))
 }
 
 // Ascii only: a scenario id is lowercase letters, digits and dashes.
-const slug = (title: unknown) => (typeof title === 'string' ? title : '').normalize('NFKD').toLowerCase()
+export const slug = (title: unknown) => (typeof title === 'string' ? title : '').normalize('NFKD').toLowerCase()
   .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '') || 'lesson'
 
 /** Checks a submitted spec, with its id set to the lesson's. */
-function check(raw: unknown, id: string): Scenario {
+export function check(raw: unknown, id: string): Scenario {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Refused(400, 'spec is required, as a JSON object.')
   if (Buffer.byteLength(JSON.stringify(raw)) > MAX_SPEC_BYTES) throw new Refused(413, `The lesson is too big (limit ${MAX_SPEC_BYTES / 1000} KB).`)
   const parsed = Scenario.safeParse({ ...raw, id })
@@ -95,18 +98,25 @@ export async function myLessons(userId: string): Promise<MyLesson[]> {
 export async function myLesson(userId: string, id: string) {
   await owned(userId, id)
   const found = (await myLessons(userId)).find(l => l.id === id)!
-  return { ...found, spec: (await latest(id))!.spec as Scenario }
+  const v = (await latest(id))!
+  return { ...found, spec: v.spec as Scenario, prompt: v.sourcePrompt }
 }
 
-export async function createLesson(userId: string, raw: unknown) {
-  await author(userId)
+/** Refuses a new lesson once the author has as many as allowed. */
+export async function roomForOne(userId: string) {
   const [{ n }] = await db().select({ n: count() }).from(scenarios).where(eq(scenarios.authorId, userId))
   if (n >= MAX_LESSONS) throw new Refused(409, `You have ${n} lessons, the most allowed for now.`)
+}
+
+/** `prompt` is what the author asked the AI for, when it wrote this spec. */
+export async function createLesson(userId: string, raw: unknown, prompt?: string) {
+  await author(userId)
+  await roomForOne(userId)
   const id = `${slug((raw as { title?: unknown } | null)?.title)}-${randomBytes(3).toString('hex')}`
   const spec = check(raw, id)
   await db().transaction(async tx => {
     await tx.insert(scenarios).values({ id, ...meta(spec), visibility: 'private', authorId: userId })
-    await tx.insert(scenarioVersions).values({ scenarioId: id, version: 1, spec, status: 'draft', createdBy: userId })
+    await tx.insert(scenarioVersions).values({ scenarioId: id, version: 1, spec, status: 'draft', createdBy: userId, sourcePrompt: prompt })
   })
   return myLesson(userId, id)
 }
@@ -114,15 +124,15 @@ export async function createLesson(userId: string, raw: unknown) {
 /** Saves a new draft. The latest draft is overwritten only while no shift has been played on it, so a run's pinned version never
  * changes under it and a test always counts for the spec it played. Otherwise the draft becomes the next version.
  * The library shows the published version, so once there is one the title, summary and tags wait for the next publish. */
-export async function saveDraft(userId: string, id: string, raw: unknown) {
+export async function saveDraft(userId: string, id: string, raw: unknown, prompt?: string) {
   await author(userId)
   await owned(userId, id)
   const spec = check(raw, id)
   await db().transaction(async tx => {
     const [top] = await tx.select().from(scenarioVersions).where(eq(scenarioVersions.scenarioId, id)).orderBy(desc(scenarioVersions.version)).limit(1).for('update')
     const [played] = top ? await tx.select({ id: runs.id }).from(runs).where(eq(runs.scenarioVersionId, top.id)).limit(1) : []
-    if (top?.status === 'draft' && !played) await tx.update(scenarioVersions).set({ spec, createdAt: new Date() }).where(eq(scenarioVersions.id, top.id))
-    else await tx.insert(scenarioVersions).values({ scenarioId: id, version: (top?.version ?? 0) + 1, spec, status: 'draft', createdBy: userId })
+    if (top?.status === 'draft' && !played) await tx.update(scenarioVersions).set({ spec, createdAt: new Date(), ...(prompt && { sourcePrompt: prompt }) }).where(eq(scenarioVersions.id, top.id))
+    else await tx.insert(scenarioVersions).values({ scenarioId: id, version: (top?.version ?? 0) + 1, spec, status: 'draft', createdBy: userId, sourcePrompt: prompt })
     const [live] = await tx.select({ id: scenarioVersions.id }).from(scenarioVersions)
       .where(and(eq(scenarioVersions.scenarioId, id), eq(scenarioVersions.status, 'published'))).limit(1)
     await tx.update(scenarios).set({ ...(live ? {} : meta(spec)), updatedAt: new Date() }).where(eq(scenarios.id, id))
@@ -138,7 +148,7 @@ export async function publishLesson(userId: string, id: string, to: unknown) {
   const top = (await latest(id))!
   if (top.status === 'published') throw new Refused(409, `Version ${top.version} is already published. Save a new draft to publish changes.`)
   if (!(await tested(userId, [top.id])).has(top.id)) {
-    throw new Refused(409, `Test the draft first: play version ${top.version} yourself and finish the shift (reach the recap), then publish.`)
+    throw new Refused(409, `Test the draft first: play version ${top.version} yourself, ship the fix so every check passes, then end the shift. Then publish.`)
   }
   await db().transaction(async tx => {
     await tx.update(scenarioVersions).set({ status: 'published' }).where(eq(scenarioVersions.id, top.id))
@@ -170,7 +180,7 @@ export async function playable(id: string, userId: string | null): Promise<{ spe
 }
 
 // ---------- routes: /api/my/lessons, mounted after sign-in ----------
-const who = (res: Response): string => {
+export const who = (res: Response): string => {
   if (!res.locals.me) throw new Refused(404, 'Accounts are off on this server.')
   return res.locals.me.id
 }

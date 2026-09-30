@@ -32,6 +32,8 @@ export interface Ask {
   /** 0 mentor, 1 reply to the player, 2 getting ahead. Lower goes first. */
   priority?: 0 | 1 | 2
   timeoutMs?: number
+  /** Output budget. A colleague's line fits in the default; a whole lesson does not. */
+  maxTokens?: number
   /** Reuse an earlier answer to the identical question. For prompts that do not depend on the conversation. */
   cache?: boolean
 }
@@ -70,7 +72,7 @@ async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
       signal: AbortSignal.timeout(a.timeoutMs ?? 30_000),
       headers: { authorization: 'Bearer ' + KEY, 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: MODEL, max_output_tokens: 900, reasoning: { effort: 'low' },
+        model: MODEL, max_output_tokens: a.maxTokens ?? 900, reasoning: { effort: 'low' },
         tools: a.tools.map(t => ({ type: 'function', ...t })),
         instructions: a.system, input: a.user,
       }),
