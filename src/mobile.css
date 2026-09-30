@@ -36,6 +36,7 @@
   .lede { font-size: 15px; }
   .setup { padding: 18px; gap: 22px; border-radius: 16px; }
   .signin { flex: 1 1 100%; }
+  .roles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tile { padding: 10px; }
   .seg-grow button { padding: 9px 4px; white-space: normal; line-height: 1.2; }
   .recap { padding: 22px 16px 44px; gap: 16px; }
