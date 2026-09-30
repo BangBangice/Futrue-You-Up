@@ -772,6 +772,7 @@ button.chip.tag:hover, a.chip.tag:hover { background: var(--track); }
 .gen-error { margin: 0; padding: 12px 14px; border-radius: 11px; background: rgba(229, 72, 77, 0.1); color: var(--bad-ink); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
 .chip.on-ok { background: rgba(48, 164, 108, 0.15); color: var(--good-ink); }
 .chip.on-live { background: var(--sel); color: var(--accent); }
+.removed { padding: 10px 12px; border-radius: 10px; background: rgba(229, 72, 77, 0.1); color: var(--bad-ink); font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
 .json-edit { height: 60vh; min-height: 320px; border-radius: 10px; overflow: hidden; }
 .outline { display: flex; flex-direction: column; gap: 20px; }
 .outline-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.45; }

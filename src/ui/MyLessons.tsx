@@ -19,6 +19,8 @@ type Visibility = typeof VISIBILITIES[number][0]
 interface Mine {
   id: string; title: string; summary: string | null; tags: string[]; visibility: Visibility; updatedAt: string
   version: number; status: 'draft' | 'published'; tested: boolean; published: boolean
+  /** Taken down by moderators: nobody can play it, the author included, until they restore it. */
+  removed: { reason: string } | null
 }
 interface Full extends Mine { spec: Scenario; prompt: string | null }
 interface Quota { remaining: number; limit: number; resetsAt: string }
@@ -101,7 +103,10 @@ function Ask({ lessonId, placeholder, label, onDone }: { lessonId?: string; plac
   )
 }
 
+const Removed = ({ l }: { l: Mine }) => l.removed && <div className="removed" role="note">Removed by moderators{l.removed.reason ? `: ${l.removed.reason}` : '.'}</div>
+
 function Status({ l }: { l: Mine }) {
+  if (l.removed) return <span className="tag-row"><span className="chip bad">Removed</span></span>
   return (
     <span className="tag-row">
       {l.status === 'published' ? <span className="chip on-live">Published · {l.visibility}</span>
@@ -138,6 +143,7 @@ function List() {
               <Link key={l.id} to={`/my/lessons/${encodeURIComponent(l.id)}`} className="lesson-card">
                 <b className="lesson-title">{l.title}</b>
                 {l.summary && <span className="lesson-summary">{l.summary}</span>}
+                <Removed l={l} />
                 <span className="lesson-foot"><Status l={l} /></span>
               </Link>
             ))}
@@ -184,15 +190,16 @@ function Editor() {
         <h1>{lesson.title}</h1>
         {lesson.summary && <p className="lede">{lesson.summary}</p>}
         <div className="tag-row"><Status l={lesson} />{lesson.tags.map(t => <span key={t} className="chip tag">{t}</span>)}</div>
+        <Removed l={lesson} />
       </motion.section>
 
       <motion.section variants={rise} className="author-card">
         <div className="field-label">Test, then publish</div>
         <div className="author-actions">
-          <button className="btn btn-ink" onClick={test}><Play size={14} />Test it</button>
+          <button className="btn btn-ink" disabled={!!lesson.removed} onClick={test}><Play size={14} />Test it</button>
           {lesson.status === 'published' ? (
             <label className="author-vis">Who can play it
-              <select className="select" value={lesson.visibility} disabled={busy} onChange={e => void reshow(e.target.value as Visibility)}>
+              <select className="select" value={lesson.visibility} disabled={busy || !!lesson.removed} onChange={e => void reshow(e.target.value as Visibility)}>
                 {VISIBILITIES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
               </select>
             </label>
@@ -201,12 +208,13 @@ function Editor() {
               <select className="select" aria-label="Who can play it" value={vis} onChange={e => setVis(e.target.value as Visibility)}>
                 {VISIBILITIES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
               </select>
-              <button className="btn btn-accent" disabled={busy || !lesson.tested} onClick={() => void publish()}><Send size={14} />Publish</button>
+              <button className="btn btn-accent" disabled={busy || !lesson.tested || !!lesson.removed} onClick={() => void publish()}><Send size={14} />Publish</button>
             </span>
           )}
         </div>
         <div className="sub small">
-          {lesson.status === 'published' ? `Version ${lesson.version} is live. Revising or editing it makes a new draft; players keep this version until you publish that.`
+          {lesson.removed ? 'Moderators took this lesson down, so it can’t be played or published. You can still revise it.'
+            : lesson.status === 'published' ? `Version ${lesson.version} is live. Revising or editing it makes a new draft; players keep this version until you publish that.`
             : lesson.tested ? `You finished a shift on version ${lesson.version}. It's ready to publish.`
             : `Publishing opens once you've tested version ${lesson.version}: play it, ship the fix so every check passes, then end the shift.`}
         </div>
