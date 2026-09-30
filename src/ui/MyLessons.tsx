@@ -9,6 +9,7 @@ import type { Scenario } from '../../shared/scenario.ts'
 import { useAccount, useWho } from '../sim/auth.ts'
 import { sim } from '../sim/store.ts'
 import { SignIn } from './SignIn.tsx'
+import { SuggestingTextarea } from './Suggest.tsx'
 import { Top } from './Library.tsx'
 import { rise, stagger } from './bits.tsx'
 
@@ -77,6 +78,10 @@ function Ask({ lessonId, placeholder, label, onDone }: { lessonId?: string; plac
   const [error, setError] = useState('')
   const [quota, setQuota] = useState<Quota | null>(null)
   useEffect(() => { send<Quota>(`${API}/generate`).then(setQuota, () => {}) }, [])
+  const suggest = async (text: string, signal: AbortSignal) => {
+    const res = await fetch(`${API}/complete`, { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, lessonId }) })
+    return res.ok ? ((await res.json()).suggestion as string) ?? '' : ''
+  }
   const go = async (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
@@ -94,7 +99,7 @@ function Ask({ lessonId, placeholder, label, onDone }: { lessonId?: string; plac
   }
   return (
     <form className="ask" onSubmit={go}>
-      <textarea className="input" rows={lessonId ? 3 : 4} maxLength={2000} placeholder={placeholder} aria-label={label} value={prompt} onChange={e => setPrompt(e.target.value)} disabled={busy} />
+      <SuggestingTextarea rows={lessonId ? 3 : 4} maxLength={2000} placeholder={placeholder} aria-label={label} value={prompt} onChange={setPrompt} disabled={busy} suggest={suggest} />
       <div className="ask-foot">
         <Left quota={quota} />
         <button className="btn btn-ink" disabled={busy || !prompt.trim() || quota?.remaining === 0}><Sparkles size={14} />{busy ? 'Writing…' : label}</button>

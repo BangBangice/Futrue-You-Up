@@ -36,6 +36,9 @@ export interface Ask {
   maxTokens?: number
   /** Reuse an earlier answer to the identical question. For prompts that do not depend on the conversation. */
   cache?: boolean
+  /** Only worth asking right away, like a typing suggestion: answers null instead of queueing, and leaves half the per-minute budget
+   * to the shift. */
+  optional?: boolean
 }
 
 const cache: Record<string, Call[]> = existsSync(CACHE_FILE) ? JSON.parse(readFileSync(CACHE_FILE, 'utf8')) : {}
@@ -58,6 +61,8 @@ async function turn(priority: number) {
   started.push(Date.now())
 }
 const release = () => { running--; waiting.shift()?.go() }
+/** Room for an optional call without making anyone wait. */
+const spare = () => running < MAX_IN_FLIGHT && started.filter(t => t > Date.now() - 60_000).length < PER_MINUTE / 2
 
 const explain = (status: number) =>
   status === 401 || status === 403 ? `the AI service rejected the API key (HTTP ${status})`
@@ -114,6 +119,7 @@ export function ask(a: Ask): Promise<Call[] | null> {
   const key = createHash('sha256').update(MODEL + '\0' + a.system + '\0' + a.user + '\0' + a.tools.map(t => t.name).join()).digest('hex')
   if (a.cache && cache[key]) return Promise.resolve(cache[key])
   if (inflight.has(key)) return inflight.get(key)!
+  if (a.optional && !spare()) return Promise.resolve(null)
   const job = (async () => {
     await turn(a.priority ?? 1)
     try {
