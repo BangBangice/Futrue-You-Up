@@ -91,7 +91,7 @@ const token = (await (await call('/api/auth/token', a.cookie)).json()).token as 
 assert.equal(JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).sub, a.id, 'a JWT for the session')
 assert.ok((await (await call('/api/auth/jwks')).json()).keys.length, 'a JWKS to check it against')
 
-// What the anonymous plugin's onLinkAccount does when a guest signs up.
+// What a guest's new account gets on its first session.
 await adopt(a.id, b.id)
 assert.equal((await db().select().from(runs).where(eq(runs.id, id)))[0].userId, b.id, 'linking hands the runs over')
 assert.equal((await (await call('/api/me/runs', b.cookie)).json())[0].id, id)
@@ -157,6 +157,20 @@ assert.equal((await post('/api/auth/reset-password', { newPassword: 'battery sta
 assert.equal((await call('/api/me', samCookie)).status, 401, 'resetting signs out everywhere')
 assert.equal((await signIn(sam, PASSWORD)).status, 401, 'the old password is gone')
 assert.equal((await signIn(sam, 'battery staple 2')).status, 200)
+
+// A guest who signs in to an account they already had doesn't bring shifts into it: the guest and its runs are deleted.
+{
+  const g = await guest()
+  const run = (await (await call('/api/sessions', g.cookie, { method: 'POST', body: '{"level":"bootcamp"}' })).json()).id
+  const [samRow] = await db().select().from(users).where(eq(users.email, sam))
+  const before = (await db().select().from(runs).where(eq(runs.userId, samRow.id))).length
+  const res = await post('/api/auth/sign-in/email', { email: sam, password: 'battery staple 2' }, g.cookie)
+  assert.equal(res.status, 200)
+  assert.equal((await (await call('/api/me', cookieOf(res))).json()).id, samRow.id)
+  assert.equal((await db().select().from(runs).where(eq(runs.userId, samRow.id))).length, before, 'the existing account gains no runs')
+  assert.equal((await db().select().from(runs).where(eq(runs.id, run))).length, 0, "the guest's run is deleted")
+  assert.equal((await db().select().from(users).where(eq(users.id, g.id))).length, 0, 'the guest is gone')
+}
 
 // A mail service that fails is reported, not swallowed.
 process.env.MAILPIT_URL = 'http://127.0.0.1:9'

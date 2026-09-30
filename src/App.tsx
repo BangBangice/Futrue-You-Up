@@ -32,7 +32,7 @@ function Gate({ config }: { config: AuthConfig }) {
   if (isPending && !isRefetching) return null
   if (!account || signing) {
     const done = () => setSigning(false)
-    return <div className="screen"><SignIn config={config} start={signing === 'save' ? 'register' : undefined} onDone={done} onBack={account ? done : undefined} /></div>
+    return <div className="screen"><SignIn config={config} start={signing === 'save' ? 'register' : undefined} guest={account?.isAnonymous} onDone={done} onBack={account ? done : undefined} /></div>
   }
   return <AccountContext value={account}><Shift key={user!.id} accounts /></AccountContext>
 }

@@ -28,7 +28,7 @@ function fromUrl() {
 let arrival = fromUrl()
 export const arrivedByLink = !!(arrival.token || arrival.error)
 
-export function SignIn({ config, start, onDone, onBack }: { config: AuthConfig; start?: Mode; onDone: () => void; onBack?: () => void }) {
+export function SignIn({ config, start, guest: asGuest, onDone, onBack }: { config: AuthConfig; start?: Mode; guest?: boolean; onDone: () => void; onBack?: () => void }) {
   const [landed] = useState(arrival)
   useEffect(() => { arrival = { token: '', error: '' } }, [])
   const [mode, setMode] = useState<Mode>(landed.token ? 'reset' : start ?? (config.email ? 'signin' : 'register'))
@@ -78,6 +78,7 @@ export function SignIn({ config, start, onDone, onBack }: { config: AuthConfig; 
     <div className="signin-others">
       {config.email && <div className="signin-or"><span>or</span></div>}
       {config.google && <button className="btn btn-chip signin-alt" disabled={busy} onClick={google}>Continue with Google</button>}
+      {config.google && asGuest && <div className="level-note">Your shifts come with you to a Google account that's new here, not to one you have already used.</div>}
       {config.guest && !onBack && <button className="btn btn-chip signin-alt" disabled={busy} onClick={guest}>Continue as guest</button>}
       {config.guest && !onBack && <div className="level-note">As a guest, your shifts stay with this browser. Create an account any time to keep them.</div>}
     </div>
@@ -100,6 +101,7 @@ export function SignIn({ config, start, onDone, onBack }: { config: AuthConfig; 
           {config.email && mode === 'signin' && (
             <form className="field" onSubmit={signIn}>
               <div className="field-label">Sign in</div>
+              {asGuest && <div className="level-note">Signing in to an account you already have starts it without this guest's shifts, and they are deleted. To keep them, create a new account.</div>}
               {emailField}
               {passwordField(false)}
               {submit('Sign in', 'Signing you in')}

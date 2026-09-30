@@ -9,7 +9,7 @@ import { db, dbEnabled } from './db/index.ts'
 import { accounts, jwks, sessions, users, verifications } from './db/schema.ts'
 import { letter, mailScope, mask, send } from './mail.ts'
 import { guestName } from './names.ts'
-import { adopt } from './world.ts'
+import { adopt, discard } from './world.ts'
 
 export const authEnabled = dbEnabled
 export const googleEnabled = () => !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
@@ -67,8 +67,9 @@ const build = () => betterAuth({
       if (scope?.failed) throw new APIError('SERVICE_UNAVAILABLE', { message: "We couldn't send the email just now. Try again in a minute." })
     }),
   },
-  // A guest registering by email gets no session until the address is confirmed, perhaps in another browser, where the
-  // anonymous plugin can't see the guest. So the guest is noted at sign-up and its runs move with the new user's first session.
+  // A guest's runs move only to an account made while playing as that guest, never into one that already existed. The guest
+  // is noted when the account is created (by email or Google) and its runs move with that account's first session. By email
+  // that session waits for the address to be confirmed, perhaps in another browser, where the anonymous plugin can't see the guest.
   databaseHooks: {
     user: {
       create: {
@@ -92,7 +93,14 @@ const build = () => betterAuth({
     },
   },
   plugins: [
-    anonymous({ generateName: guestName, onLinkAccount: ({ anonymousUser, newUser }) => adopt(anonymousUser.user.id, newUser.user.id) }),
+    // Runs after the session hooks above, so a new account has its runs by now. Signing in to an existing account leaves the
+    // guest's runs behind, and the plugin deletes the guest next (unless the new session is a guest too), so they go with it.
+    anonymous({
+      generateName: guestName,
+      onLinkAccount: async ({ anonymousUser, newUser }) => {
+        if (!newUser.user.isAnonymous && newUser.user.id !== anonymousUser.user.id) await discard(anonymousUser.user.id)
+      },
+    }),
     // GET /api/auth/token swaps the session cookie for a JWT; other services check it against /api/auth/jwks.
     jwt(),
   ],
