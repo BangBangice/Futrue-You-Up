@@ -309,10 +309,14 @@ export function saveDoc(s: Session, id: string | undefined, d: Pick<Doc, 'title'
   return next.id
 }
 
+/** Ends the shift, from the player's End shift button. It counts as finished, which is what testing a draft needs, only once the
+ * lesson's work is done: the fix shipped and everything live passes, hidden checks included. That is the guide's last phase. */
 export async function end(s: Session) {
   if (s.world.stage !== 'sim') return
   pause(s)
-  s.log('end')
+  const live = s.priv.verdicts[s.world.deploys.at(-1)!.sha]
+  s.priv.finished = s.priv.f.fixedAt !== undefined && !!live && !failing(live.checks).length
+  s.log('end', { finished: s.priv.finished })
   s.set({ stage: 'recap', typing: [], recap: { ready: false, happened: mentor.story(s), corrected: [], next: [], note: '' } })
   s.set({ recap: await mentor.recap(s) })
 }

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { bigserial, boolean, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core'
+import { bigserial, boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core'
 
 const at = (name: string) => timestamp(name, { withTimezone: true }).notNull().defaultNow()
 
@@ -28,6 +28,13 @@ export const scenarioVersions = pgTable('scenario_versions', {
   createdBy: text('created_by'),
   createdAt: at('created_at'),
 }, t => [unique().on(t.scenarioId, t.version)])
+
+/** AI lesson generations per author per UTC day, for the daily quota. Counted here so a restart doesn't reset it. */
+export const lessonGenerations = pgTable('lesson_generations', {
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  day: date('day', { mode: 'string' }).notNull(),
+  count: integer('count').notNull().default(0),
+}, t => [primaryKey({ columns: [t.userId, t.day] })])
 
 export const runs = pgTable('runs', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -27,6 +27,8 @@ export interface Priv {
   verdicts: Record<string, Verdict & { diff: string }>
   /** Failed deploys so far. Drives how direct the mentor gets. */
   attempts: number; aiCalls: number; events: Event[]
+  /** Set when the shift ends: whether the lesson's work was done by then (see director.end). */
+  finished?: boolean
   f: {
     seen: string[]; warnedAt?: number; readWarningAt?: number; editedAt?: number; testedAt?: number; testsPassed?: boolean
     leoAskedAt?: number; leo?: 'helped' | 'deferred'; ackAt?: number; ackText?: string; askedDanielAt?: number
