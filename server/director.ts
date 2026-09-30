@@ -8,7 +8,6 @@ import type { Persona } from './ai/personas.ts'
 import { Refusal, tokenize } from './sandbox.ts'
 import type { Emit } from './sandbox.ts'
 import * as triggers from './triggers.ts'
-import { SCENARIO } from './world.ts'
 import type { Beat, Session } from './world.ts'
 
 /** The browser gets the checks customers can feel. Security verdicts stay on the server. */
@@ -23,7 +22,7 @@ export async function start(s: Session) {
   s.priv.verdicts[state.head] = { ...base, diff: '' }
   s.world.term = [{ c: 'dim', t: 'Last login: Tue Sep 29 09:14 on ttys002' }, { c: 'dim', t: 'Type "help" to see what is available here.' }]
   s.set({ files: await s.ws.tree(), code: state, deploys: [{ sha: state.head, at: START - 300, by: 'daniel', kind: 'deploy', checks: visible(base.checks) }] })
-  triggers.schedule(s, SCENARIO.triggers, 'start')
+  triggers.schedule(s, s.scenario.triggers, 'start')
   s.priv.beats.push({ at: DEMO, kind: 'demo' })
   s.log('start', { level: s.world.level })
 }
@@ -50,12 +49,11 @@ export function tick(s: Session) {
 }
 
 // ---------- things that happen on schedule ----------
-const TRIGGERS = new Map(SCENARIO.triggers.map(t => [t.id, t]))
 const shipped = (s: Session) => s.world.deploys.some(d => d.by === s.world.player)
 // Beats hold a trigger id, or "demo". Shifts saved before triggers were data used the same names.
 function beat(s: Session, b: Beat) {
   if (b.kind === 'demo') return demo(s)
-  const t = TRIGGERS.get(b.kind)
+  const t = s.scenario.triggers.find(x => x.id === b.kind)
   if (t) triggers.fire(s, t, b.inc)
 }
 function demo(s: Session) {
@@ -80,7 +78,7 @@ function openIncident(s: Session) {
   s.mail({ who: 'cloudwatch', folder: 'alerts', subject: `[FIRING] auth-api: 401 rate ${rate}% (threshold ${ALARM}%)`, body: [`Alarm: auth-api 401 rate above ${ALARM}% for 2 minutes.`, `Current: ${rate}% · Baseline: 0.4%`, `Top reason: ${reason}`, `Most recent deploy: auth-api@${live.sha} by maya.chen at ${clock(live.at)}`], files: [dashboard, { kind: 'doc', doc: 'incident' }] })
   s.timeline(`Alarm fired: 401 rate > ${ALARM}%`, 'bad')
   s.log('incident', { id, what })
-  triggers.schedule(s, SCENARIO.triggers, 'incident.opened', id)
+  triggers.schedule(s, s.scenario.triggers, 'incident.opened', id)
   mentor.onIncident(s, live.sha, v, v.diff)
 }
 
@@ -91,7 +89,7 @@ function resolveIncident(s: Session) {
   s.post('incidents', 'cloudwatch', `[RESOLVED] auth-api · 401 rate back to ${errAt(w.deploys, m + 2).toFixed(1)}% · duration ${m - inc.startedAt} min`, { alert: 'ok' })
   s.timeline(`Resolved: 401 rate ${errAt(w.deploys, m + 2).toFixed(1)}%`, 'good')
   s.log('resolved', { id: inc.id, mins: m - inc.startedAt })
-  triggers.schedule(s, SCENARIO.triggers, 'incident.resolved', inc.id)
+  triggers.schedule(s, s.scenario.triggers, 'incident.resolved', inc.id)
   void mentor.onHealthy(s, live.kind === 'rollback' ? 'rollback' : 'fix')
 }
 
