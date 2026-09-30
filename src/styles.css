@@ -133,13 +133,7 @@ img { display: block; user-select: none; }
 .vsep { width: 1px; height: 28px; background: var(--line); }
 .simclock b { font: 600 17px/1.15 var(--mono); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .simclock span { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; }
-.simbar .seg { flex: none; }
-.simbar.compact :is(.simbar-role, .brand span, .chip:not(.bad)) { display: none; }
 @media (max-width: 1279px) { .simbar :is(.simbar-role, .brand span) { display: none; } }
-.live { flex: none; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 13px 0 11px; border-radius: 999px; background: var(--bad); color: #fff; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; box-shadow: 0 4px 14px rgba(229, 72, 77, 0.35); }
-.live i { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: pulse 1.4s infinite; }
-.live em { opacity: 0.55; font-style: normal; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); } 70%, 100% { box-shadow: 0 0 0 7px rgba(255, 255, 255, 0); } }
 
 /* ───────── Onboarding ───────── */
 .onboard { max-width: 1120px; margin: 0 auto; padding: 56px 32px 64px; display: flex; flex-wrap: wrap; gap: 56px; align-items: flex-start; }
@@ -710,7 +704,7 @@ dt { color: var(--sub); }
 code { font: 12.5px var(--mono); }
 
 @media (prefers-reduced-motion: reduce) {
-  .chart-slide, .live i, .dots i, .spin { animation: none; }
+  .chart-slide, .dots i, .spin { animation: none; }
   * { transition-duration: 0.01ms !important; }
 }
 

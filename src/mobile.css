@@ -3,7 +3,7 @@
    one app fills the screen, the dock is a tab bar, the step list is a strip that unfolds, and an app with a list
    and a detail (mail, chat, board, wiki, code) shows one at a time with Back between them (View.deep in store.ts).
    Everything here sits inside the media query, which store.ts's phone() repeats. Wider screens never see it. */
-.win-back, .pace-select { display: none; }
+.win-back { display: none; }
 
 @media (max-width: 720px), (pointer: coarse) and (max-height: 540px) {
   :root { --dock-h: 60px; --guide-h: 42px; }
@@ -22,15 +22,12 @@
   .topbar-right { gap: 8px; }
   .topbar-right > span { display: none; }
   .simbar { height: auto; min-height: 50px; flex-wrap: wrap; gap: 0 7px; padding: 9px 10px; overflow: visible; }
-  .simbar :is(.simbar-role, .brand span, .chip:not(.bad), .seg, .btn-soft) { display: none; }
+  .simbar :is(.simbar-role, .brand span, .chip:not(.bad), .btn-soft) { display: none; }
   .simclock b { font-size: 15px; }
-  /* Takes what the first row has left, so a narrow phone squeezes it rather than wrapping the row. */
-  .pace-select { display: block; flex: 100 1 0; min-width: 0; max-width: 96px; height: 32px; }
-  /* Anything that is news (the AI is down, reconnecting, production is on fire) gets a second row to itself. */
+  /* Anything that is news (the AI is down, reconnecting) gets a second row to itself. */
   .simbar::after { content: ''; order: 1; flex: 0 0 100%; }
-  .simbar > :is(.chip.bad, .live) { order: 2; margin-top: 9px; }
+  .simbar > .chip.bad { order: 2; margin-top: 9px; }
   .simbar .chip.bad { max-width: 100%; }
-  .live { flex: 1 0 100%; height: auto; min-height: 30px; flex-wrap: wrap; justify-content: center; gap: 1px 8px; padding: 5px 12px; border-radius: 10px; font-size: 11.5px; box-shadow: none; }
 
   /* ───────── Start, sign-in and recap pages ───────── */
   .onboard { padding: 26px 18px 44px; gap: 26px; }
