@@ -19,8 +19,9 @@ You get a work computer, a real codebase and a real ticket. Colleagues message y
 | Accounts (with a database) | Better Auth: email and password, Google, guests, JWT/JWKS for other services |
 | Email | Resend in production, Mailpit locally, console otherwise |
 | Player code sandbox | A guarded local child process, or an [E2B](https://e2b.dev) cloud sandbox when `E2B_API_KEY` is set |
+| Files attached from the player's computer | This server's disk by default, or any S3-compatible bucket (Railway's storage bucket, MinIO locally) |
 | Language | TypeScript 7 throughout (`shared/` is used by both sides) |
-| Ops | Docker (`node:26-slim`), docker compose for local Postgres and Mailpit, Railway for hosting, GitHub Actions CI |
+| Ops | Docker (`node:26-slim`), docker compose for local Postgres, Mailpit and a bucket, Railway for hosting, GitHub Actions CI |
 
 ### Run it
 
@@ -39,7 +40,8 @@ No key? It still runs. Colleagues fall back to scripted lines and no network is 
 | Command | What it does |
 |---|---|
 | `npm run dev` | The app and its API on one port |
-| `npm run check` | Plays a whole shift without a browser or the AI model and checks the outcome |
+| `npm run check` | Plays a whole shift without a browser or the AI model and checks the outcome, then checks attached files |
+| `npm run check:uploads` | Attached files: stored, served back, kept out of other shifts, and thrown away. Add the bucket's `STORAGE=s3 S3_*` to run it against one |
 | `npm run llm:smoke` | One real call to the AI model, to check the key works |
 | `npm run build` then `npm start` | Type-check and production build, served by the same server |
 | `npm run check:db` | Against a running database: run round trip, lesson library, authoring and moderation |
@@ -63,6 +65,10 @@ Everything is read from `.env` (see `.env.example`) or the environment. The acco
 | `DATABASE_URL` | Postgres. Turns on accounts, lesson authoring and moderation |
 | `E2B_API_KEY` | Runs player code in E2B cloud sandboxes. Set it when hosting |
 | `SANDBOX` | `local` forces the local process even with an E2B key |
+| `STORAGE` | Where attached files go: `disk` (default, `.data/uploads`) or `s3`. See [Attached files](#attached-files) |
+| `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION` | The bucket, if it is not `disk`. Railway's own `BUCKET`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `ENDPOINT` and `REGION` are read too |
+| `S3_VIRTUAL_HOST` | `1` for `<bucket>.<endpoint>` addressing. MinIO and Railway both answer path style, the default |
+| `UPLOAD_MAX_BYTES` | The largest single attachment. Default 5 MB |
 
 **Never commit `.env`.** This repository is public. `.env` and `.data/` are git-ignored.
 
@@ -80,6 +86,29 @@ npm run db:seed-scenarios         # publishes scenarios/*.json that changed
 `docker compose up` runs the database and the app together on http://localhost:5183, with scripted colleagues unless `LLM=live`. After changing `server/db/schema.ts`, run `npm run db:generate` and commit the new migration.
 
 On Railway, `railway.json` runs `db:migrate` and `db:seed-scenarios` before each deploy, so edited scenario files reach new shifts without a manual step.
+
+#### Attached files
+
+The paperclip in Outlook and Teams takes a file from the player's own computer. The bytes are sent to the server as they are chosen — not when the message is sent — and what the shift keeps is only the id that comes back, with the name and size. Opening one fetches it again through `/api/sessions/:id/files/:file`, so the shift's own route is the whole permission check: a file is looked up under the run that stored it and nowhere else. Whatever was uploaded is served with `X-Content-Type-Options: nosniff`, a sandbox CSP, and a `Content-Disposition` of `attachment` unless it is an image or a PDF, so an uploaded `.svg` or `.html` can never run its script on our origin. `npm run check:uploads` checks all of that.
+
+There are two places to keep the bytes (`server/uploads.ts`):
+
+- **`STORAGE=disk`** (the default) writes them to `.data/uploads/<run>/<file>`, beside the shifts, on the same volume. Nothing else to run, and all a single instance needs locally.
+- **`STORAGE=s3`** puts them in any S3-compatible bucket. A host needs this: Railway's filesystem is thrown away on every deploy, so files kept on it do not survive the next push.
+
+Locally, the same kind of bucket can run alongside everything else. It is behind a compose profile, so the default `docker compose up` stays as small as it was:
+
+```
+docker compose --profile s3 up          # bucket on http://localhost:9000, console on http://localhost:9001
+# in .env: STORAGE=s3, S3_ENDPOINT=http://localhost:9000, S3_BUCKET=larp, S3_ACCESS_KEY_ID=larp, S3_SECRET_ACCESS_KEY=larp-secret
+npm run check:uploads                   # the same check, against the bucket this time
+```
+
+Running the server inside compose as well, leave `S3_ENDPOINT` out: compose points the app at `http://minio:9000` itself. (MinIO pulled its public images in 2025, so the compose file uses Pigsty's maintained mirror of the same server; any S3-compatible bucket works the same way.)
+
+On Railway, create a **Bucket** on the project canvas and reference its variables onto the service — `BUCKET`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `ENDPOINT`, `REGION`, or the S3-prefixed names above. Buckets are private, billed at $0.015 per GB-month with free egress, and every API operation is free. Without `STORAGE=s3` the startup log says the files are staying on this disk; a bucket that is only half configured is refused at startup instead, rather than quietly falling back to a disk the next deploy throws away.
+
+A run's files are deleted with the account that owns it (`discard` in `server/world.ts`). Nothing sweeps them on their own, so a long-lived bucket wants a lifecycle rule, or the same habit as `.data/`: it is safe to empty.
 
 #### Accounts
 
@@ -167,6 +196,7 @@ One Node process on one port serves the API and the browser app (through Vite mi
 | `server/director.ts` | Runs the shift: clock, scheduled events, consequences. No model calls |
 | `server/world.ts`, `server/runs.ts` | The live shift and its stream; where shifts are stored (files or Postgres) |
 | `server/routes.ts`, `server/auth.ts` | The API and its validation; accounts |
+| `server/uploads.ts` | Files attached from the player's computer: this disk, or an S3-compatible bucket |
 | `server/lessons.ts`, `server/authoring.ts`, `server/generate.ts`, `server/moderation.ts` | Library, lesson writing, AI generation, moderation |
 | `server/db/` | Drizzle schema, migrations, migrate and seed scripts |
 | `server/check*.ts` | The `npm run check*` scripts |
@@ -196,4 +226,4 @@ GitHub Actions runs on every pull request and push to `main`: type-check and bui
 - **Without `E2B_API_KEY`, run it on your own machine only.** The player's code runs as your user. It cannot read outside its workspace, write files, start processes or reach the network (the last on macOS only), but those are guard rails, not a security boundary. Hosted, set `E2B_API_KEY` so it runs in an E2B cloud sandbox instead (`server/e2b.ts`); `npm run check:e2b` tries that live.
 - One role and one day are playable.
 - Colleagues answer in a few seconds. The model is `openai/gpt-6-luna` through Perplexity; any model from `GET https://api.perplexity.ai/v1/models` works, set with `PERPLEXITY_MODEL`.
-- Files attached from your computer are not stored.
+- Files attached from your computer are kept, up to 5 MB each (`UPLOAD_MAX_BYTES`), wherever [the storage setting](#attached-files) points. Colleagues read their names, not their contents.

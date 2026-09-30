@@ -12,6 +12,7 @@ import { aiProblem, onAiProblem } from './ai/llm.ts'
 import { MAX_SNAPSHOT, Workspace } from './sandbox.ts'
 import type { Verdict } from './sandbox.ts'
 import { deleteRuns, moveRuns, store } from './runs.ts'
+import { forget } from './uploads.ts'
 import { DEFAULT_SCENARIO, scenarioFile } from './scenarios.ts'
 
 export const DATA = join(dirname(fileURLToPath(import.meta.url)), '..', '.data', 'sessions')
@@ -252,9 +253,11 @@ export async function adopt(from: string, to: string) {
   await moveRuns(from, to)
   all().forEach(s => { if (s.userId === from) s.userId = to })
 }
-/** Ends a player's runs for good: out of the cache, the store and the disk. */
+/** Ends a player's runs for good: out of the cache, the store, the disk, and the file storage. */
 export async function discard(userId: string) {
   await Promise.all(all().filter(s => s.userId === userId).map(s => drop(s.world.id)))
-  await Promise.all((await deleteRuns(userId)).map(id => rm(join(DATA, id), { recursive: true, force: true })))
+  const gone = await deleteRuns(userId)
+  // Uploaded files are not rows and no foreign key reaches them, so each run's are removed by hand.
+  await Promise.all(gone.flatMap(id => [rm(join(DATA, id), { recursive: true, force: true }), forget(id)]))
 }
 onAiProblem(p => all().forEach(s => s.set({ aiProblem: p })))

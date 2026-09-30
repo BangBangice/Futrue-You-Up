@@ -10,6 +10,7 @@ import * as director from './director.ts'
 import { store } from './runs.ts'
 import { scenarioFile } from './scenarios.ts'
 import { create, discard, drop, find } from './world.ts'
+import { get, newId, put } from './uploads.ts'
 import { MAX_SNAPSHOT } from './sandbox.ts'
 
 process.env.LLM = 'stub'
@@ -101,11 +102,14 @@ await db().delete(runWorkspaces).where(eq(runWorkspaces.runId, q.world.id))
 await rm(q.dir, { recursive: true, force: true })
 const t = (await find(q.world.id))!
 assert.deepEqual(await t.ws.state(), template, 'no snapshot: a fresh template')
-// Deleting a player's runs takes their snapshots with them.
+// Deleting a player's runs takes their snapshots with them, and whatever they attached.
 await t.flushWorkspace()
 assert.equal((await db().select().from(runWorkspaces).where(eq(runWorkspaces.runId, t.world.id))).length, 1)
+const attachment = newId()
+await put(t.world.id, attachment, Buffer.from('a screenshot'), 'shot.png')
 await discard(wsUser)
 assert.equal((await db().select().from(runWorkspaces).where(eq(runWorkspaces.runId, t.world.id))).length, 0, 'discard deletes the snapshot')
+assert.equal(await get(t.world.id, attachment), null, 'and the files attached to those runs')
 
 // ---- a new run plays the built-in's file, not an older version still published, like one from before {{player}}.
 const file = scenarioFile('ledgerly-day2')!
