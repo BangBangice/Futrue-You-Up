@@ -180,6 +180,19 @@ export async function playable(id: string, userId: string | null): Promise<{ spe
 }
 
 // ---------- routes: /api/my/lessons, mounted after sign-in ----------
+/** Deletes a lesson that was never published, along with its test shifts. Once a version has been live, players may have it, so
+ * that one is unpublished by moderators or kept, not deleted here. */
+export async function deleteDraft(userId: string, id: string) {
+  await author(userId)
+  await owned(userId, id)
+  await db().transaction(async tx => {
+    const versions = await tx.select({ id: scenarioVersions.id, status: scenarioVersions.status }).from(scenarioVersions).where(eq(scenarioVersions.scenarioId, id))
+    if (versions.some(v => v.status === 'published')) throw new Refused(409, 'This lesson has been published, so it can’t be deleted.')
+    if (versions.length) await tx.delete(runs).where(inArray(runs.scenarioVersionId, versions.map(v => v.id)))
+    await tx.delete(scenarioVersions).where(eq(scenarioVersions.scenarioId, id))
+    await tx.delete(scenarios).where(eq(scenarios.id, id))
+  })
+}
 export const who = (res: Response): string => {
   if (!res.locals.me) throw new Refused(404, 'Accounts are off on this server.')
   return res.locals.me.id
@@ -191,3 +204,4 @@ lessonsApi.get('/:id', async (req, res) => { res.json(await myLesson(who(res), r
 lessonsApi.put('/:id', async (req, res) => { res.json(await saveDraft(who(res), req.params.id, req.body?.spec)) })
 lessonsApi.patch('/:id', async (req, res) => { res.json(await setVisibility(who(res), req.params.id, req.body?.visibility)) })
 lessonsApi.post('/:id/publish', async (req, res) => { res.json(await publishLesson(who(res), req.params.id, req.body?.visibility)) })
+lessonsApi.delete('/:id', async (req, res) => { await deleteDraft(who(res), req.params.id); res.status(204).end() })

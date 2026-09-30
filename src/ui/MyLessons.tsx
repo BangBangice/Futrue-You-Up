@@ -3,7 +3,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowLeft, Braces, Check, LoaderCircle, Play, Send, Sparkles } from 'lucide-react'
+import { ArrowLeft, Braces, Check, LoaderCircle, Play, Send, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router'
 import type { Scenario } from '../../shared/scenario.ts'
 import { useAccount, useWho } from '../sim/auth.ts'
@@ -270,6 +270,12 @@ function Editor() {
     try { spec = JSON.parse(json ?? '') } catch (e) { return setError(`That isn't valid JSON: ${(e as Error).message}`) }
     if (await act(() => send<Full>(path, 'PUT', { spec }))) setJson(null)
   }
+  const [confirming, setConfirming] = useState(false)
+  const remove = async () => {
+    setBusy(true)
+    setError('')
+    try { await send<unknown>(path, 'DELETE'); navigate('/my/lessons') } catch (e) { setError((e as Error).message); setBusy(false) }
+  }
   const test = () => { sim.choose(id); navigate('/play') }
 
   if (lesson === null) return <motion.section variants={rise} className="library-head"><h1>That lesson isn't yours, or isn't here.</h1><Link className="link lesson-back" to="/my/lessons"><ArrowLeft size={14} /> My lessons</Link></motion.section>
@@ -331,6 +337,30 @@ function Editor() {
           ? <div className="json-edit"><Suspense fallback={<div className="sub">Loading the editor…</div>}><Code path={`lesson-${id}.json`} value={json} onChange={setJson} onSave={() => void save()} /></Suspense></div>
           : <Outline s={s} />}
       </motion.section>
+
+      {!lesson.published && (
+        <motion.section variants={rise} className="author-card danger-zone">
+          <div className="field-label">Delete this draft</div>
+          {confirming ? (
+            <div className="danger-warn" role="alert">
+              <TriangleAlert size={16} />
+              <div>
+                <b>Delete “{lesson.title}” for good?</b>
+                <div>The draft and your test shifts are erased. This can’t be undone.</div>
+                <span className="author-vis">
+                  <button className="btn btn-chip" disabled={busy} onClick={() => setConfirming(false)}>Keep it</button>
+                  <button className="btn btn-danger" disabled={busy} onClick={() => void remove()}><Trash2 size={14} />Yes, delete it</button>
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="author-actions">
+              <button className="btn btn-danger" disabled={busy} onClick={() => setConfirming(true)}><Trash2 size={14} />Delete draft</button>
+              <span className="sub small">Only a lesson that was never published can be deleted.</span>
+            </div>
+          )}
+        </motion.section>
+      )}
     </>
   )
 }
