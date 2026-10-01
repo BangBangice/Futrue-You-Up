@@ -14,7 +14,7 @@ You get a work computer, a real codebase and a real ticket. Colleagues message y
 | Runtime | Node 22.15+, running TypeScript directly with `--experimental-strip-types` (no build step for the server) |
 | Browser app | React 19, React Router 7, Vite 8, Monaco editor (VS Code), Motion, lucide-react icons, react-markdown with remark-gfm |
 | Server | Express 5, Server-Sent Events for the live world stream, Zod 4 for validating requests and scenario files |
-| AI | Perplexity's Agent API (OpenAI-style tool calls), default model `openai/gpt-6-luna`; scripted fallback when it is off or down |
+| AI | OpenAI's Responses API (function tool calls), default model `gpt-6-luna`; scripted fallback when it is off or down |
 | Database (optional) | PostgreSQL 17 through Drizzle ORM and drizzle-kit migrations, `pg` driver |
 | Accounts (with a database) | Better Auth: email and password, Google, guests, JWT/JWKS for other services |
 | Email | Resend in production, Mailpit locally, console otherwise |
@@ -29,7 +29,7 @@ Needs Node 22.15 or newer (CI and the Docker image use Node 26) and git.
 
 ```
 npm install
-cp .env.example .env      # then paste your Perplexity API key into .env
+cp .env.example .env      # then paste your OpenAI API key into .env
 npm run dev
 ```
 
@@ -56,9 +56,9 @@ Everything is read from `.env` (see `.env.example`) or the environment. The acco
 
 | Variable | |
 |---|---|
-| `PERPLEXITY_API_KEY` | The AI model. Without it colleagues use scripted lines |
-| `PERPLEXITY_MODEL` | Any model from `GET https://api.perplexity.ai/v1/models`. Default `openai/gpt-6-luna` |
-| `PERPLEXITY_BASE_URL` | Override the API address. Default `https://api.perplexity.ai/v1` |
+| `OPENAI_API_KEY` | The AI model. Without it colleagues use scripted lines |
+| `OPENAI_MODEL` | Any model from `GET https://api.openai.com/v1/models`. Default `gpt-6-luna` |
+| `OPENAI_BASE_URL` | Override the API address. Default `https://api.openai.com/v1` |
 | `LLM` | `stub` for scripted replies and no network, `live` otherwise |
 | `PORT` | Default `5183` |
 | `APP_PASSWORD` | Without a database, when hosted: HTTP Basic Auth with this password (any username) instead of this-machine-only |
@@ -166,7 +166,7 @@ One Node process on one port serves the API and the browser app (through Vite mi
  │                          │               │  ├─ lessons, authoring, generate, moderation│
  │ Desktop (the shift)      │  POST /act    │  └─ director.ts  clock, triggers, outcomes │
  │  src/sim/store.ts ───────┼─────────────► │      ├─ world.ts    live shift + stream    │
- │  copy of the world,      │  SSE /events  │      ├─ ai/  personas, mentor → llm.ts ────┼──► Perplexity
+ │  copy of the world,      │  SSE /events  │      ├─ ai/  personas, mentor → llm.ts ────┼──► OpenAI
  │  windows, drafts ◄───────┼────────────── │      ├─ sandbox.ts  git, files, code ──────┼──► E2B (optional)
  │  apps: VS Code, Outlook, │               │      │    └─ acceptance.ts  hidden checks  │
  │  Teams, Jira, Confluence,│               │      └─ runs.ts     state + event log      │
@@ -226,5 +226,5 @@ GitHub Actions runs on every pull request and push to `main`: lint (`npm run lin
 
 - **Without `E2B_API_KEY`, run it on your own machine only.** The player's code runs as your user. It cannot read outside its workspace, write files, start processes or reach the network (the last on macOS only), but those are guard rails, not a security boundary. Hosted, set `E2B_API_KEY` so it runs in an E2B cloud sandbox instead (`server/e2b.ts`); `npm run check:e2b` tries that live.
 - One role and one day are playable.
-- Colleagues answer in a few seconds. The model is `openai/gpt-6-luna` through Perplexity; any model from `GET https://api.perplexity.ai/v1/models` works, set with `PERPLEXITY_MODEL`.
+- Colleagues answer in a few seconds. The model is OpenAI's `gpt-6-luna`; any model from `GET https://api.openai.com/v1/models` works, set with `OPENAI_MODEL`.
 - Files attached from your computer are kept, up to 5 MB each (`UPLOAD_MAX_BYTES`), wherever [the storage setting](#attached-files) points. Colleagues read their names, not their contents.
