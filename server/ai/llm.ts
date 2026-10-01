@@ -7,17 +7,17 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-// Perplexity's Agent API. Any model from GET /v1/models works; gpt-6-luna answers in about 2 s for a tenth of a cent.
-const BASE = process.env.PERPLEXITY_BASE_URL ?? 'https://api.perplexity.ai/v1'
-const MODEL = process.env.PERPLEXITY_MODEL ?? 'openai/gpt-6-luna'
-const KEY = process.env.PERPLEXITY_API_KEY ?? process.env.Perplexity_API_Key ?? ''
+// OpenAI's Responses API. Any model from GET /v1/models works; gpt-6-luna answers in about 2 s for a tenth of a cent.
+const BASE = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1'
+const MODEL = process.env.OPENAI_MODEL ?? 'gpt-6-luna'
+const KEY = process.env.OPENAI_API_KEY ?? ''
 const CACHE_FILE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.data', 'llm-cache.json')
 const MAX_IN_FLIGHT = 6, PER_MINUTE = 30
 
 export const mode = (): 'live' | 'stub' => (process.env.LLM !== 'stub' && KEY ? 'live' : 'stub')
 
 // Why the model is not answering, in words the player can act on. null while calls are getting through.
-let problem: string | null = process.env.LLM !== 'stub' && !KEY ? 'PERPLEXITY_API_KEY is not set' : null
+let problem: string | null = process.env.LLM !== 'stub' && !KEY ? 'OPENAI_API_KEY is not set' : null
 const watchers = new Set<(p: string | null) => void>()
 export const aiProblem = () => problem
 export const onAiProblem = (fn: (p: string | null) => void) => watchers.add(fn)
@@ -74,13 +74,14 @@ async function request(a: Ask, attempt = 0): Promise<Call[] | null> {
   const what = a.tools.map(t => t.name).join(',') || 'text'
   let res: Response
   try {
-    res = await fetch(BASE + '/agent', {
+    res = await fetch(BASE + '/responses', {
       method: 'POST',
       signal: AbortSignal.timeout(a.timeoutMs ?? 30_000),
       headers: { authorization: 'Bearer ' + KEY, 'content-type': 'application/json' },
       body: JSON.stringify({
         model: MODEL, max_output_tokens: a.maxTokens ?? 900, reasoning: { effort: 'low' },
-        tools: a.tools.map(t => ({ type: 'function', ...t })),
+        // Not strict: these schemas leave some properties optional, which strict mode refuses.
+        tools: a.tools.map(t => ({ type: 'function', strict: false, ...t })),
         instructions: a.system, input: a.user,
       }),
     })
@@ -144,50 +145,67 @@ export function ask(a: Ask): Promise<Call[] | null> {
 }
 
 export interface Stream { system: string; user: string; priority?: 0 | 1 | 2; timeoutMs?: number; maxTokens?: number }
+/** How long to wait before each further try when the service is busy or out of reach: three more tries, under a minute in all
+ * unless the service asks for longer. */
+const RETRY_WAITS = [5_000, 15_000, 30_000]
+/** One try at a streamed answer: the text (null when there is none and trying again would not help), or why it is worth another try. */
+async function attempt(a: Stream, onText: (text: string) => void): Promise<{ text: string | null } | { busy: string; after: number }> {
+  await turn(a.priority ?? 1)
+  let text = ''
+  try {
+    const res = await fetch(BASE + '/responses', {
+      method: 'POST',
+      signal: AbortSignal.timeout(a.timeoutMs ?? 180_000),
+      headers: { authorization: 'Bearer ' + KEY, 'content-type': 'application/json', accept: 'text/event-stream' },
+      body: JSON.stringify({ model: MODEL, stream: true, max_output_tokens: a.maxTokens ?? 16_000, reasoning: { effort: 'low' }, instructions: a.system, input: a.user }),
+    })
+    if (!res.ok || !res.body) {
+      console.warn('[llm] stream: http', res.status, (await res.text().catch(() => '')).slice(0, 500))
+      if (res.status === 429 || res.status >= 500) return { busy: explain(res.status), after: (Number(res.headers.get('retry-after')) || 0) * 1000 }
+      return { text: report(explain(res.status)) }
+    }
+    report(null)
+    const decoder = new TextDecoder()
+    let buffer = '', status = ''
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      buffer += decoder.decode(chunk, { stream: true })
+      for (let end = buffer.indexOf('\n\n'); end >= 0; end = buffer.indexOf('\n\n')) {
+        const data = buffer.slice(0, end).split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5)).join('')
+        buffer = buffer.slice(end + 2)
+        let event: { type?: string; delta?: string; response?: { status?: string; incomplete_details?: unknown } }
+        try { event = JSON.parse(data) } catch { continue }
+        if (event.type === 'response.output_text.delta' && event.delta) { text += event.delta; onText(text) }
+        if (event.response?.status) status = event.response.status
+        if (event.type === 'response.incomplete') console.warn('[llm] stream: cut off', JSON.stringify(event.response?.incomplete_details ?? {}), `after ${text.length} chars`)
+      }
+    }
+    if (!text) console.warn(`[llm] stream: answered with nothing usable (status ${status})`)
+    return { text: text || null }
+  } catch (e) {
+    const name = (e as Error).name
+    console.warn(`[llm] stream: no answer after ${text.length} chars:`, name)
+    // A timeout has already used up the author's patience; anything else is a dropped or refused connection.
+    if (name === 'TimeoutError') return { text: report('the AI service timed out') }
+    return { busy: `could not reach the AI service (${name})`, after: 0 }
+  } finally { release() }
+}
 /**
  * Asks for plain text and passes it on as it is written: the whole answer so far, each time more arrives. For long answers someone
  * is waiting on, like a whole lesson, so they can watch it being written. Tool calls arrive only once complete, so this uses none.
- * Resolves to the whole text, or null when there is none. Never throws. Not cached.
+ * A busy or unreachable service is tried again, and `onRetry` hears which further try is about to wait its turn; the text then
+ * starts over. Resolves to the whole text, or null when there is none. Never throws. Not cached.
  */
-export function stream(a: Stream, onText: (text: string) => void): Promise<string | null> {
+export function stream(a: Stream, onText: (text: string) => void, onRetry: (attempt: number, of: number) => void = () => {}): Promise<string | null> {
   heard.forEach(f => f({ ...a, tools: [] }))
   if (mode() === 'stub') return Promise.resolve(null)
   return (async () => {
-    await turn(a.priority ?? 1)
-    let text = ''
-    try {
-      const res = await fetch(BASE + '/agent', {
-        method: 'POST',
-        signal: AbortSignal.timeout(a.timeoutMs ?? 180_000),
-        headers: { authorization: 'Bearer ' + KEY, 'content-type': 'application/json', accept: 'text/event-stream' },
-        body: JSON.stringify({ model: MODEL, stream: true, max_output_tokens: a.maxTokens ?? 16_000, reasoning: { effort: 'low' }, instructions: a.system, input: a.user }),
-      })
-      if (!res.ok || !res.body) {
-        console.warn('[llm] stream: http', res.status, (await res.text().catch(() => '')).slice(0, 500))
-        return report(explain(res.status))
-      }
-      report(null)
-      const decoder = new TextDecoder()
-      let buffer = '', status = ''
-      for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-        buffer += decoder.decode(chunk, { stream: true })
-        for (let end = buffer.indexOf('\n\n'); end >= 0; end = buffer.indexOf('\n\n')) {
-          const data = buffer.slice(0, end).split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5)).join('')
-          buffer = buffer.slice(end + 2)
-          let event: { type?: string; delta?: string; response?: { status?: string; incomplete_details?: unknown } }
-          try { event = JSON.parse(data) } catch { continue }
-          if (event.type === 'response.output_text.delta' && event.delta) { text += event.delta; onText(text) }
-          if (event.response?.status) status = event.response.status
-          if (event.type === 'response.incomplete') console.warn('[llm] stream: cut off', JSON.stringify(event.response?.incomplete_details ?? {}), `after ${text.length} chars`)
-        }
-      }
-      if (!text) console.warn(`[llm] stream: answered with nothing usable (status ${status})`)
-      return text || null
-    } catch (e) {
-      const name = (e as Error).name
-      console.warn(`[llm] stream: no answer after ${text.length} chars:`, name)
-      return report(name === 'TimeoutError' ? 'the AI service timed out' : `could not reach the AI service (${name})`)
-    } finally { release() }
+    for (let n = 0; ; n++) {
+      const got = await attempt(a, onText)
+      if ('text' in got) return got.text
+      if (n >= RETRY_WAITS.length) return report(got.busy)
+      onRetry(n + 1, RETRY_WAITS.length)
+      await new Promise(r => setTimeout(r, Math.min(Math.max(got.after, RETRY_WAITS[n]), 30_000)))
+    }
   })()
 }
 
@@ -200,7 +218,7 @@ export function probe(): Promise<string | null> {
   return probing = (async () => {
     await turn(0)
     try {
-      const res = await fetch(BASE + '/agent', {
+      const res = await fetch(BASE + '/responses', {
         method: 'POST',
         signal: AbortSignal.timeout(20_000),
         headers: { authorization: 'Bearer ' + KEY, 'content-type': 'application/json' },

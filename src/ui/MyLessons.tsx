@@ -29,6 +29,8 @@ interface Quota { remaining: number; limit: number; resetsAt: string }
 /** How far a generation has got, as the server streams it (server/generate.ts). */
 interface Progress {
   phase: 'queued' | 'writing' | 'checking' | 'repairing' | 'saving'; kind: 'practice' | 'incident'; chars: number; usual: number; problems?: number
+  /** The AI service was busy or out of reach, and this is which further try is under way. */
+  retry?: { attempt: number; of: number }
   peek: { title?: string; goal?: string; people: string[]; emails: string[]; steps: string[] }
 }
 
@@ -116,7 +118,7 @@ function Writing({ p, since }: { p: Progress | null; since: number }) {
   const pct = { queued: 3, writing: 6 + 78 * share, checking: 86, repairing: 86 + 8 * share, saving: 97 }[phase]
   const at = PHASES.findIndex(([k]) => k === phase)
   const shown = PHASES.filter(([k]) => k !== 'repairing' || phase === 'repairing' || (p?.problems && at > 3))
-  const headline = thinking ? 'The AI is planning your lesson' : { queued: '', writing: 'Writing your lesson', checking: 'Checking the lesson', repairing: 'Fixing a few things', saving: 'Saving your draft' }[phase]
+  const headline = p?.retry ? `The AI is busy. Trying again (${p.retry.attempt} of ${p.retry.of})` : thinking ? 'The AI is planning your lesson' : { queued: '', writing: 'Writing your lesson', checking: 'Checking the lesson', repairing: 'Fixing a few things', saving: 'Saving your draft' }[phase]
   const secs = Math.max(0, Math.round((now - since) / 1000))
   const peek = p?.peek
   return (

@@ -174,7 +174,7 @@ const USUAL = { practice: JSON.stringify(PRACTICE).length, incident: JSON.string
 // ---------- progress ----------
 /** Where a generation has got to, for the author watching it. `chars` is how much of the lesson is written so far. */
 export type Phase = 'queued' | 'writing' | 'checking' | 'repairing' | 'saving'
-export interface Progress { phase: Phase; kind: Kind; chars: number; usual: number; peek: Peek; problems?: number }
+export interface Progress { phase: Phase; kind: Kind; chars: number; usual: number; peek: Peek; problems?: number; retry?: { attempt: number; of: number } }
 /** What the half-written lesson already says, pulled out as it is written: its title, goal, people, emails and steps. */
 export interface Peek { title?: string; goal?: string; people: string[]; emails: string[]; steps: string[] }
 const strings = (text: string, key: string) => [...text.matchAll(new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`, 'g'))]
@@ -199,11 +199,11 @@ export function peek(text: string): Peek {
 
 export interface Brief { prompt: string; base?: Scenario; kind: Kind; system: string; user: string }
 /** The model's answer (an object, or text holding one), or null when it isn't answering. `onText` hears the answer as it is
- * written. Swapped out by the checks. */
+ * written, `onRetry` each time a busy model is asked again. Swapped out by the checks. */
 export const model = {
-  write: async (r: Brief, onText: (text: string) => void = () => {}): Promise<unknown> => {
+  write: async (r: Brief, onText: (text: string) => void = () => {}, onRetry: (attempt: number, of: number) => void = () => {}): Promise<unknown> => {
     if (mode() === 'stub') return stub(r.prompt, r.kind, r.base)
-    return stream({ system: r.system, user: r.user, priority: 2, timeoutMs: 240_000, maxTokens: r.kind === 'incident' ? 24_000 : 16_000 }, onText)
+    return stream({ system: r.system, user: r.user, priority: 2, timeoutMs: 240_000, maxTokens: r.kind === 'incident' ? 24_000 : 16_000 }, onText, onRetry)
   },
 }
 /** Without a model: the example, or the draft, lightly changed so the prompt shows. Deterministic, for the checks. */
@@ -232,8 +232,13 @@ async function write(prompt: string, id: string, base: Scenario | undefined, tel
     last = Date.now()
     tell({ phase, kind, chars: text.length, usual, peek: peek(text), problems })
   }
+  // Told as it happens, and the next piece of text is told at once so the notice goes when the writing starts.
+  const retrying = (phase: Phase, shown: string, problems?: number) => (attempt: number, of: number) => {
+    last = 0
+    tell({ phase, kind, chars: 0, usual, peek: peek(shown), problems, retry: { attempt, of } })
+  }
   tell({ phase: 'queued', kind, chars: 0, usual, peek: peek('') })
-  const first = await model.write({ prompt, base, kind, system, user }, watch('writing'))
+  const first = await model.write({ prompt, base, kind, system, user }, watch('writing'), retrying('queued', ''))
   if (first === null) throw new Refused(503, 'The AI is not answering right now. Try again in a minute.')
   const answer = typeof first === 'string' ? first : JSON.stringify(first)
   tell({ phase: 'checking', kind, chars: answer.length, usual, peek: peek(answer) })
@@ -243,7 +248,7 @@ async function write(prompt: string, id: string, base: Scenario | undefined, tel
   const problems = tried.problems.split('\n').filter(l => l.startsWith('✖')).length || 1
   last = 0
   tell({ phase: 'repairing', kind, chars: 0, usual, peek: peek(answer), problems })
-  const again = await model.write({ prompt, base, kind, system, user: `${user}\n\nYour previous answer:\n${answer}\n\nIt was refused for these problems. Fix them and answer with the whole lesson again:\n${tried.problems}` }, watch('repairing', problems))
+  const again = await model.write({ prompt, base, kind, system, user: `${user}\n\nYour previous answer:\n${answer}\n\nIt was refused for these problems. Fix them and answer with the whole lesson again:\n${tried.problems}` }, watch('repairing', problems), retrying('repairing', answer, problems))
   const fixed = again === null ? tried : validate(again, id, kind)
   if ('spec' in fixed) return fixed.spec
   throw new Refused(422, `The AI wrote a lesson that doesn't fit the format, even after a second try. Try again, or describe it differently.\n${fixed.problems}`)

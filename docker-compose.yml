@@ -67,8 +67,8 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-larp}:${POSTGRES_PASSWORD:-larp}@db:5432/${POSTGRES_DB:-larp}
       LLM: ${LLM:-stub}
-      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
-      PERPLEXITY_MODEL: ${PERPLEXITY_MODEL:-openai/gpt-6-luna}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-luna}
       # With a database, sign-in is on. This secret is for local use only.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-development-secret-not-for-production}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:5183}
